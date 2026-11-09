@@ -1,0 +1,31 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@v2
+      - run: ZIZMOR --format sarif .
+      - uses: actions/attest-build-provenance@v1
+      - uses: anchore/sbom-action@v0
+      - uses: sigstore/cosign-installer@v3
+      - run: cosign sign --yes ghcr.io/octo/demo
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - run: npm publish --provenance
+      - run: cargo +nightly fuzz run parse -- -max_total_time=60
+      - uses: gitleaks/gitleaks-action@v2
+      - run: semgrep ci
+      - run: govulncheck ./...
+      - uses: goreleaser/goreleaser-action@v6
+      - uses: docker/build-push-action@v6
+      - uses: actions/dependency-review-action@v4

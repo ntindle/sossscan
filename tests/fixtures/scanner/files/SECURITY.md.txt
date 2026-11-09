@@ -1,0 +1,5 @@
+# Security policy 🔒
+
+Please report vulnerabilities privately through GitHub's "Report a vulnerability" button on the
+Security tab, or e-mail security@example.com. We aim to reply within three working days and to
+publish an advisory once a fix is released. 😀 Thank you for keeping our users safe.

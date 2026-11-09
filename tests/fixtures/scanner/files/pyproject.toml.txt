@@ -1,0 +1,4 @@
+[project]
+name = "demo"
+[tool.uv]
+exclude-newer = "2026-10-01T00:00:00Z"

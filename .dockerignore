@@ -1,0 +1,17 @@
+# Keep the build context small, and keep credentials and caches out of it entirely:
+# the context is uploaded to the builder (a remote one on Fly.io).
+.secrets
+.env*
+.cache
+.venv
+.next
+node_modules
+public/download
+docs
+tests
+build/content
+build/build_guide.py
+**/__pycache__
+**/*.pyc
+*.md
+!public/**/*.md

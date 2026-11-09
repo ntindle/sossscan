@@ -1,0 +1,3 @@
+# owners
+src/ @octo/devs
+docs/ @octo/writers

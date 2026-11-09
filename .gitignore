@@ -1,0 +1,13 @@
+.venv/
+.secrets/
+.cache/
+.vercel/
+__pycache__/
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+# Built from lib/scanner by npm run build:cli
+public/download/
+# Local settings can hold secrets (the GitHub App's key, SOSF_SECRET); they belong in the host's environment.
+.env*

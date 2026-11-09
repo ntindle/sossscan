@@ -1,0 +1,755 @@
+{
+ "ci-token-permissions": {
+  "short": "Make GITHUB_TOKEN read-only by default and grant write access job by job.",
+  "why": "Every job gets a GITHUB_TOKEN, and any code that runs in the job can usually get at it. In the April 2026 Elementary attack, a command injected through a PR comment used the workflow's own token to trigger a malicious release. ImageMagick found its older repositories still gave workflows write access to contents, packages, pull requests and more, when most needed only contents: read.",
+  "steps": [
+   "Set the repository default to read-only and stop Actions from approving pull requests. If you have an organization, set it there too; Mockoon locked down both levels.",
+   "Put permissions: {} at the top of every workflow file, as virtualenv recommends, so each job starts with no access.",
+   "Grant scopes in the job that uses them: contents: read to check out, contents: write only where a release is created, id-token: write only in the publish job.",
+   "Find gaps with zizmor's excessive-permissions audit or CodeQL's \"Workflow does not contain permissions\" query. evcc used GitHubSecurityLab/actions-permissions to work out what each job needs.",
+   "Run each workflow once after the change and add back only the scopes that actually fail."
+  ],
+  "snippets": [
+   {
+    "label": "Deny by default, grant per job",
+    "lang": "yaml",
+    "code": "name: CI\non:\n  push:\n    branches: [{branch}]\n    tags: [\"v*\"]\n  pull_request:\n\n# Jobs start with no token permissions and ask for what they need\npermissions: {}\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - run: make test\n\n  github-release:\n    if: startsWith(github.ref, 'refs/tags/v')\n    needs: test\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write   # the only job that can write\n    steps:\n      - env:\n          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ github.ref_name }}\n        run: gh release create \"$TAG\" --repo \"$GITHUB_REPOSITORY\" --generate-notes\n"
+   }
+  ],
+  "pitfalls": [
+   "A permissions block inside one job doesn't limit the others. Fastify calls this the detail people get wrong most often: one forgotten job keeps its write token.",
+   "Listing any permission sets every unlisted one to none, so a job can fail until you add the scope it uses, such as pull-requests: write for a labeler.",
+   "Changing the default doesn't touch workflows that already ask for more (write-all or explicit write scopes). Search for those too."
+  ],
+  "docs": [
+   {
+    "label": "Use GITHUB_TOKEN for authentication in workflows",
+    "url": "https://docs.github.com/en/actions/tutorials/authenticate-with-github_token"
+   },
+   {
+    "label": "zizmor: excessive-permissions",
+    "url": "https://docs.zizmor.sh/audits/#excessive-permissions"
+   },
+   {
+    "label": "actions-permissions (find the permissions a job needs)",
+    "url": "https://github.com/GitHubSecurityLab/actions-permissions"
+   }
+  ]
+ },
+ "ci-pin-actions": {
+  "short": "Pin every action to a full commit SHA and let Dependabot keep the pins current.",
+  "why": "A tag like @v4 can be moved to different code by the action's owner, or by whoever compromises them. In March 2025 attackers repointed the tags of tj-actions/changed-files, used by more than 20,000 repositories, so workflows dumped their CI secrets into build logs; repositories pinned to a commit SHA largely ran the code they had reviewed. Nasiko pinned its actions after that incident, and Fastify pinned GitHub's own actions and its shared workflows as well.",
+  "steps": [
+   "Pin existing workflows with a tool: pinact run, or frizbee actions .github/workflows/. Both keep the version as a comment Dependabot understands; ratchet works too, with its own update command.",
+   "Pin GitHub's own actions and reusable workflows from other repositories too, as Fastify did for actions/* and its fastify/workflows repository.",
+   "Add the Dependabot config below. Its pull requests bump both the SHA and the version comment, so pins move forward through review.",
+   "Turn on \"Require actions to be pinned to a full-length commit SHA\" in the Actions settings so a new unpinned uses: line fails instead of slipping in.",
+   "Read the changes in each bump before merging, especially for small actions with a single maintainer.",
+   "To also pin the actions your actions call, look at GitHub's workflow lockfile (gh actions-lock). actix-web adopted it and notes it is still experimental, with trade-offs."
+  ],
+  "snippets": [
+   {
+    "label": "What pinned steps look like",
+    "lang": "yaml",
+    "code": "steps:\n  # Full 40-character commit SHA, version kept as a trailing comment.\n  # Dependabot updates both when a new release comes out.\n  - uses: {{pin:actions/checkout}}\n    with:\n      persist-credentials: false\n  - uses: {{pin:actions/setup-python}}\n    with:\n      python-version: \"3.x\"\n"
+   },
+   {
+    "label": ".github/dependabot.yml: keep action pins fresh",
+    "lang": "yaml",
+    "code": "version: 2\nupdates:\n  - package-ecosystem: \"github-actions\"\n    directory: \"/\"\n    schedule:\n      interval: \"weekly\"\n    cooldown:\n      default-days: 7   # skip releases younger than a week, as Gitoxide does\n"
+   }
+  ],
+  "pitfalls": [
+   "Dependabot alerts skip actions pinned to a SHA; only version updates move them. Without the github-actions entry in dependabot.yml, pins quietly go stale.",
+   "A SHA pin covers only the action you name. A composite action can still call other actions by tag, and a Docker action can pull an image by tag.",
+   "Take the SHA from the action's own repository, not a fork. A fork's commit can be referenced through the parent's name; zizmor's impostor-commit audit checks for this."
+  ],
+  "docs": [
+   {
+    "label": "Secure use reference: pinning actions",
+    "url": "https://docs.github.com/en/actions/reference/security/secure-use"
+   },
+   {
+    "label": "Keeping your actions up to date with Dependabot",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/auto-update-actions"
+   },
+   {
+    "label": "zizmor: unpinned-uses",
+    "url": "https://docs.zizmor.sh/audits/#unpinned-uses"
+   }
+  ]
+ },
+ "ci-script-injection": {
+  "short": "Pass event data into run steps through env variables, never inline ${{ }}.",
+  "why": "GitHub pastes ${{ }} expressions into the script before the shell runs it, so a PR title, branch name or comment can turn into a command. It hurts most in workflows triggered by issues, comments, pull_request_target or workflow_run, which run with your secrets and token. In April 2026 a PR comment was substituted into an Elementary workflow script, and the attacker used the workflow token to ship a malicious release that stayed on PyPI for 11.5 hours.",
+  "steps": [
+   "Search workflows and composite actions for ${{ inside run: blocks, especially titles, bodies, comments, head_ref and inputs. zizmor's template-injection audit lists them.",
+   "Move each value into the step's env: block and use \"$VAR\" in the script. actix-web, Gleam and JUnit fixed their workflows this way; zizmor --fix can rewrite some for you.",
+   "In actions/github-script, read process.env.VAR instead of pasting ${{ }} into the JavaScript, as JUnit did in its release workflow.",
+   "Treat step outputs built from PR data as untrusted too. ACI.dev's CodeQL code-injection alert came from a PR title passed through a step output.",
+   "Don't write unvalidated input to $GITHUB_ENV or $GITHUB_OUTPUT; a newline in the value can define extra variables or outputs.",
+   "Keep zizmor or CodeQL in CI so new injections show up in review. Log4j hardened every workflow, and Fastify fixed one in its shared reusable workflows."
+  ],
+  "snippets": [
+   {
+    "label": "Before: vulnerable to injection",
+    "lang": "yaml",
+    "code": "# The title is pasted into the script before bash runs.\n# A PR titled  a\"; ls $GITHUB_WORKSPACE\"  runs ls on your runner.\n- name: Check PR title\n  run: |\n    title=\"${{ github.event.pull_request.title }}\"\n    if [[ ! \"$title\" =~ ^(feat|fix|docs): ]]; then\n      echo \"Title must start with feat:, fix: or docs:\"\n      exit 1\n    fi\n"
+   },
+   {
+    "label": "After: env-var indirection",
+    "lang": "yaml",
+    "code": "# The value reaches bash as data in an environment variable\n- name: Check PR title\n  env:\n    TITLE: ${{ github.event.pull_request.title }}\n  run: |\n    if [[ ! \"$TITLE\" =~ ^(feat|fix|docs): ]]; then\n      echo \"Title must start with feat:, fix: or docs:\"\n      exit 1\n    fi\n\n# Same idea in actions/github-script: read process.env\n- uses: {{pin:actions/github-script}}\n  env:\n    TITLE: ${{ github.event.pull_request.title }}\n  with:\n    script: |\n      core.info(`Checking title: ${process.env.TITLE}`)\n"
+   }
+  ],
+  "pitfalls": [
+   "${{ env.TITLE }} is still template expansion. Write $TITLE so the shell does the expansion.",
+   "Wrapping the expression in quotes doesn't help: the attacker's text closes the quote first.",
+   "Windows runners default to PowerShell, where the variable is $env:TITLE. Use that, or set shell: bash on the step."
+  ],
+  "docs": [
+   {
+    "label": "Script injections",
+    "url": "https://docs.github.com/en/actions/concepts/security/script-injections"
+   },
+   {
+    "label": "zizmor: template-injection",
+    "url": "https://docs.zizmor.sh/audits/#template-injection"
+   }
+  ]
+ },
+ "ci-dangerous-triggers": {
+  "short": "Use pull_request instead of pull_request_target, or split off the privileged steps.",
+  "why": "pull_request_target and workflow_run run with your repository's token and secrets, so checking out and building a pull request's code there hands both to whoever opened it. ImageMagick's maintainer found exactly this in an editor extension with millions of installs, and Fastify removed every pull_request_target workflow from its main repositories. GitHub's new default event policy blocks pull_request_target in public repositories, with enforcement starting December 2, 2026.",
+  "steps": [
+   "Find workflows triggered by pull_request_target, workflow_run or issue_comment. zizmor's dangerous-triggers audit lists them; Policy insights under Settings → Actions → Policies shows runs the new default would block.",
+   "If a job only builds and tests, switch it to pull_request. ACI.dev did exactly that for its backend checks.",
+   "If it must write (comment, label, publish results), split it: a pull_request workflow runs the code read-only, and a workflow_run workflow posts the results without checking out PR code.",
+   "In the privileged half, treat everything from the PR as data: validate artifact contents and keep them out of scripts and $GITHUB_ENV. fabric.js stopped reading the PR number from an uploaded artifact.",
+   "Replace comment-triggered commands with labels that only maintainers can add, as Node.js recommends.",
+   "Fix or delete old branches too. pull_request_target uses the workflow file from the PR's target branch, so a stale branch keeps an old hole open."
+  ],
+  "snippets": [
+   {
+    "label": "Unprivileged half: .github/workflows/pr-tests.yml",
+    "lang": "yaml",
+    "code": "# Runs the PR's code with a read-only token and no secrets\nname: PR tests\non:\n  pull_request:\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - run: make test\n      # Hand the privileged workflow data, never code\n      - name: Save PR number\n        if: always()\n        env:\n          PR_NUMBER: ${{ github.event.pull_request.number }}\n        run: mkdir -p out && echo \"$PR_NUMBER\" > out/pr-number\n      - uses: {{pin:actions/upload-artifact}}\n        if: always()\n        with:\n          name: pr-number\n          path: out/\n"
+   },
+   {
+    "label": "Privileged half: .github/workflows/pr-comment.yml",
+    "lang": "yaml",
+    "code": "# Can write to the PR, but never checks out or runs PR code\nname: PR comment\non:\n  workflow_run:\n    workflows: [\"PR tests\"]\n    types: [completed]\n\npermissions: {}\n\njobs:\n  comment:\n    if: github.event.workflow_run.event == 'pull_request'\n    runs-on: ubuntu-latest\n    permissions:\n      actions: read          # download the other run's artifact\n      pull-requests: write   # post the comment\n    steps:\n      # The artifact came from the PR, so it is untrusted data\n      - uses: {{pin:actions/download-artifact}}\n        with:\n          name: pr-number\n          run-id: ${{ github.event.workflow_run.id }}\n          github-token: ${{ github.token }}\n          path: ${{ runner.temp }}/pr\n      - name: Comment with the result\n        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_REPO: ${{ github.repository }}\n          RESULT: ${{ github.event.workflow_run.conclusion }}\n        run: |\n          pr=\"$(cat \"$RUNNER_TEMP/pr/pr-number\")\"\n          [[ \"$pr\" =~ ^[0-9]+$ ]] || { echo \"Unexpected PR number\"; exit 1; }\n          gh pr comment \"$pr\" --body \"Tests finished: $RESULT\"\n"
+   }
+  ],
+  "pitfalls": [
+   "Running anything from a checked-out PR (npm install, make, tests, tools that load config files) executes the author's code, even though the workflow file itself is yours.",
+   "actions/checkout v7 refuses fork PR code under pull_request_target and workflow_run unless you set allow-unsafe-pr-checkout: true. Only set it if that code is never executed.",
+   "Adding a policy that allows pull_request_target only to keep an old workflow running puts you back where you started. Fix the workflow first."
+  ],
+  "docs": [
+   {
+    "label": "Securely using pull_request_target",
+    "url": "https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target"
+   },
+   {
+    "label": "zizmor: dangerous-triggers",
+    "url": "https://docs.zizmor.sh/audits/#dangerous-triggers"
+   }
+  ]
+ },
+ "ci-persist-credentials": {
+  "short": "Set persist-credentials: false on every actions/checkout step.",
+  "why": "By default actions/checkout stores the job's token on disk so later git commands work, which also lets every later step, test script and build tool read it. Gitoxide, whose tests work on the checked-out repository, turned it off so a test can't leak the token; actix-web, DocsGPT and ImageMagick did the same. Fastify made the change even where the immediate risk was nil, as defence in depth.",
+  "steps": [
+   "Add with: persist-credentials: false to every actions/checkout step. zizmor's artipacked audit lists any you missed.",
+   "Where a job really pushes (a changelog commit, a tag), set persist-credentials: true explicitly in that job only, with a comment saying why.",
+   "Keep that pushing job small and separate from jobs that run tests or third-party tools.",
+   "Don't upload the whole workspace or $RUNNER_TEMP as an artifact.",
+   "Optionally add a CI check that fails when a checkout step lacks the setting. Gitoxide runs a check-no-persist-credentials job."
+  ],
+  "snippets": [
+   {
+    "label": "Off by default, explicit where a job pushes",
+    "lang": "yaml",
+    "code": "jobs:\n  test:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false   # no token left on disk\n      - run: make test\n\n  update-changelog:\n    if: github.event_name == 'push'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: true    # this job pushes; say so\n      - run: ./scripts/commit-changelog.sh   # commits and runs git push\n"
+   }
+  ],
+  "pitfalls": [
+   "actions/checkout v6 and later keep the credential in a file under $RUNNER_TEMP instead of .git/config, but git still uses it automatically, so the setting still matters.",
+   "Turning it off breaks later steps that git push, push tags or fetch from private repositories. Give those jobs their own explicit setting instead of turning it back on everywhere."
+  ],
+  "docs": [
+   {
+    "label": "actions/checkout README",
+    "url": "https://github.com/actions/checkout"
+   },
+   {
+    "label": "zizmor: artipacked",
+    "url": "https://docs.zizmor.sh/audits/#artipacked"
+   }
+  ]
+ },
+ "ci-workflow-audit": {
+  "short": "Run zizmor on your workflows, fix what it finds, and keep it running in CI.",
+  "why": "Most workflow mistakes in this guide (template injection, dangerous triggers, unpinned actions, stored credentials, broad permissions) are hard to spot by eye and easy to find statically. Nineteen Fund repositories added zizmor during the program: actix-web now analyzes workflows whenever they change, and virtualenv's maintainer notes it catches the Elementary-style template injection.",
+  "steps": [
+   "Run it locally first from the repository root with uvx zizmor . (or install it with pipx or Homebrew). Set GH_TOKEN to enable online audits such as impostor-commit.",
+   "Fix high-severity findings first: template-injection, dangerous-triggers, excessive-permissions, artipacked and unpinned-uses. zizmor --fix applies the fixes it marks as safe.",
+   "Add the zizmor workflow from the template so findings appear in code scanning on every push and pull request.",
+   "Record findings you accept with a # zizmor: ignore[audit] comment plus a reason, or in .github/zizmor.yml, so new findings stand out.",
+   "Once the report is clean, try --persona=pedantic for stricter checks; virtualenv worked through its auditor-persona findings too."
+  ],
+  "snippets": [
+   {
+    "label": "Run zizmor locally",
+    "lang": "shell",
+    "code": "# From the repository root; uvx runs it without installing\nuvx zizmor .\n\n# With a token, zizmor also runs online audits (impostor-commit, known-vulnerable-actions)\nGH_TOKEN=\"$(gh auth token)\" uvx zizmor .\n\n# Apply the fixes zizmor marks as safe, then review the diff\nuvx zizmor --fix .\n"
+   },
+   {
+    "label": ".github/zizmor.yml: findings you reviewed and accepted",
+    "lang": "yaml",
+    "code": "rules:\n  dangerous-triggers:\n    ignore:\n      # workflow_run half of a split workflow: posts results, never runs PR code\n      - pr-comment.yml\n"
+   }
+  ],
+  "pitfalls": [
+   "Check that the template's push branch matches your default branch. FastAPI and DocsGPT both had to fix main versus master in their zizmor workflows.",
+   "An ignore comment inside a run: | block is part of the script and suppresses nothing. Put it on the run: line itself.",
+   "Without a token, online audits such as impostor-commit and known-vulnerable-actions are skipped."
+  ],
+  "docs": [
+   {
+    "label": "zizmor quickstart",
+    "url": "https://docs.zizmor.sh/quickstart/"
+   },
+   {
+    "label": "zizmor audit rules",
+    "url": "https://docs.zizmor.sh/audits/"
+   },
+   {
+    "label": "zizmor in GitHub Actions",
+    "url": "https://docs.zizmor.sh/integrations/"
+   }
+  ]
+ },
+ "ci-secrets-hygiene": {
+  "short": "List your CI secrets, delete unused ones, scope the rest to environments, and rotate.",
+  "why": "Any secret a workflow can reach is one compromised step away from an attacker. In March 2026 an unpinned scanner in LiteLLM's release pipeline could read its static release secrets, including the PyPI credential, and the malicious releases that followed got over 119,000 downloads in two and a half hours. kgateway removed unused secrets from its environments during the program, and shadcn/ui audited every workflow secret.",
+  "steps": [
+   "List every repository, environment and organization secret with the workflow that uses it. Delete anything nothing uses.",
+   "Replace registry and cloud tokens with trusted publishing or OIDC where you can, then delete them. ScanCode removed its PyPI token after switching.",
+   "Move the secrets you keep into an environment, such as release, so only jobs that name it, and pass its rules, can read them.",
+   "Pass each secret only to the step that uses it, and name secrets explicitly when calling a reusable workflow instead of using secrets: inherit.",
+   "Use fine-grained tokens with only the permissions they need, as Sniffnet recommends, limited to one repository and with an expiry date.",
+   "Keep admin-level tokens out of CI. Fastify runs its org-admin scripts from a maintainer's laptop with a temporary token."
+  ],
+  "snippets": [
+   {
+    "label": "Environment-scoped secret, passed to one step",
+    "lang": "yaml",
+    "code": "jobs:\n  deploy-docs:\n    runs-on: ubuntu-latest\n    environment: docs      # the secret is stored on this environment\n    permissions:\n      contents: read\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - name: Upload docs\n        env:\n          DOCS_TOKEN: ${{ secrets.DOCS_TOKEN }}   # only this step sees it\n        run: ./scripts/upload-docs.sh\n\n  release:\n    uses: ./.github/workflows/release.yml\n    secrets:\n      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}   # instead of secrets: inherit\n"
+   }
+  ],
+  "pitfalls": [
+   "Deleting a secret from GitHub doesn't revoke it. Revoke it at the registry or service too, or any leaked copy keeps working.",
+   "Log masking isn't guaranteed once a value is transformed (base64, URL-encoded). Don't print secrets or anything derived from them.",
+   "When someone with admin access leaves, rotate the secrets they could see."
+  ],
+  "docs": [
+   {
+    "label": "Secure use reference: secrets",
+    "url": "https://docs.github.com/en/actions/reference/security/secure-use"
+   },
+   {
+    "label": "Using secrets in GitHub Actions",
+    "url": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets"
+   },
+   {
+    "label": "zizmor: secrets-inherit",
+    "url": "https://docs.zizmor.sh/audits/#secrets-inherit"
+   }
+  ]
+ },
+ "ci-runner-hardening": {
+  "short": "Limit the hosts CI jobs can reach, and keep public PRs off self-hosted runners.",
+  "why": "When a compromised dependency or action runs in your job, its next move is usually to send your token or secrets to a server it controls. virtualenv's maintainer lists restricting the hosts a build can reach as baseline hardening, and Node.js, Caddy and external-secrets run StepSecurity's harden-runner in CI.",
+  "steps": [
+   "Add harden-runner as the first step of jobs that hold secrets or publish, with egress-policy: audit.",
+   "After a few runs, open the insights link in the job summary and note the endpoints each job really calls.",
+   "Switch to egress-policy: block with that list in allowed-endpoints. A blocked call then fails the job and names the endpoint for you to review.",
+   "Use GitHub-hosted runners for public repositories. GitHub says self-hosted runners should almost never be used there, since anyone who opens a pull request can run code on them.",
+   "If you must self-host, use ephemeral just-in-time runners that run one job, start clean and can't reach internal networks."
+  ],
+  "snippets": [
+   {
+    "label": "Block egress except an allowlist",
+    "lang": "yaml",
+    "code": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      # Must be the first step in the job\n      - uses: {{pin:step-security/harden-runner}}\n        with:\n          egress-policy: block   # start with audit, then switch\n          allowed-endpoints: >\n            github.com:443\n            api.github.com:443\n            registry.npmjs.org:443\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - run: npm ci && npm test\n"
+   }
+  ],
+  "pitfalls": [
+   "harden-runner's free tier covers public repositories on GitHub-hosted runners, and block mode works on Linux only. Private repositories and self-hosted runners need StepSecurity's paid tier.",
+   "An allowlist still permits the hosts on it, and an attacker with their own token can send data to github.com. Egress control narrows the way out and makes attempts visible; it doesn't close every path."
+  ],
+  "docs": [
+   {
+    "label": "Harden-Runner documentation",
+    "url": "https://docs.stepsecurity.io/github-actions/harden-runner"
+   },
+   {
+    "label": "Secure use reference: self-hosted runners",
+    "url": "https://docs.github.com/en/actions/reference/security/secure-use"
+   }
+  ]
+ },
+ "ci-fork-pr-approval": {
+  "short": "Require approval before workflows run on pull requests from new contributors.",
+  "why": "If a stranger's pull request runs automatically, their code, including any edited workflow files, executes on your runners before anyone has looked at it. On GitHub-hosted runners that mostly means abuse of your compute; on self-hosted runners it means a stranger's code running on your machine. Mockoon checked and enabled \"require approval for first-time contributors\" during the program.",
+  "steps": [
+   "In the Actions settings, check \"Approval for running fork pull request workflows from contributors\" is at least \"Require approval for first-time contributors\", GitHub's current default.",
+   "Choose \"Require approval for all external contributors\" if you use self-hosted runners or get many drive-by PRs from new accounts.",
+   "Before clicking \"Approve workflows to run\", open Files changed and check edits to .github/workflows, build scripts, test setup and dependency manifests.",
+   "Approval doesn't cover pull_request_target workflows; they run regardless of this setting. Move those to pull_request first."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "The first-time policies stop asking once someone has any commit merged, so a typo fix earns an attacker automatic runs. GitHub's docs warn about exactly this.",
+   "Approving runs the PR's own versions of workflow files and scripts. Treat the click as a decision to run that code."
+  ],
+  "docs": [
+   {
+    "label": "Managing GitHub Actions settings: fork pull requests",
+    "url": "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository"
+   },
+   {
+    "label": "Approving workflow runs from forks",
+    "url": "https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks"
+   }
+  ]
+ },
+ "sast-codeql-actions": {
+  "short": "Add GitHub Actions to your CodeQL languages so workflow bugs raise alerts.",
+  "why": "CodeQL has queries for the workflow bugs behind real attacks: code injection, checkout of untrusted code in a privileged context, artifact and cache poisoning, and missing permissions. Termux added it for its packages repository, Gitoxide runs it next to zizmor with more than the default queries, and ACI.dev fixed CodeQL code-injection alerts in its workflows.",
+  "steps": [
+   "With default setup: in Settings → Advanced Security (Code security on some accounts), open the CodeQL analysis configuration, edit it, and make sure GitHub Actions is ticked under Languages.",
+   "With advanced setup: add actions to the languages in your CodeQL workflow, as curl does.",
+   "Use the security-extended query suite for broader coverage; Gitoxide enables more than the default queries.",
+   "Work through alerts in the Security tab. Copilot Autofix can draft fixes (ACI.dev merged two), but review them like any other PR.",
+   "Run zizmor as well. Gitoxide scans its workflows with both rather than relying on CodeQL alone."
+  ],
+  "snippets": [
+   {
+    "label": "Advanced setup with the actions language",
+    "lang": "yaml",
+    "code": "name: CodeQL\non:\n  push:\n    branches: [{branch}]\n  pull_request:\n  schedule:\n    - cron: \"27 4 * * 1\"\n\npermissions: {}\n\njobs:\n  analyze:\n    runs-on: ubuntu-latest\n    permissions:\n      security-events: write\n      contents: read\n      actions: read\n    strategy:\n      fail-fast: false\n      matrix:\n        language: [actions]   # add to your existing languages\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:github/codeql-action/init}}\n        with:\n          languages: ${{ matrix.language }}\n          queries: security-extended\n      - uses: {{pin:github/codeql-action/analyze}}\n        with:\n          category: \"/language:${{ matrix.language }}\"\n"
+   }
+  ],
+  "pitfalls": [
+   "Default setup and an advanced CodeQL workflow don't mix. Turning on default setup disables your workflow file and blocks its uploads.",
+   "CodeQL only scans the branches it runs on. A vulnerable workflow left on an old branch can still be triggered, so fix or delete stale branches."
+  ],
+  "docs": [
+   {
+    "label": "Configuring default setup for code scanning",
+    "url": "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning"
+   },
+   {
+    "label": "CodeQL query help for GitHub Actions",
+    "url": "https://codeql.github.com/codeql-query-help/actions/"
+   }
+  ]
+ },
+ "repo-tag-release-protection": {
+  "short": "Turn on immutable releases and protect version tags with a tag ruleset.",
+  "why": "Without these, anyone who takes over a maintainer account or a write token can move a release tag to new code or swap a binary in an old release, and users pinned to that version get the attacker's build. Yii and Hummingbird turned on immutable releases during the program, and Sniffnet recommends tag rulesets so published releases can't be silently rewritten.",
+  "steps": [
+   "In Settings → General → Releases, tick \"Enable release immutability\". It applies only to releases published from then on.",
+   "Change your release process to: create a draft, attach every asset (binaries, checksums, SBOM, signatures), then publish.",
+   "In Settings → Rules → Rulesets, choose New tag ruleset, target v* (or all tags), and add Restrict creations, Restrict updates, Restrict deletions and Block force pushes.",
+   "Set the ruleset's enforcement status to Active; a new ruleset starts out disabled.",
+   "Put only release maintainers, or the GitHub App your release workflow uses, on the bypass list.",
+   "Point users to gh release verify and gh release verify-asset to check a release and its files against the release attestation."
+  ],
+  "snippets": [
+   {
+    "label": "Draft, attach, then publish (the release locks on publish)",
+    "lang": "shell",
+    "code": "gh release create v1.2.3 --draft --verify-tag --title \"v1.2.3\" --notes-file CHANGES.md\ngh release upload v1.2.3 dist/* sbom.spdx.json\ngh release edit v1.2.3 --draft=false\n\n# Anyone can then check the release and a downloaded file\ngh release verify v1.2.3\ngh release verify-asset v1.2.3 ./mytool-1.2.3.tar.gz\n"
+   }
+  ],
+  "pitfalls": [
+   "Once an immutable release is published you can't add, replace or delete its assets, so a workflow that uploads after publishing (for example on release: published) will fail.",
+   "Deleting an immutable release doesn't free its tag name; you can't reuse it.",
+   "Restrict creations applies to workflows too. If CI pushes your tags, give that actor bypass (a GitHub App works) or create tags by hand."
+  ],
+  "docs": [
+   {
+    "label": "Immutable releases",
+    "url": "https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases"
+   },
+   {
+    "label": "Creating rulesets for a repository",
+    "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository"
+   },
+   {
+    "label": "Verifying the integrity of a release",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verify-release-integrity"
+   }
+  ]
+ },
+ "ci-oidc": {
+  "short": "Swap long-lived cloud and service tokens for short-lived OIDC credentials.",
+  "why": "A token stored as a secret works for anyone who gets a copy until you revoke it. With OIDC the job proves which repository, branch and environment it runs in, and gets a credential that expires with the job. 130 of the 193 Fund repositories already request id-token: write in at least one workflow, and mimetype moved its Codecov uploads to OIDC.",
+  "steps": [
+   "List secrets that hold keys for clouds, registries or services, and check which providers accept GitHub's OIDC tokens: package registries, AWS, Azure, Google Cloud, Vault, Codecov and others.",
+   "On the provider, trust only your repository and pin the subject to a branch, tag or environment, such as repo:{owner}/{repo}:environment:release.",
+   "Give id-token: write only to the job that exchanges the token, ideally one bound to a protected environment.",
+   "Switch the step to the provider's OIDC login, such as aws-actions/configure-aws-credentials with role-to-assume, or codecov-action with use_oidc: true.",
+   "Delete the old secret from GitHub and revoke the key at the provider."
+  ],
+  "snippets": [
+   {
+    "label": "Deploy with a short-lived AWS credential",
+    "lang": "yaml",
+    "code": "jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    environment: production   # the role trusts only this environment\n    permissions:\n      contents: read\n      id-token: write         # lets this job request an OIDC token\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:aws-actions/configure-aws-credentials}}\n        with:\n          role-to-assume: arn:aws:iam::123456789012:role/{repo}-deploy\n          aws-region: us-east-1\n      - run: aws s3 sync site/ s3://example-bucket/\n"
+   }
+  ],
+  "pitfalls": [
+   "A trust policy that accepts repo:{owner}/{repo}:* lets any branch or pull request workflow in the repository assume the role. Match a specific environment or ref.",
+   "Repositories created after July 15, 2026, or opted in, get a subject with numeric IDs (repo:octo-org@123456/octo-repo@456789:...). Write the trust policy for the format your repository uses.",
+   "Pull requests from forks can't get OIDC tokens, so jobs that need one should run on push, tag or environment-gated events."
+  ],
+  "docs": [
+   {
+    "label": "OpenID Connect",
+    "url": "https://docs.github.com/en/actions/concepts/security/openid-connect"
+   },
+   {
+    "label": "OpenID Connect reference (claims and subject formats)",
+    "url": "https://docs.github.com/en/actions/reference/security/oidc"
+   }
+  ]
+ },
+ "ci-untrusted-artifacts-caches": {
+  "short": "Don't restore caches in release jobs, and treat downloaded artifacts as untrusted.",
+  "why": "GitHub doesn't sign or verify cache contents, and an artifact from a pull request run holds whatever the PR author wanted, so restoring either in a release job lets lower-trust code into the job that holds your publishing credentials. virtualenv's maintainer lists \"don't restore shared caches in the release job\" as baseline hardening, Node.js says never to trust artifacts blindly, and fabric.js stopped its privileged workflow_run job from reading the PR number out of an uploaded artifact.",
+  "steps": [
+   "Set cache-mode: none on release and publish jobs, or on the whole release workflow, so they neither restore nor save Actions caches.",
+   "Turn off caching built into setup actions there too, for example package-manager-cache: false on setup-node or enable-cache: false on setup-uv.",
+   "Build release artifacts inside the release workflow from the tagged commit. Don't promote artifacts produced by pull request runs.",
+   "In workflow_run jobs, download artifacts into $RUNNER_TEMP, never execute them, and validate every value before use, such as checking a PR number is only digits.",
+   "Keep cache writes in trusted push or schedule workflows. pull_request_target and workflow_run now get read-only cache access by default; don't override that with cache-mode: write."
+  ],
+  "snippets": [
+   {
+    "label": "Release job that uses no cache",
+    "lang": "yaml",
+    "code": "jobs:\n  release:\n    runs-on: ubuntu-latest\n    cache-mode: none   # don't restore or save any Actions cache\n    environment: release\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:actions/setup-node}}\n        with:\n          node-version: \"24\"\n          registry-url: \"https://registry.npmjs.org\"\n          package-manager-cache: false   # setup-node caches by default\n      - run: npm ci && npm run build --if-present\n      - run: npm publish\n"
+   },
+   {
+    "label": "Reading a value from an artifact in a workflow_run job",
+    "lang": "yaml",
+    "code": "- name: Read PR number (untrusted)\n  id: pr\n  run: |\n    pr=\"$(cat \"$RUNNER_TEMP/pr/pr-number\")\"\n    [[ \"$pr\" =~ ^[0-9]+$ ]] || { echo \"Unexpected value\"; exit 1; }\n    echo \"number=$pr\" >> \"$GITHUB_OUTPUT\"\n"
+   }
+  ],
+  "pitfalls": [
+   "Third-party caching actions only honor cache-mode if they use GitHub's cache toolkit. Turn off their own cache input in release jobs as well.",
+   "Cache-free release builds are slower. That's the expected trade-off; npm's own trusted publishing example says never to use caching in release builds.",
+   "Linters can lag behind: actionlint 1.7.12 reports cache-mode as an unknown key, though GitHub accepts it."
+  ],
+  "docs": [
+   {
+    "label": "Dependency caching reference (cache-mode)",
+    "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching"
+   },
+   {
+    "label": "zizmor: cache-poisoning",
+    "url": "https://docs.zizmor.sh/audits/#cache-poisoning"
+   },
+   {
+    "label": "Securely using pull_request_target (artifacts)",
+    "url": "https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target"
+   }
+  ]
+ },
+ "rel-sbom": {
+  "short": "Generate an SBOM for each release and attach it to the release.",
+  "why": "When an advisory lands, an SBOM answers \"are we affected?\" for you and your users, including code you bundle or vendor that a dependency listing misses. virtualenv embeds one in its wheel (PEP 770) because it bundles pip and setuptools, which vendor their own dependencies. Fifteen Fund teams reported SBOM work, Mockoon shipped its first with 9.4.0, and DocsGPT found exporting one from GitHub was \"a button, not a project\".",
+  "steps": [
+   "Start with the free export: Insights → Dependency graph → Export SBOM gives an SPDX file of your declared dependencies.",
+   "For what you actually ship, generate an SBOM in the release workflow from the build output or container image, for example with Syft (GoReleaser's suggestion) through anchore/sbom-action.",
+   "Attach it to the draft release before publishing; with immutable releases on, assets can't be added later. TokenOps attaches a CycloneDX SBOM to every release.",
+   "Make vendored code visible. aiohttp submits its vendored llhttp to the dependency graph on every push, so it appears in the SBOM and gets Dependabot alerts.",
+   "Optionally sign it: actions/attest with sbom-path ties the SBOM to the artifact it describes."
+  ],
+  "snippets": [
+   {
+    "label": "Generate an SBOM and attach it to the draft release",
+    "lang": "yaml",
+    "code": "jobs:\n  sbom:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write   # attach the file to the draft release\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - run: make dist   # build what you ship first\n      - uses: {{pin:anchore/sbom-action}}\n        with:\n          format: spdx-json\n          output-file: sbom.spdx.json\n          upload-release-assets: false   # attached below instead\n      - name: Attach to the draft release\n        env:\n          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ github.ref_name }}\n        run: gh release upload \"$TAG\" sbom.spdx.json --repo \"$GITHUB_REPOSITORY\"\n"
+   }
+  ],
+  "pitfalls": [
+   "GitHub's exported SBOM reflects your manifests and lock files, not what's compiled into a binary or vendored into your package.",
+   "Keep build-machine details out. virtualenv's rebuilds didn't match until it removed them from the SBOM in its wheel.",
+   "Regenerate it for every release; an SBOM for an older version answers the wrong question."
+  ],
+  "docs": [
+   {
+    "label": "Exporting a software bill of materials for your repository",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/export-dependencies-as-sbom"
+   },
+   {
+    "label": "anchore/sbom-action",
+    "url": "https://github.com/anchore/sbom-action"
+   }
+  ]
+ },
+ "rel-provenance": {
+  "short": "Publish signed build provenance for every release artifact.",
+  "why": "Provenance records which repository, commit and workflow built a file, so users and investigators can tell your builds from impostors. In the Ultralytics attack, the later malicious uploads had no attestations, which told investigators they came through an old API token rather than the project's CI. Cobra, Viper and Polly now attest their build artifacts with GitHub Attestations.",
+  "steps": [
+   "Check what trusted publishing already gives you: PyPI's publish action uploads attestations by default, and npm adds provenance for public packages published from public repositories.",
+   "For release files and container images, add actions/attest after the build step, with id-token: write and attestations: write on that job only.",
+   "Attest the exact files you ship, then upload those same files. Rebuilding or re-zipping afterwards changes the digest.",
+   "Tell users how to check: gh attestation verify <file> -R {owner}/{repo}. Put it in the README or release notes.",
+   "For SLSA Build Level 3, run the build in a reusable workflow; attestations on their own give Build Level 2."
+  ],
+  "snippets": [
+   {
+    "label": "Attest release files",
+    "lang": "yaml",
+    "code": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write       # get a short-lived Sigstore signing certificate\n      attestations: write   # store the attestation on GitHub\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - run: make dist      # your build; writes files to dist/\n      - uses: {{pin:actions/attest}}\n        with:\n          subject-path: \"dist/*\"\n      - uses: {{pin:actions/upload-artifact}}\n        with:\n          name: dist\n          path: dist/\n"
+   },
+   {
+    "label": "How users verify a download",
+    "lang": "shell",
+    "code": "gh attestation verify ./mytool-1.2.3.tar.gz -R {owner}/{repo}\n"
+   }
+  ],
+  "pitfalls": [
+   "Attestations nobody verifies add little; GitHub's docs say the benefit comes from verification.",
+   "On GitHub Free, Pro and Team plans, artifact attestations work in public repositories only.",
+   "Provenance shows where a file was built, not that the code was safe. A compromised workflow produces valid provenance for a bad build."
+  ],
+  "docs": [
+   {
+    "label": "Using artifact attestations to establish provenance for builds",
+    "url": "https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations"
+   },
+   {
+    "label": "npm: Generating provenance statements",
+    "url": "https://docs.npmjs.com/generating-provenance-statements/"
+   },
+   {
+    "label": "PyPI: Producing attestations",
+    "url": "https://docs.pypi.org/attestations/producing-attestations/"
+   }
+  ]
+ },
+ "rel-signing": {
+  "short": "Sign release artifacts with Sigstore and tell users how to verify them.",
+  "why": "A signature lets users and tools detect a swapped or tampered download, and keyless Sigstore signing ties it to your release workflow's identity, so there's no long-lived signing key to steal. aiohttp signs its releases with Sigstore, GoReleaser has signed releases for a long time, and Byte Buddy began signing its Maven deployments with Sigstore.",
+  "steps": [
+   "Use what your registry already does: PyPI attestations and npm provenance are Sigstore-signed automatically with trusted publishing. Sign the rest (release files, binaries, images) yourself.",
+   "In the release job, install cosign and run cosign sign-blob --yes --bundle for each file. The job needs id-token: write.",
+   "Attach each .sigstore.json bundle to the draft release next to the file it signs, then publish.",
+   "Document the verify command, including your workflow's identity, in the README or SECURITY.md.",
+   "Sign your release tags too (git tag -s with a GPG or SSH key) so GitHub shows them as Verified.",
+   "Pin the cosign version and test upgrades. GoReleaser locked cosign to v2 until it had fixed its setup for v3, and Flux pinned it too."
+  ],
+  "snippets": [
+   {
+    "label": "Keyless signing in the release job",
+    "lang": "yaml",
+    "code": "jobs:\n  sign:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write   # attach bundles to the draft release\n      id-token: write   # keyless signing with Sigstore\n    steps:\n      - uses: {{pin:actions/download-artifact}}\n        with:\n          name: dist\n          path: dist/\n      - uses: {{pin:sigstore/cosign-installer}}\n      - run: |\n          for f in dist/*; do\n            cosign sign-blob --yes --bundle \"$f.sigstore.json\" \"$f\"\n          done\n      - env:\n          GH_TOKEN: ${{ github.token }}\n          TAG: ${{ github.ref_name }}\n        run: gh release upload \"$TAG\" dist/* --repo \"$GITHUB_REPOSITORY\"\n"
+   },
+   {
+    "label": "How users verify a file",
+    "lang": "shell",
+    "code": "cosign verify-blob mytool-1.2.3.tar.gz \\\n  --bundle mytool-1.2.3.tar.gz.sigstore.json \\\n  --certificate-identity \"https://github.com/{owner}/{repo}/.github/workflows/release.yml@refs/tags/v1.2.3\" \\\n  --certificate-oidc-issuer https://token.actions.githubusercontent.com\n"
+   }
+  ],
+  "pitfalls": [
+   "A GPG key stored as a CI secret becomes the thing to steal. Prefer keyless signing in CI and keep personal keys on your own machine.",
+   "With immutable releases on, signatures must be attached before you publish; you can't add them afterwards.",
+   "Verifying against a loose identity (any repository, any workflow) proves little. Check the exact repository and workflow path, as in the command above."
+  ],
+  "docs": [
+   {
+    "label": "Sigstore: Signing blobs",
+    "url": "https://docs.sigstore.dev/cosign/signing/signing_with_blobs/"
+   },
+   {
+    "label": "Sigstore: Verifying signatures",
+    "url": "https://docs.sigstore.dev/cosign/verifying/verify/"
+   },
+   {
+    "label": "Signing tags",
+    "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-tags"
+   }
+  ]
+ },
+ "rel-trusted-publishing": {
+  "short": "Publish from CI with trusted publishing (OIDC), then delete your registry tokens.",
+  "why": "A registry token in CI or on a laptop can publish as you until someone revokes it: stolen publishing tokens spread the Shai-Hulud worm, and the later malicious Ultralytics uploads came through an old API token. Trusted publishing replaces it with a token minted per run that expires in minutes (within 15 on PyPI, 30 on crates.io). aiohttp, Mockoon and GoReleaser publish this way, and more than 20 other Fund teams switched during their program window.",
+  "steps": [
+   "Register a trusted publisher (owner, repo, workflow filename, environment) on the registry: PyPI project → Publishing, npm package Settings, crates.io crate Settings → Trusted Publishing, RubyGems gem page → Trusted publishers.",
+   "Build in one job without special permissions; publish in a separate job that has id-token: write and the matching environment: name.",
+   "Publish once to confirm it works, then delete the token secret from GitHub and revoke it on the registry. ScanCode and Foundry removed theirs.",
+   "On npm, set Publishing access to \"Require two-factor authentication and disallow tokens\" and revoke old automation tokens.",
+   "Protect what triggers the release: a tag ruleset for v* and, with more than one maintainer, required reviewers on the environment.",
+   "crates.io only: the first publish of a new crate still needs a normal API token. Switch after that."
+  ],
+  "snippets": [
+   {
+    "label": "PyPI",
+    "lang": "yaml",
+    "code": "on:\n  push:\n    tags: [\"v*\"]\npermissions: {}\njobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:actions/setup-python}}\n        with:\n          python-version: \"3.x\"\n      - run: python -m pip install build && python -m build\n      - uses: {{pin:actions/upload-artifact}}\n        with:\n          name: dist\n          path: dist/\n  publish:\n    needs: build\n    runs-on: ubuntu-latest\n    environment: pypi   # same name you entered on PyPI\n    permissions:\n      id-token: write   # trusted publishing and attestations\n    steps:\n      - uses: {{pin:actions/download-artifact}}\n        with:\n          name: dist\n          path: dist/\n      - uses: {{pin:pypa/gh-action-pypi-publish}}\n"
+   },
+   {
+    "label": "npm (needs npm 11.5.1+; Node 24 bundles it)",
+    "lang": "yaml",
+    "code": "on:\n  push:\n    tags: [\"v*\"]\npermissions: {}\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment: npm\n    permissions:\n      contents: read\n      id-token: write   # npm exchanges this for a short-lived token\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:actions/setup-node}}\n        with:\n          node-version: \"24\"\n          registry-url: \"https://registry.npmjs.org\"\n          package-manager-cache: false\n      - run: npm ci && npm test\n      - run: npm publish   # provenance is added automatically\n"
+   },
+   {
+    "label": "crates.io",
+    "lang": "yaml",
+    "code": "on:\n  push:\n    tags: [\"v*\"]\npermissions: {}\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    environment: release\n    permissions:\n      contents: read\n      id-token: write\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:rust-lang/crates-io-auth-action}}\n        id: auth\n      - run: cargo publish\n        env:\n          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}   # expires in 30 minutes\n"
+   },
+   {
+    "label": "RubyGems",
+    "lang": "yaml",
+    "code": "on:\n  push:\n    tags: [\"v*\"]\npermissions: {}\njobs:\n  push:\n    runs-on: ubuntu-latest\n    environment: release\n    permissions:\n      contents: write   # release-gem's rake release pushes the tag\n      id-token: write\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:ruby/setup-ruby}}\n        with:\n          ruby-version: ruby\n      - run: bundle install\n      - uses: {{pin:rubygems/release-gem}}\n"
+   }
+  ],
+  "pitfalls": [
+   "npm trusted publishing needs npm 11.5.1 or later, and Node 22 still ships npm 10. Svelte moved its release job to Node 24; Mermaid upgraded npm.",
+   "npm trusted publishers created after September 3, 2026 allow only npm stage publish unless you also tick npm publish, so a plain npm publish fails until you do.",
+   "A leftover token keeps the risk and can win: pypa's publish action skips trusted publishing when a password is set, and Babel had to stop passing its npm token. Remove them."
+  ],
+  "docs": [
+   {
+    "label": "PyPI: Trusted publishers",
+    "url": "https://docs.pypi.org/trusted-publishers/"
+   },
+   {
+    "label": "Trusted publishing for npm packages",
+    "url": "https://docs.npmjs.com/trusted-publishers/"
+   },
+   {
+    "label": "crates.io: Trusted Publishing",
+    "url": "https://crates.io/docs/trusted-publishing"
+   }
+  ]
+ },
+ "rel-gated-release": {
+  "short": "Put the publish job behind an environment that needs a human approval.",
+  "why": "If any account with push access, or any compromised workflow, can start a release on its own, one stolen session or token is enough to ship malware under your name. OpenClaw now puts two people on every release, each one scripted, gated and signed off, and Fastify keeps a human on the publish button for its 50+ packages.",
+  "steps": [
+   "Create an environment such as release and add required reviewers. With two or more maintainers, tick Prevent self-review so whoever started the run can't approve it.",
+   "Under deployment branches and tags, allow only your release tags (v*) or your default branch.",
+   "Untick \"Allow administrators to bypass configured protection rules\".",
+   "Name the environment in the publish job and enter the same name in your trusted publisher, so the registry rejects publishes from elsewhere. Foundry added a release environment for npm.",
+   "Working alone? Make yourself the reviewer anyway; the pause makes you look before shipping. On npm, staged publishing adds a 2FA approval on npmjs.com before a version goes live."
+  ],
+  "snippets": [
+   {
+    "label": "Publish job that waits for approval",
+    "lang": "yaml",
+    "code": "jobs:\n  publish:\n    needs: build\n    if: startsWith(github.ref, 'refs/tags/v')\n    runs-on: ubuntu-latest\n    environment: release   # waits here for a required reviewer\n    permissions:\n      id-token: write\n    steps:\n      - uses: {{pin:actions/download-artifact}}\n        with:\n          name: dist\n          path: dist/\n      - uses: {{pin:pypa/gh-action-pypi-publish}}\n"
+   },
+   {
+    "label": "npm staged publishing (npm 11.15.0+)",
+    "lang": "shell",
+    "code": "# In CI, stage instead of publishing:\nnpm stage publish\n\n# Then a maintainer reviews and approves with 2FA:\nnpm stage list\nnpm stage download <stage-id>   # inspect the tarball\nnpm stage approve <stage-id>\n"
+   }
+  ],
+  "pitfalls": [
+   "On GitHub Free, Pro and Team plans, required reviewers only work in public repositories.",
+   "Prevent self-review blocks a solo maintainer from approving their own run. Leave it off if you're the only reviewer.",
+   "An environment gates the job, not the registry. A token stored elsewhere (a laptop .npmrc, an old CI secret) still publishes without approval, so delete those."
+  ],
+  "docs": [
+   {
+    "label": "Managing environments for deployment",
+    "url": "https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments"
+   },
+   {
+    "label": "Staged publishing for npm packages",
+    "url": "https://docs.npmjs.com/staged-publishing"
+   },
+   {
+    "label": "PyPI: Trusted publisher security model",
+    "url": "https://docs.pypi.org/trusted-publishers/security-model/"
+   }
+  ]
+ },
+ "rel-security-support": {
+  "short": "State in SECURITY.md which versions get security fixes, and for how long.",
+  "why": "Users on older versions need to know whether a fix is coming, and you need a limit on how many branches you patch. actix-web and oapi-codegen now list supported versions in their security policies, fabric.js backported its program fixes to 6.x, and Mautic started paid extended support for Mautic 4, which about a quarter of installs still run.",
+  "steps": [
+   "Pick a policy you can keep. For most solo projects, \"latest release only\" is honest and fine; add older lines only if you can really patch them.",
+   "Add a supported-versions table to SECURITY.md that says when each line stops getting security fixes.",
+   "When you fix a vulnerability, release it for every supported line at once and list each patched version in the advisory.",
+   "Release small and often so a fix can ship quickly. Mockoon moved to monthly or bi-monthly releases partly so security updates reach users sooner.",
+   "Announce end-of-life dates ahead of time in release notes, and update the table when a new major comes out."
+  ],
+  "snippets": [
+   {
+    "label": "SECURITY.md: supported versions",
+    "lang": "markdown",
+    "code": "## Supported versions\n\n| Version | Security fixes     |\n| ------- | ------------------ |\n| 3.x     | Yes                |\n| 2.x     | Until 2027-06-30   |\n| < 2.0   | No, please upgrade |\n\nWe fix vulnerabilities in the latest release of each supported line.\nUnsupported versions get no fixes, even for critical issues.\n"
+   }
+  ],
+  "pitfalls": [
+   "Listing versions you never actually patch misleads users more than saying \"latest only\".",
+   "If the advisory lists only the newest patched version, scanners keep flagging users who are already on a patched older line. Give a range for each line."
+  ],
+  "docs": [
+   {
+    "label": "Adding a security policy to your repository",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/add-security-policy"
+   },
+   {
+    "label": "OpenSSF Baseline (OSPS-DO-04 and DO-05: support scope and end of updates)",
+    "url": "https://baseline.openssf.org/versions/2026-08-28"
+   }
+  ]
+ },
+ "rel-reproducible": {
+  "short": "Make builds reproducible so anyone can rebuild a release and get identical bytes.",
+  "why": "If a release can be rebuilt bit for bit from the tagged source, a tampered artifact or a compromised build machine shows up as a mismatch anyone can check. Expect real work: virtualenv found its rebuilds didn't match because the SBOM in its wheel recorded build-machine details, and had to remove them.",
+  "steps": [
+   "Build the same tag twice, on different machines or days, and compare checksums. Use diffoscope to see what differs.",
+   "Fix timestamps: export SOURCE_DATE_EPOCH from the last commit time, which many build tools honor. Maven uses project.build.outputTimestamp; GoReleaser uses mod_timestamp with -trimpath.",
+   "Remove build paths, hostnames, usernames and random IDs from outputs, including generated metadata such as SBOMs.",
+   "Pin the toolchain and build dependencies by version and hash. virtualenv pinned its build backend and SBOM tools.",
+   "Add a CI job that rebuilds the latest release and fails on a mismatch, and publish checksums with every release."
+  ],
+  "snippets": [
+   {
+    "label": "Rebuild a release and compare",
+    "lang": "shell",
+    "code": "git checkout v1.2.3\nexport SOURCE_DATE_EPOCH=\"$(git log -1 --pretty=%ct)\"\npython -m build   # or go build -trimpath, mvn package, ...\nsha256sum dist/*\n\n# Compare with the published file and show what differs\ndiffoscope published/mytool-1.2.3.tar.gz dist/mytool-1.2.3.tar.gz\n"
+   }
+  ],
+  "pitfalls": [
+   "Embedding the build time, absolute paths or the build host in version strings, archives or SBOMs breaks reproducibility.",
+   "Unpinned build tools change the output when a new compiler or build backend comes out, even if your code didn't change."
+  ],
+  "docs": [
+   {
+    "label": "SOURCE_DATE_EPOCH specification",
+    "url": "https://reproducible-builds.org/docs/source-date-epoch/"
+   },
+   {
+    "label": "Reproducible builds: definitions",
+    "url": "https://reproducible-builds.org/docs/definition/"
+   },
+   {
+    "label": "diffoscope",
+    "url": "https://diffoscope.org/"
+   }
+  ]
+ }
+}

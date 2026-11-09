@@ -1,0 +1,14 @@
+name: after-ci
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+jobs:
+  report:
+    runs-on:
+      - self-hosted
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+      - run: echo "${{ github.event.workflow_run.head_branch }}"

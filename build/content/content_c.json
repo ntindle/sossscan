@@ -1,0 +1,1037 @@
+{
+  "sast-codeql": {
+    "short": "Turn on CodeQL code scanning so changes are checked before they merge.",
+    "why": "CodeQL follows untrusted input to dangerous calls such as SQL queries, shell commands, deserializers and HTML output, and it's free for public repositories. shadcn/ui's first scan caught an unsafe dangerouslySetInnerHTML path, and CocoIndex says CodeQL already catches issues that manual review missed.",
+    "steps": [
+      "Go to Settings → Advanced Security (Code security on some accounts). In the CodeQL analysis row, choose Set up → Default. There's no workflow file to maintain.",
+      "Before enabling, click Edit: pick the Extended query suite and keep GitHub Actions in the language list. Gitoxide and Keycloak both turned on more than the default queries.",
+      "Check that every language you ship is listed. SciPy scans both its Python and its C code.",
+      "Default setup skips pull requests from forks, so it only sees that code after merge. If most contributions come from forks, use advanced setup (below) instead.",
+      "Make findings block merges: Settings → Rulesets → New branch ruleset → Require code scanning results, with CodeQL set to High or higher."
+    ],
+    "snippets": [
+      {
+        "label": "Advanced setup, which also scans fork PRs: .github/workflows/codeql.yml",
+        "lang": "yaml",
+        "code": "name: CodeQL\non:\n  push:\n    branches: [{branch}]\n  pull_request:\n    branches: [{branch}]\n  schedule:\n    - cron: '30 4 * * 1'\n\npermissions:\n  contents: read\n\njobs:\n  analyze:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      security-events: write\n    strategy:\n      fail-fast: false\n      matrix:\n        # Your languages: actions, c-cpp, csharp, go, java-kotlin,\n        # javascript-typescript, python, ruby, rust, swift.\n        # Compiled languages may also need a build-mode (see the docs).\n        language: [actions, python]\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:github/codeql-action/init}}\n        with:\n          languages: ${{ matrix.language }}\n          queries: security-extended\n      - uses: {{pin:github/codeql-action/analyze}}\n        with:\n          category: /language:${{ matrix.language }}\n"
+      }
+    ],
+    "pitfalls": [
+      "While default setup is on, uploads from a CodeQL workflow are blocked. To switch, open the … menu in the CodeQL analysis row, choose Switch to advanced, then Disable CodeQL.",
+      "Turning it on and never opening the alerts. Someone has to own the Code scanning list (see the backlog item)."
+    ],
+    "docs": [
+      {
+        "label": "Configuring default setup for code scanning",
+        "url": "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning"
+      },
+      {
+        "label": "Default vs. advanced setup (what each one scans)",
+        "url": "https://docs.github.com/en/code-security/concepts/code-scanning/setup-types"
+      },
+      {
+        "label": "Set code scanning merge protection",
+        "url": "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/set-merge-protection"
+      }
+    ]
+  },
+  "sast-custom-queries": {
+    "short": "Write CodeQL queries for the bug patterns and risky calls specific to your project.",
+    "why": "The built-in queries know common frameworks, not your own helpers and danger spots. DocsGPT's custom queries inventory every untrusted-input point and dangerous sink, so new attack surface has to be allow-listed on purpose, and Log4j is building a CodeQL pack that flags unsafe logging patterns in downstream code.",
+    "steps": [
+      "Budget a few days to learn QL. Start from a real bug: after a fix, write a query that finds the same pattern elsewhere (variant analysis).",
+      "Or write inventory queries that flag every risky call (eval, shell, deserializers, raw SQL), so each new one gets a review, as DocsGPT does.",
+      "Prototype in VS Code with the CodeQL extension, then keep the query in an in-repo pack (codeql pack init creates the qlpack.yml).",
+      "Run it through a config file in advanced setup (config-file on the init step). Org-owned repos can also attach one to default setup with the github-codeql-config-file property.",
+      "Add sample code that should and shouldn't match, and run codeql test run in CI so the query keeps working.",
+      "If CodeQL misses flows through your own wrapper library, a model pack that describes its sources and sinks may be simpler than a new query."
+    ],
+    "snippets": [
+      {
+        "label": "Inventory query (Python): .github/codeql/custom-queries/pickle-load.ql",
+        "lang": "ql",
+        "code": "/**\n * @name Unpickling call\n * @description pickle can run code from its input. Each call needs a check that the data is trusted.\n * @kind problem\n * @problem.severity warning\n * @security-severity 7.0\n * @id py/project-pickle-load\n * @tags security\n */\n\nimport python\nimport semmle.python.ApiGraphs\n\nfrom API::CallNode call\nwhere call = API::moduleImport(\"pickle\").getMember([\"load\", \"loads\"]).getACall()\nselect call, \"pickle runs code from its input. Confirm this data can't come from users.\"\n"
+      },
+      {
+        "label": "Pack manifest: .github/codeql/custom-queries/qlpack.yml",
+        "lang": "yaml",
+        "code": "name: {owner}/custom-queries   # scope/name, lowercase only\nversion: 0.0.1\ndependencies:\n  codeql/python-all: \"*\"\n"
+      },
+      {
+        "label": "Config: .github/codeql/codeql-config.yml (pass it as config-file to the init step)",
+        "lang": "yaml",
+        "code": "name: \"{repo} CodeQL config\"\nqueries:\n  - uses: security-extended\n  - uses: ./.github/codeql/custom-queries\n"
+      }
+    ],
+    "pitfalls": [
+      "Modeling a sanitizer as safe hides bugs inside it. virtualenv's queries treated its quoting call as a barrier and missed wrong quoting rules, so test sanitizers directly.",
+      "Noisy queries get ignored. Start at warning severity and tune them before they block merges.",
+      "Default setup doesn't run query files from your repo; they only run where a config file references them."
+    ],
+    "docs": [
+      {
+        "label": "Writing CodeQL queries",
+        "url": "https://codeql.github.com/docs/writing-codeql-queries/"
+      },
+      {
+        "label": "Custom queries and config files in code scanning",
+        "url": "https://docs.github.com/en/code-security/reference/code-scanning/workflow-configuration-options"
+      },
+      {
+        "label": "Creating and working with CodeQL packs",
+        "url": "https://docs.github.com/en/code-security/tutorials/customize-code-scanning/create-and-work-with-codeql-packs"
+      }
+    ]
+  },
+  "sast-autofix": {
+    "short": "Use Copilot Autofix to draft fixes for CodeQL alerts, and review each one.",
+    "why": "An alert nobody fixes protects no one. With CodeQL on, Copilot Autofix suggests a code change and an explanation for many alerts, at no cost on public repositories. Cucumber automated fix generation for CodeQL and secret scanning findings across more than 130 repositories.",
+    "steps": [
+      "There's nothing to install: with CodeQL enabled, Autofix suggestions appear as comments on pull requests that introduce supported alerts.",
+      "For existing alerts, open the Security and quality tab → Code scanning, pick an alert, click Generate fix, then Create PR with fix.",
+      "Or select up to 25 alerts and click Assign to Copilot for a draft PR (agentic autofix). An admin turns it on, and it uses Actions minutes and AI credits.",
+      "Review every fix like a contributor's PR: does it close the hole without changing behavior? Run the tests and add a regression test.",
+      "If a suggestion looks wrong, don't merge it. Fix it by hand, or dismiss the alert with a reason and a comment."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Autofix is best effort and can't fix every alert. Agentic autofix can't validate fixes for custom queries, the Extended suite or other tools' alerts.",
+      "Merging fixes you don't understand. A change that silences the query but leaves the bug is worse than an open alert."
+    ],
+    "docs": [
+      {
+        "label": "About autofix for code scanning",
+        "url": "https://docs.github.com/en/code-security/concepts/code-scanning/autofix-for-code-scanning"
+      },
+      {
+        "label": "Resolving code scanning alerts",
+        "url": "https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-code-scanning-alerts/resolve-alerts"
+      }
+    ]
+  },
+  "sast-fix-backlog": {
+    "short": "Work through open code scanning alerts: fix real bugs, dismiss noise with a reason.",
+    "why": "A long list of unread alerts hides the few that matter and teaches everyone to ignore new ones. Teams found real bugs this way: SciPy fixed vulnerabilities its first scans turned up, JUnit fixed its first wave of CodeQL findings, and Keycloak cleaned up existing findings before enabling more queries.",
+    "steps": [
+      "Open the Security and quality tab → Code scanning and filter to open alerts. Start with critical and high, and with code that handles untrusted input.",
+      "For each alert, fix it or click Dismiss alert with the right reason and a short comment. The reason can affect future analysis; the comment explains it later.",
+      "Group alerts by rule and fix each pattern once, often in a shared helper. kgateway worked through type-conversion and file-permission findings when it turned on gosec.",
+      "Hand routine fixes to Copilot Autofix (Generate fix or Assign to Copilot) and review them like any PR.",
+      "Book a recurring slot, such as an hour a week, and track the count. DataJourney logged 50+ resolved findings by its 12-month check-in.",
+      "Stop new debt from piling up by requiring code scanning results in a branch ruleset."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Dismissing alerts as false positives to shrink the number. If it isn't exploitable here but the pattern is risky, say so in the comment.",
+      "Switching on the Extended query suite before the backlog is under control. You'll be buried.",
+      "Fixing one call site when the root cause is a shared helper that will produce the same bug again."
+    ],
+    "docs": [
+      {
+        "label": "Resolving code scanning alerts",
+        "url": "https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-code-scanning-alerts/resolve-alerts"
+      },
+      {
+        "label": "Set code scanning merge protection",
+        "url": "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/set-merge-protection"
+      }
+    ]
+  },
+  "sast-other-tools": {
+    "short": "Add a language-specific scanner next to CodeQL and send its results to code scanning.",
+    "why": "CodeQL doesn't cover every language or rule, and specialist linters catch other classes of bugs. kgateway made gosec a required check and fixed unsafe type conversions and file permission problems while turning it on; OpenClaw runs Semgrep alongside CodeQL.",
+    "steps": [
+      "Pick one tool for a language CodeQL misses or covers thinly: gosec for Go (kgateway), Bandit for Python (DocsGPT), Semgrep for many languages (OpenClaw).",
+      "Run it on pull requests and upload SARIF, so findings land in code scanning next to CodeQL. GoReleaser reports all of its scanners this way.",
+      "Give each tool its own SARIF category so their uploads don't replace each other.",
+      "Clean up or suppress existing findings first, then make the check required.",
+      "Tune rules in the tool's config file instead of switching the tool off."
+    ],
+    "snippets": [
+      {
+        "label": "gosec for a Go project: .github/workflows/gosec.yml",
+        "lang": "yaml",
+        "code": "name: gosec\non:\n  pull_request:\n  push:\n    branches: [{branch}]\n\npermissions:\n  contents: read\n\njobs:\n  gosec:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      security-events: write   # upload SARIF to code scanning\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - name: Run gosec\n        uses: {{pin:securego/gosec}}\n        with:\n          # -no-fail: let the code scanning check decide what blocks the PR\n          args: '-no-fail -fmt sarif -out results.sarif ./...'\n      - name: Upload results\n        uses: {{pin:github/codeql-action/upload-sarif}}\n        with:\n          sarif_file: results.sarif\n          category: gosec\n"
+      }
+    ],
+    "pitfalls": [
+      "Adding several tools at once. Each brings its own noise; add one, get it clean, then add the next.",
+      "With -no-fail the job always passes. Blocking comes from the code scanning check and your ruleset, so set those up too."
+    ],
+    "docs": [
+      {
+        "label": "Uploading a SARIF file to GitHub",
+        "url": "https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/integrate-with-existing-tools/upload-sarif-file"
+      },
+      {
+        "label": "gosec",
+        "url": "https://github.com/securego/gosec"
+      },
+      {
+        "label": "Semgrep documentation",
+        "url": "https://docs.semgrep.dev/"
+      }
+    ]
+  },
+  "sast-oss-scanner": {
+    "short": "Let Anthropic's models scan your code for free, if you can handle unreviewed reports.",
+    "why": "OSS Scanner scans enrolled open source projects with Anthropic's strongest models at no cost, emails each report straight from the models (unreviewed, with a reproducer and a proposed patch where there is one) and rescans regularly; projects that aren't enrolled only get findings after human review through Anthropic's coordinated disclosure process, which is slower. Anthropic decides who joins case by case, with criteria like OSS-Fuzz's, and brand-new projects and forks usually don't qualify. This guide suggests checking once a project has over 1,000 stars or 200 dependents, but that cue is this guide's, not Anthropic's rule.",
+    "steps": [
+      "Decide whether you can keep up. Reports arrive unreviewed, and Anthropic built this for projects already handling verified high and critical reports. Without it, you get only human-reviewed findings.",
+      "Add .oss-scanner/Dockerfile: it must install every dependency and build the project, because the scan runs with no network. Build it and run your tests inside with --network none (below).",
+      "Optionally add .oss-scanner/threat_model.md (anthropics/oss-scanner has a template): what's in scope, where untrusted input enters, and how you rate severity, such as whether post-auth SQL injection is high or critical.",
+      "As a core maintainer, run tools/validate.py and tools/check <name>, then open the pull request adding projects/<name>/project.yaml (below; a lowercase name) with your published security contact.",
+      "Optional: to get reports on GitHub too, turn on private vulnerability reporting, add the oss-scanner account as a trusted reporter, and set output_format.github_security_advisory.min_severity.",
+      "To pause reports, set disabled: true in a pull request; to leave, delete projects/<name>/. Either way you're back to reviewed findings only."
+    ],
+    "snippets": [
+      {
+        "label": "projects/<name>/project.yaml, in your pull request to anthropics/oss-scanner",
+        "lang": "yaml",
+        "code": "repo: https://github.com/{full}\nprimary_contact: security@example.org   # your published security contact; this file is public\nhomepage: https://github.com/{full}\ndisabled: false\ndockerfile: .oss-scanner/Dockerfile\nthreat_model: .oss-scanner/threat_model.md\n"
+      },
+      {
+        "label": "Check the image the way the scanner uses it, from your repository root",
+        "lang": "shell",
+        "code": "docker build -f .oss-scanner/Dockerfile -t oss-scanner-test .\n# The checkout is at /src; use your own test command.\ndocker run --rm --network none oss-scanner-test sh -c 'cd /src && make test'\n"
+      }
+    ],
+    "pitfalls": [
+      "Reports aren't reviewed by a human, so some are false positives, and the first scan sends a bundle at once. Decide who triages them before you enroll.",
+      "Every email address in project.yaml is public, and Anthropic checks that primary_contact is a security contact you publish, for example in SECURITY.md. Use a security alias, not a personal address.",
+      "pgp can't be combined with auto_ccs: encrypted email goes to primary_contact only, and GitHub reports aren't encrypted."
+    ],
+    "docs": [
+      {
+        "label": "OSS Scanner: how to enroll",
+        "url": "https://github.com/anthropics/oss-scanner/blob/main/README.md"
+      },
+      {
+        "label": "OSS Scanner FAQ (eligibility, reports, disclosure)",
+        "url": "https://red.anthropic.com/oss-scanner/#faq"
+      },
+      {
+        "label": "OSS Scanner terms",
+        "url": "https://red.anthropic.com/oss-scanner/terms/"
+      }
+    ]
+  },
+  "code-untrusted-input": {
+    "short": "Map where untrusted data enters; validate it, cap its size and isolate risky parsing.",
+    "why": "Parsers, decoders and command builders are where attackers get in. aiohttp had to fix a decompression bomb and resource limits that only applied after attacker-controlled buffering, and virtualenv published 21 advisories in five weeks, several of them cases where a path or prompt became a shell command.",
+    "steps": [
+      "List every entry point: uploads, network input, CLI arguments, environment, config files and fetched content. For Readest, book ingestion was the clearest attack surface.",
+      "Validate against what's allowed (type, length, format, character set) rather than blocking known-bad input, and do it where the data is used.",
+      "Cap size, nesting and time before you buffer or decompress, and process large input in bounded chunks. aiohttp now holds 256 KiB instead of 32 MiB.",
+      "Never build shell commands, SQL or HTML by joining strings. Use argument lists, parameterized queries and context-aware escaping.",
+      "Allow-list what input can trigger. cdxgen closed whole classes of bugs with allow-lists for external commands and remote hosts.",
+      "Parse or render risky formats with as little privilege as you can: a strict Content Security Policy for HTML (Readest) or a separate sandboxed process."
+    ],
+    "snippets": [
+      {
+        "label": "Python: cap decompressed size and keep the shell out of it",
+        "lang": "python",
+        "code": "import subprocess\nimport zlib\n\nMAX_OUTPUT = 10 * 1024 * 1024  # refuse anything that inflates past 10 MiB\n\n\ndef inflate(data: bytes) -> bytes:\n    d = zlib.decompressobj()\n    out = d.decompress(data, MAX_OUTPUT)\n    if d.unconsumed_tail:\n        raise ValueError(\"decompressed data too large\")\n    return out\n\n\ndef run_tool(path: str) -> str:\n    # Argument list, no shell: a file named \"x; rm -rf ~\" stays one argument.\n    # \"--\" (if the tool supports it) stops a name like \"-rf\" being read as an option.\n    result = subprocess.run([\"tool\", \"--\", path], check=True, capture_output=True, text=True)\n    return result.stdout\n"
+      }
+    ],
+    "pitfalls": [
+      "Validating only in the browser or client. Check again where the data is used.",
+      "Editing data after escaping it. One of virtualenv's bugs was a later replacement that changed an already-quoted value.",
+      "Size limits that are checked after the whole input is already in memory."
+    ],
+    "docs": [
+      {
+        "label": "OpenSSF Concise Guide for Developing More Secure Software",
+        "url": "https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software"
+      },
+      {
+        "label": "OpenSSF free secure development courses",
+        "url": "https://openssf.org/training/courses/"
+      }
+    ]
+  },
+  "code-secure-defaults": {
+    "short": "Ship safe defaults, and make users opt in to anything risky.",
+    "why": "Most users never change defaults, so your defaults are your real security level. Polly recommends turning safer options such as 2FA on by default rather than making them opt-in, and DocsGPT ships its code-execution sandbox switched off.",
+    "steps": [
+      "List the settings with security impact: network binding, TLS verification, authentication, CORS, debug mode, file access, code execution and telemetry.",
+      "Set each default to the safe value: listen on localhost, verify certificates, require auth, and leave debug and risky features off.",
+      "Make the unsafe choice explicit: a clearly named option, a warning while it's on, and docs that say what it exposes.",
+      "Mask secrets in UIs by default and keep the safe path consistent, so muscle memory doesn't pick the risky option (Polly's advice).",
+      "When you tighten a default, say so in the release notes with a migration path. OpenClaw tightened workspace restrictions and accepted the complaints.",
+      "Add tests that assert the defaults, so a refactor can't flip them silently."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Examples and docs that turn protections off (verify=False, wide-open CORS, chmod 777) get copied into production.",
+      "Keeping an insecure default for compatibility with no plan to change it. Deprecate it and give a date."
+    ],
+    "docs": [
+      {
+        "label": "OpenSSF free secure development courses",
+        "url": "https://openssf.org/training/courses/"
+      }
+    ]
+  },
+  "code-secret-handling": {
+    "short": "Keep tokens and passwords out of logs, error messages, crash reports and AI prompts.",
+    "why": "Logs, CI output and bug reports end up pasted into public issues. GoReleaser 2.14 sends command output through a redactor that replaces secret-looking environment variables with their names, and OpenClaw moved credentials to references so they don't end up in prompts, logs or transcripts.",
+    "steps": [
+      "Find the leak paths: log calls, exception messages, debug and verbose output, config dumps, telemetry and crash reports.",
+      "Redact in one place: send subprocess and HTTP client output through a single helper before it's printed, as GoReleaser does (example below).",
+      "Pass secrets by reference (an env var name or secret store key) and load them where they're used, not into config objects you print.",
+      "In GitHub Actions, mask values you create at runtime with ::add-mask:: before anything prints them.",
+      "Strip credentials from URLs (https://user:token@host) and connection strings before logging them.",
+      "Add a test that runs your verbose mode with a fake token and fails if the token shows up in the output."
+    ],
+    "snippets": [
+      {
+        "label": "Python: redact secret-looking environment values before logging",
+        "lang": "python",
+        "code": "import os\nimport re\n\n# Env var names that usually hold secrets\nSECRET_NAME = re.compile(r\"TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY\", re.IGNORECASE)\n\n\ndef redact(text: str) -> str:\n    \"\"\"Replace values of secret-looking env vars with $NAME, as GoReleaser does.\"\"\"\n    for name, value in os.environ.items():\n        if len(value) >= 8 and SECRET_NAME.search(name):\n            text = text.replace(value, f\"${name}\")\n    return text\n\n# Use it on anything you print or log, for example:\n# log.info(redact(proc.stdout))\n"
+      }
+    ],
+    "pitfalls": [
+      "Exact-match masking misses encoded forms. A base64- or URL-encoded token still leaks.",
+      "set -x in CI shell scripts prints every expanded variable, including tokens GitHub doesn't know to mask.",
+      "Error messages that include a full connection string, password and all."
+    ],
+    "docs": [
+      {
+        "label": "Masking a value in a GitHub Actions log",
+        "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#masking-a-value-in-a-log"
+      }
+    ]
+  },
+  "code-memory-safety": {
+    "short": "Write new parsers and risky parts in a memory-safe language, and harden the C you keep.",
+    "why": "In C and C++, a malformed file or packet can corrupt memory and turn into code execution; OpenSSF notes that many vulnerabilities involve memory safety. Stalwart, written in Rust, says the language's memory-safety guarantees and its community's habits meant many of the program's recommendations were already in place.",
+    "steps": [
+      "Write new code that handles untrusted input (file formats, network protocols, decompression) in Rust, Go or another memory-safe language. This is a long-term change, not a sprint task.",
+      "For existing C or C++, replace the riskiest parser first, behind the same API, instead of rewriting everything.",
+      "Until then, run tests under AddressSanitizer and UndefinedBehaviorSanitizer in CI and fuzz the C entry points. OSS-Fuzz was already catching crashes in Matplotlib's C extensions.",
+      "Build with the compiler hardening flags from OpenSSF's hardening guide for C and C++.",
+      "In Rust, keep unsafe rare and reviewed, and add #![forbid(unsafe_code)] to crates that don't need it.",
+      "Memory-safe code still panics or hangs on bad input, so fuzz it too."
+    ],
+    "snippets": [
+      {
+        "label": "Test C/C++ under AddressSanitizer and UBSan (gcc or clang)",
+        "lang": "shell",
+        "code": "export CFLAGS=\"-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all\"\nexport CXXFLAGS=\"$CFLAGS\"\nexport LDFLAGS=\"-fsanitize=address,undefined\"\n# then your usual build and test commands, for example:\nmake clean && make && make check\n"
+      }
+    ],
+    "pitfalls": [
+      "Big-bang rewrites stall. Replace one module at a time and keep the old tests running against it.",
+      "Wrapping C in a safe language changes nothing if the risky parsing still happens in the C part.",
+      "Shipping sanitizer builds. They're for testing: slower, and not a hardening feature."
+    ],
+    "docs": [
+      {
+        "label": "OpenSSF Memory Safety Continuum",
+        "url": "https://memorysafety.openssf.org/memory-safety-continuum/"
+      },
+      {
+        "label": "OpenSSF Compiler Options Hardening Guide for C and C++",
+        "url": "https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html"
+      }
+    ]
+  },
+  "fuzz-harnesses": {
+    "short": "Write fuzz targets for every parser of untrusted input, and run them in CI.",
+    "why": "A fuzzer throws millions of mutated inputs at one function and reports the crashes, hangs and runaway memory that example-based tests miss. Sniffnet's maintainer calls targeted testing and fuzzing the most effective way to find flaws specific to your code, and 32 of the 193 fund projects keep fuzz targets in their repos.",
+    "steps": [
+      "Pick entry points that take bytes or text from outside: file and protocol parsers, decoders, decompressors, query or template parsers. Start with the one that has had bugs.",
+      "Write one small target per entry point with your language's standard fuzzer (below). Expect an hour or two for the first; shadcn/ui used Copilot to set theirs up.",
+      "Catch only the errors your API documents and let everything else crash. Assert properties too, such as decode(encode(x)) == x or virtualenv's \"no extra command runs\".",
+      "Seed each target with a few real inputs and keep every crasher as a regression test: Go saves them in testdata/fuzz/, and Jazzer replays its inputs in normal test runs.",
+      "Build and briefly run every target in CI so it doesn't rot. ONNX added a CI smoke test for its harnesses, and mimetype caches its corpus between runs.",
+      "Fuzz on more than one platform if you do size or integer math. mimetype added 32-bit runs to catch panics like its issue #829."
+    ],
+    "snippets": [
+      {
+        "label": "Go (built in since Go 1.18): parser/parse_fuzz_test.go",
+        "lang": "go",
+        "code": "// Run: go test -fuzz=FuzzParse -fuzztime=60s ./parser\npackage parser\n\nimport \"testing\"\n\nfunc FuzzParse(f *testing.F) {\n\tf.Add([]byte(`{\"name\": \"demo\"}`)) // seed inputs: a few real samples\n\tf.Add([]byte(\"\"))\n\tf.Fuzz(func(t *testing.T, data []byte) {\n\t\t// Returning an error is fine. Panics, hangs and huge allocations are bugs.\n\t\t_, _ = Parse(data)\n\t})\n}\n"
+      },
+      {
+        "label": "Rust (cargo-fuzz): fuzz/fuzz_targets/parse.rs",
+        "lang": "rust",
+        "code": "// Setup: cargo install cargo-fuzz && cargo fuzz init && cargo fuzz add parse\n// Run:   cargo +nightly fuzz run parse -- -max_total_time=60\n#![no_main]\n\nuse libfuzzer_sys::fuzz_target;\n\nfuzz_target!(|data: &[u8]| {\n    // Errors are fine; panics and overflows are bugs.\n    if let Ok(text) = std::str::from_utf8(data) {\n        let _ = my_crate::parse(text);\n    }\n});\n"
+      },
+      {
+        "label": "Python (Atheris): fuzz/fuzz_parse.py",
+        "lang": "python",
+        "code": "# Setup: pip install atheris\n# Run:   python fuzz/fuzz_parse.py -max_total_time=60\nimport sys\n\nimport atheris\n\nwith atheris.instrument_imports():\n    import mylib  # the package under test\n\n\n@atheris.instrument_func\ndef test_one_input(data: bytes) -> None:\n    fdp = atheris.FuzzedDataProvider(data)\n    text = fdp.ConsumeUnicodeNoSurrogates(4096)\n    try:\n        mylib.parse(text)\n    except mylib.ParseError:\n        pass  # documented error; any other exception is a finding\n\n\nif __name__ == \"__main__\":\n    atheris.Setup(sys.argv, test_one_input)\n    atheris.Fuzz()\n"
+      },
+      {
+        "label": "Java (Jazzer with JUnit 5): src/test/java/com/example/ParserFuzzTest.java",
+        "lang": "java",
+        "code": "// Test dependency: com.code-intelligence:jazzer-junit (JUnit 5.9 or newer).\n// \"mvn test\" replays saved crashes; to fuzz: JAZZER_FUZZ=1 mvn test -Dtest=ParserFuzzTest\npackage com.example;\n\nimport com.code_intelligence.jazzer.junit.FuzzTest;\nimport com.code_intelligence.jazzer.mutation.annotation.NotNull;\n\nclass ParserFuzzTest {\n    @FuzzTest(maxDuration = \"60s\")\n    void parse(@NotNull String input) {\n        try {\n            Parser.parse(input);\n        } catch (ParseException expected) {\n            // documented error; any other exception fails the test\n        }\n    }\n}\n"
+      }
+    ],
+    "pitfalls": [
+      "A harness that catches every exception or recovers every panic hides the bugs you're looking for.",
+      "Uninstrumented Python code: Atheris needs instrument_imports() or instrument_func, or it stops with \"no interesting inputs were found\".",
+      "Coverage-guided Go fuzzing only works on amd64 and arm64, and cargo-fuzz needs a nightly Rust toolchain."
+    ],
+    "docs": [
+      {
+        "label": "Go Fuzzing",
+        "url": "https://go.dev/doc/security/fuzz/"
+      },
+      {
+        "label": "Rust Fuzz Book: cargo-fuzz",
+        "url": "https://rust-fuzz.github.io/book/cargo-fuzz.html"
+      },
+      {
+        "label": "Atheris (Python)",
+        "url": "https://github.com/google/atheris"
+      }
+    ]
+  },
+  "fuzz-continuous": {
+    "short": "Fuzz around the clock: join OSS-Fuzz if you qualify, otherwise run ClusterFuzzLite.",
+    "why": "A short CI run catches regressions, but deep bugs take hours or days of fuzzing to reach. aiohttp's parsers have been fuzzed continuously by OSS-Fuzz since 2022, OSS-Fuzz was already catching crashes in Matplotlib's C extensions, and quic-go turned on ClusterFuzzLite batch fuzzing during its sprint.",
+    "steps": [
+      "Write fuzz targets first (see the harness item), then check OSS-Fuzz. It's free and accepts projects with a significant user base or that are critical to global IT infrastructure.",
+      "To apply, open a pull request to google/oss-fuzz adding projects/<name>/project.yaml (below). After it's accepted, add a Dockerfile and build.sh following the new project guide.",
+      "Once on OSS-Fuzz, add CIFuzz from its docs: by default it fuzzes each PR for 10 minutes and fails only on new crashes. CPython runs it for two OSS-Fuzz projects.",
+      "Not eligible, or want it in your own CI? Use ClusterFuzzLite: a .clusterfuzzlite/ folder (project.yaml, Dockerfile, build.sh) plus the PR workflow below. Byte Buddy and Diesel use it.",
+      "Add scheduled batch fuzzing, a daily prune job and a corpus storage repo so PR runs start from saved inputs, as quic-go did. Scope that repo's token to it alone.",
+      "Give crash reports an owner. CPython created a GitHub team for its fuzzers, and aiohttp plans to move its OSS-Fuzz files into its own repo."
+    ],
+    "snippets": [
+      {
+        "label": "OSS-Fuzz application: projects/<your-project>/project.yaml in a PR to google/oss-fuzz",
+        "lang": "yaml",
+        "code": "homepage: \"https://github.com/{owner}/{repo}\"\nmain_repo: \"https://github.com/{owner}/{repo}\"\nlanguage: go   # c++, rust, python, jvm, javascript, swift...\n# A committer's address, linked to a Google account, gets the bug reports\nprimary_contact: \"maintainer@example.com\"\n"
+      },
+      {
+        "label": "ClusterFuzzLite on every PR: .github/workflows/cflite_pr.yml",
+        "lang": "yaml",
+        "code": "name: ClusterFuzzLite PR fuzzing\non:\n  pull_request:\npermissions: read-all\njobs:\n  PR:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}\n      cancel-in-progress: true\n    strategy:\n      fail-fast: false\n      matrix:\n        sanitizer: [address]\n    steps:\n      - name: Build fuzzers (${{ matrix.sanitizer }})\n        id: build\n        uses: {{pin:google/clusterfuzzlite/actions/build_fuzzers}}\n        with:\n          language: go   # must match .clusterfuzzlite/project.yaml\n          github-token: ${{ secrets.GITHUB_TOKEN }}\n          sanitizer: ${{ matrix.sanitizer }}\n      - name: Run fuzzers (${{ matrix.sanitizer }})\n        id: run\n        uses: {{pin:google/clusterfuzzlite/actions/run_fuzzers}}\n        with:\n          github-token: ${{ secrets.GITHUB_TOKEN }}\n          fuzz-seconds: 600\n          mode: code-change\n          sanitizer: ${{ matrix.sanitizer }}\n"
+      },
+      {
+        "label": "Batch fuzzing every 6 hours, like quic-go: .github/workflows/cflite_batch.yml",
+        "lang": "yaml",
+        "code": "name: ClusterFuzzLite batch fuzzing\non:\n  schedule:\n    - cron: '0 0/6 * * *'\n  workflow_dispatch:\npermissions: read-all\njobs:\n  BatchFuzzing:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Build fuzzers\n        id: build\n        uses: {{pin:google/clusterfuzzlite/actions/build_fuzzers}}\n        with:\n          language: go\n          sanitizer: address\n      - name: Run fuzzers\n        id: run\n        uses: {{pin:google/clusterfuzzlite/actions/run_fuzzers}}\n        with:\n          github-token: ${{ secrets.GITHUB_TOKEN }}\n          fuzz-seconds: 3600\n          mode: batch\n          sanitizer: address\n          # Optional: keep the corpus in a separate repo (needs a token secret)\n          # storage-repo: https://${{ secrets.CFLITE_STORAGE_TOKEN }}@github.com/{owner}/{repo}-fuzz-corpus.git\n"
+      }
+    ],
+    "pitfalls": [
+      "OSS-Fuzz makes reports public 90 days after notifying you, or once a fix is released if that's sooner. Triage them, or they disclose themselves.",
+      "Batch fuzzing without a corpus pruning job (mode: prune). ClusterFuzzLite's docs say you must run both.",
+      "Native Go fuzz tests on OSS-Fuzz and ClusterFuzzLite ignore f.Add seeds while fuzzing, so ship a seed corpus. quic-go builds one from its seeds."
+    ],
+    "docs": [
+      {
+        "label": "OSS-Fuzz: accepting new projects",
+        "url": "https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/"
+      },
+      {
+        "label": "OSS-Fuzz: CIFuzz for pull requests",
+        "url": "https://google.github.io/oss-fuzz/getting-started/continuous-integration/"
+      },
+      {
+        "label": "ClusterFuzzLite on GitHub Actions",
+        "url": "https://google.github.io/clusterfuzzlite/running-clusterfuzzlite/github-actions/"
+      }
+    ]
+  },
+  "test-security-tests": {
+    "short": "Ship a regression test with every security fix, plus inputs that must keep working.",
+    "why": "Without a test, the next refactor can reopen the hole and nobody notices. aiohttp turns each audit round into fixes, regression tests and threat model updates, and virtualenv, which published 21 advisories in five weeks, advises keeping regression examples both ways.",
+    "steps": [
+      "Turn the report's proof of concept into a failing test first, cut down to the smallest input that shows the bug.",
+      "Test both directions: the attack input is rejected or neutralized, and similar legitimate input still works.",
+      "Write the fix and the test in the advisory's temporary private fork, so neither is public before the release.",
+      "Name the test after the advisory (for example test_ghsa_...) so nobody deletes it as redundant.",
+      "Keep fuzzer crashers as permanent regression inputs, and turn the bug class into a fuzz property or CodeQL query to catch its variants."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Pushing the test to a public branch before the fix ships tells everyone where the bug is.",
+      "Testing only the exact exploit string. Attackers vary encoding, case and nesting.",
+      "Mocking out the vulnerable layer, so the test passes whether or not the bug is fixed."
+    ],
+    "docs": [
+      {
+        "label": "Collaborating in a temporary private fork",
+        "url": "https://docs.github.com/en/code-security/tutorials/fix-reported-vulnerabilities/collaborate-in-a-fork"
+      },
+      {
+        "label": "OpenSSF Concise Guide (negative tests)",
+        "url": "https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software"
+      }
+    ]
+  },
+  "ai-threat-model": {
+    "short": "Threat-model AI features: trace where untrusted text reaches a model that can act.",
+    "why": "Prompt injection can ride on any text a model reads, so an issue body, document or web page can steer a model that has tools. CocoIndex mapped poisoned embeddings and prompt injection through source data, and DocsGPT threat-modeled its code-execution feature before shipping it, so the mitigations were designed in rather than bolted on.",
+    "steps": [
+      "Draw the flow: everything the model reads (prompts, documents, web pages, issues, tool output) and everything it can do (tools, code, writes, network, spending).",
+      "Mark each input trusted or not. Nasiko treats issue bodies, PR descriptions, READMEs and code comments as untrusted agent input.",
+      "Walk through STRIDE plus AI-specific threats: prompt injection, poisoned data or embeddings, excessive tool permissions, secret leakage, runaway loops and cost.",
+      "For each risky path, add a control the model can't talk its way past: schemas, least-privilege tools, approvals, budgets, stop conditions and audit logs (DataJourney's list).",
+      "Publish it with what's in and out of scope. aiohttp and DocsGPT note that AI tools and researchers can use a public threat model to rule out non-issues.",
+      "Update it when you add a tool, model or data source, and after each advisory, as aiohttp does."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Treating the system prompt as a security boundary. Injected text can override it.",
+      "Modeling only the chat box. Retrieved documents, files and tool output are inputs too.",
+      "Relying on the model to refuse instead of limiting what its tools can do."
+    ],
+    "docs": [
+      {
+        "label": "OWASP Top 10 for LLM Applications",
+        "url": "https://genai.owasp.org/llm-top-10/"
+      },
+      {
+        "label": "MCP Security Best Practices",
+        "url": "https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices"
+      }
+    ]
+  },
+  "ai-mcp-security": {
+    "short": "Inventory every agent tool, default to read-only, and gate every write behind review.",
+    "why": "An MCP tool can do whatever its server's credentials allow, and any text the agent reads, such as an issue body or a README, can try to drive it. Nasiko wrote down what each tool could actually do, put write operations behind an explicit allowlist and made new integrations read-only by default.",
+    "steps": [
+      "List every tool and MCP server an agent can reach, and write down what each can do with its credentials, not just what you use it for.",
+      "Split reads from writes, and expose only the writes the agent needs through an explicit allowlist.",
+      "Give each server its own narrowly scoped token, and keep separate agents and credentials per trust boundary, as OpenClaw recommends.",
+      "Require human approval before consequential actions such as merging, publishing or deleting. CAMEL-AI made this a core feature.",
+      "Review and pin MCP servers like any dependency, and pass secrets by reference so they stay out of prompts and transcripts (OpenClaw).",
+      "Log tool calls so you can see afterwards what an agent did."
+    ],
+    "snippets": [
+      {
+        "label": "Example: GitHub's MCP server with read-only tools, a few toolsets and lockdown mode",
+        "lang": "shell",
+        "code": "# GITHUB_PERSONAL_ACCESS_TOKEN comes from your shell; use a fine-grained, read-only token.\n# Lockdown mode withholds public-repo content written by people without push access.\n# It filters prompt injection; it is not an authorization boundary.\ndocker run -i --rm \\\n  -e GITHUB_PERSONAL_ACCESS_TOKEN \\\n  -e GITHUB_READ_ONLY=1 \\\n  -e GITHUB_TOOLSETS=\"repos,issues,pull_requests\" \\\n  -e GITHUB_LOCKDOWN_MODE=1 \\\n  ghcr.io/github/github-mcp-server\n"
+      }
+    ],
+    "pitfalls": [
+      "Assuming MCP authorization is on. The spec's consent and scoped permissions are optional, so check what your server actually enforces.",
+      "Treating content filters as access control. The token still decides what the agent can do.",
+      "Installing community servers or skills unreviewed. OpenClaw says marketplaces need constant watching and pruning."
+    ],
+    "docs": [
+      {
+        "label": "MCP Security Best Practices",
+        "url": "https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices"
+      },
+      {
+        "label": "GitHub MCP server (read-only mode, toolsets, lockdown)",
+        "url": "https://github.com/github/github-mcp-server"
+      }
+    ]
+  },
+  "ai-sandboxing": {
+    "short": "Run model-written code and agents in a sandbox with no secrets and limited network.",
+    "why": "If an agent or code-interpreter feature runs code an attacker can influence, the sandbox is all that stands between them and your secrets and network. DocsGPT's sandbox scrubs API keys, tokens and the database URL, blocks internal IP ranges and the cloud metadata endpoint, and ships off by default.",
+    "steps": [
+      "Ship code execution off by default and make turning it on an explicit admin decision, as DocsGPT does.",
+      "Run each job in a fresh container or VM as a non-root user, with a read-only filesystem and limits on CPU, memory, processes and wall-clock time.",
+      "Start it with an empty environment: no API keys, tokens or database URLs.",
+      "Deny network access by default. If code needs the internet, block private ranges and the cloud metadata endpoint (169.254.169.254) so it can't reach internal services.",
+      "For coding agents, turn on the agent's own sandbox and keep separate agents and credentials per trust boundary (OpenClaw's advice).",
+      "Test the walls: try to read env vars, reach the metadata endpoint and write outside the work directory, and keep those checks in CI."
+    ],
+    "snippets": [
+      {
+        "label": "One throwaway container per run (Docker)",
+        "lang": "shell",
+        "code": "# No network, read-only root, unprivileged user, capped resources, nothing secret in its env.\n# Enforce a wall-clock limit from the caller as well.\ndocker run --rm --network none --read-only \\\n  --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges \\\n  --memory 512m --cpus 1 --pids-limit 128 \\\n  --tmpfs /tmp:rw,noexec,nosuid,size=64m \\\n  -v \"$PWD/job:/work:ro\" \\\n  your-sandbox-image python /work/script.py\n"
+      },
+      {
+        "label": "Kubernetes egress policy for sandbox pods (DocsGPT uses a NetworkPolicy for this)",
+        "lang": "yaml",
+        "code": "apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: sandbox-egress\nspec:\n  podSelector:\n    matchLabels:\n      app: code-sandbox\n  policyTypes:\n    - Egress\n  egress:\n    # Public internet only: no cluster, private-network or metadata addresses\n    - to:\n        - ipBlock:\n            cidr: 0.0.0.0/0\n            except:\n              - 10.0.0.0/8\n              - 172.16.0.0/12\n              - 192.168.0.0/16\n              - 169.254.0.0/16   # includes 169.254.169.254, the cloud metadata endpoint\n              - 100.64.0.0/10\n    # DNS through the cluster resolver\n    - to:\n        - namespaceSelector:\n            matchLabels:\n              kubernetes.io/metadata.name: kube-system\n          podSelector:\n            matchLabels:\n              k8s-app: kube-dns\n      ports:\n        - protocol: UDP\n          port: 53\n        - protocol: TCP\n          port: 53\n"
+      }
+    ],
+    "pitfalls": [
+      "Containers share the host kernel. For hostile code, add a stronger boundary such as gVisor or a microVM.",
+      "A NetworkPolicy does nothing unless your cluster's network plugin enforces it.",
+      "Mounting the Docker socket or host directories into the sandbox hands over the host."
+    ],
+    "docs": [
+      {
+        "label": "docker container run reference",
+        "url": "https://docs.docker.com/reference/cli/docker/container/run/"
+      },
+      {
+        "label": "Kubernetes Network Policies",
+        "url": "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+      },
+      {
+        "label": "gVisor documentation",
+        "url": "https://gvisor.dev/docs/"
+      }
+    ]
+  },
+  "ai-assisted-security": {
+    "short": "Use AI to review code and triage alerts, but keep deterministic scanners as the gate.",
+    "why": "AI-assisted review finds real bugs: aiohttp's audit with GitHub Security Lab's taskflow agent found another vulnerability plus issues across other aio-libs projects, and Patch the Planet (OpenAI with Trail of Bits) led to 8 CVEs that aiohttp fixed within days. It also makes work: Jules filed 120+ near-duplicate PRs on Steve Francia's projects while he was away.",
+    "steps": [
+      "Get a second reader on every PR. If you use Copilot, add a branch ruleset with Automatically request Copilot code review; Two.js has it review every change.",
+      "Ask AI to explain alerts and suggest mitigations. Keycloak used Copilot to understand CodeQL reports.",
+      "Now and then, run an AI-assisted audit guided by your threat model. aiohttp ran GitHub Security Lab's taskflow agent across all aio-libs repositories.",
+      "Reproduce every AI finding before you file or fix it. Maintainers stay responsible for what ships (Readest).",
+      "Keep CodeQL, dependency scanning and tests as the merge gate. Nasiko treats AI as another set of eyes, not the gate.",
+      "Put limits on autonomous agents: cap their open PRs, dedupe their work, and make their commits show they came from a bot."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Leaving an agent unattended. Jules resubmitted the same five or so fixes daily, 120+ PRs to check by hand, all authored as the maintainer.",
+      "Treating AI review as coverage. It misses whole classes of bugs that scanners catch and gives a false sense of safety.",
+      "Pasting unpublished vulnerability details or secrets into third-party AI services."
+    ],
+    "docs": [
+      {
+        "label": "Configuring Copilot code review",
+        "url": "https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-code-review"
+      },
+      {
+        "label": "GitHub Security Lab taskflow agent",
+        "url": "https://github.com/GitHubSecurityLab/seclab-taskflow-agent"
+      }
+    ]
+  },
+  "ai-agent-instructions": {
+    "short": "Tell AI coding agents your security rules in AGENTS.md, and keep CI as the backstop.",
+    "why": "Coding agents read repository instruction files before they write code or review PRs, so a few lines on secrets, workflows and untrusted input prevent repeat mistakes. 42 of the 193 fund projects already keep security guidance in AGENTS.md, CLAUDE.md or Copilot instruction files, and Mautic proposed a security section based on the fund's training.",
+    "steps": [
+      "Start from the template and add your specifics: where untrusted input enters, which modules are security-sensitive, and how to run the security tests.",
+      "Point agents at SECURITY.md and your threat model. aiohttp notes a threat model lets AI tools check whether a finding is in scope.",
+      "Tell agents not to add dependencies without a reason and to confirm a package really exists before adding it, so hallucinated names don't slip in.",
+      "Know which files get read: Copilot uses the nearest AGENTS.md, .github/copilot-instructions.md and .github/instructions/*.instructions.md; a root CLAUDE.md or GEMINI.md also works.",
+      "List the file in CODEOWNERS so changes to agent rules need a maintainer's review.",
+      "Keep it short and specific. OpenSSF's guide suggests picking the rules that apply rather than pasting long generic lists."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Treating instructions as enforcement. Agents can ignore them, so keep CodeQL, secret scanning and required reviews as the gate.",
+      "Merging a PR that quietly edits AGENTS.md. It steers every later agent run, so review it like code.",
+      "Putting secrets, internal URLs or private vulnerability details in the file. It's public."
+    ],
+    "docs": [
+      {
+        "label": "Adding repository custom instructions for Copilot",
+        "url": "https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions"
+      },
+      {
+        "label": "OpenSSF Security-Focused Guide for AI Code Assistant Instructions",
+        "url": "https://best.openssf.org/Security-Focused-Guide-for-AI-Code-Assistant-Instructions"
+      },
+      {
+        "label": "AGENTS.md format",
+        "url": "https://agents.md/"
+      }
+    ]
+  },
+  "deps-alerts": {
+    "short": "Turn on Dependabot alerts and security updates, then act on what they find.",
+    "why": "Your project ships the code of every package it pulls in. Dependabot alerts tell you when one has a known vulnerability, and security updates open the fix PR for you; it's free for public repos and takes minutes, and SciPy's maintainer recommends it to anyone who doesn't have it on.",
+    "steps": [
+      "In Settings → Advanced Security, enable Dependency graph, Dependabot alerts and Dependabot security updates.",
+      "On the same page, enable Dependabot malware alerts to hear about known-malicious packages (npm, pip, Go, Rust, Maven, NuGet, RubyGems, Composer).",
+      "Make sure GitHub sees every dependency. Vendored code and some builds need dependency submission: aiohttp registers its vendored llhttp, and Termux submits its Gradle build.",
+      "Triage on the Security and quality tab → Dependabot. On public repos, a GitHub preset already dismisses low-impact alerts in npm development dependencies.",
+      "Merge security update PRs quickly, grouped if there are many. Cooldowns never delay them.",
+      "For a library, release a patched version so your users get the fix too."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Dependabot can't see what it can't parse. ImageMagick, a C project, only gets updates for its GitHub Actions.",
+      "Dismissing alerts as \"not used\" without checking. Record why in the dismissal comment.",
+      "Alert emails going to an inbox nobody reads. Check who gets notified."
+    ],
+    "docs": [
+      {
+        "label": "About Dependabot alerts",
+        "url": "https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-alerts"
+      },
+      {
+        "label": "Configuring Dependabot malware alerts",
+        "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-malware-alerts"
+      },
+      {
+        "label": "Submitting dependencies automatically",
+        "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/submit-dependencies-automatically"
+      }
+    ]
+  },
+  "deps-update-automation": {
+    "short": "Let Dependabot or Renovate open update PRs for packages and GitHub Actions.",
+    "why": "Small, regular updates are easy to review; a two-year jump in the middle of an incident is not. Dependabot understands SHA-pinned actions and bumps the SHA and version comment together, which Fastify and Nasiko rely on to keep their pins fresh.",
+    "steps": [
+      "Add one updates entry per ecosystem and directory. Even a C project can cover its Actions, as ImageMagick did.",
+      "Group minor and patch updates to cut the PR count, and keep majors separate so they get a real review.",
+      "Keep the cooldown (7 days in the template) so you don't pick up a release in its riskiest first days.",
+      "Require CI to pass before merging, and read the changelog for major versions.",
+      "Prefer Renovate if you need more control, such as custom managers or schedules. oapi-codegen uses it for Go modules and Actions.",
+      "Set a weekly slot to merge update PRs. DocsGPT says this keeps its tree current instead of letting it rot between releases."
+    ],
+    "snippets": [
+      {
+        "label": "Extra ecosystem entry for .github/dependabot.yml (goes under updates:)",
+        "lang": "yaml",
+        "code": "  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n    cooldown:\n      default-days: 7\n    groups:\n      npm-minor-and-patch:\n        update-types: [minor, patch]\n"
+      },
+      {
+        "label": "Or with Renovate: renovate.json",
+        "lang": "json",
+        "code": "{\n  \"$schema\": \"https://docs.renovatebot.com/renovate-schema.json\",\n  \"extends\": [\"config:recommended\", \"helpers:pinGitHubActionDigests\"],\n  \"minimumReleaseAge\": \"7 days\",\n  \"packageRules\": [\n    {\n      \"matchUpdateTypes\": [\"minor\", \"patch\"],\n      \"groupName\": \"non-major dependencies\"\n    }\n  ]\n}\n"
+      }
+    ],
+    "pitfalls": [
+      "Auto-merging update PRs without tests or review turns a compromised release into your release.",
+      "Leaving out GitHub Actions. SHA-pinned actions go stale without an updater.",
+      "One PR per package per week on a big tree. Group them, or they pile up unread."
+    ],
+    "docs": [
+      {
+        "label": "Dependabot options reference",
+        "url": "https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference"
+      },
+      {
+        "label": "Keeping your actions up to date with Dependabot",
+        "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/auto-update-actions"
+      },
+      {
+        "label": "Renovate configuration options",
+        "url": "https://docs.renovatebot.com/configuration-options/"
+      }
+    ]
+  },
+  "deps-review": {
+    "short": "Check what each pull request adds to your dependencies before you merge it.",
+    "why": "A pull request can add a vulnerable or malicious package in a lockfile diff nobody reads. Dependency review lists what a PR adds or upgrades and flags known advisories, which GitHub says turns an opaque package.json diff into a two-minute review; Cobra and Viper added it to block vulnerable or maliciously licensed dependencies.",
+    "steps": [
+      "Make sure the dependency graph is on (Settings → Advanced Security). Dependency review reads it.",
+      "Add the workflow from the template and make it a required status check in your branch ruleset.",
+      "Start with fail-on-severity: high, and lower it once the noise is manageable.",
+      "Optionally add allow-licenses (see the licenses item) and comment-summary-in-pr so contributors see the result; the comment needs pull-requests: write.",
+      "Look at the OpenSSF Scorecard scores it shows for new dependencies. A low score is a reason to look closer.",
+      "Read lockfile diffs for new transitive packages too, not just the manifest."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "It only knows published advisories, so a brand-new malicious package passes. Pair it with a cooldown.",
+      "Ecosystems the dependency graph can't parse are invisible to it. Submit them with dependency submission.",
+      "deny-licenses is deprecated; use allow-licenses."
+    ],
+    "docs": [
+      {
+        "label": "About dependency review",
+        "url": "https://docs.github.com/en/code-security/concepts/supply-chain-security/dependency-review"
+      },
+      {
+        "label": "dependency-review-action options",
+        "url": "https://github.com/actions/dependency-review-action"
+      }
+    ]
+  },
+  "deps-cooldown": {
+    "short": "Wait a few days before adopting new releases, in your update bot and your installer.",
+    "why": "Malicious releases are usually spotted and pulled within hours or days, so most of the risk is in being among the first to install. After the Shai-Hulud worm, Fastify's npm installs only take versions older than 2 days; CPython's Dependabot waits 14 days, and Gitoxide 7 days for Cargo and Actions.",
+    "steps": [
+      "Dependabot: add cooldown to each ecosystem. It already waits 3 days by default; 7 is a common choice. Security updates are never delayed.",
+      "Renovate: set minimumReleaseAge, such as \"7 days\". With the default internalChecksFilter \"strict\", younger versions get no PR; vulnerability fixes skip the wait.",
+      "npm 11.10 or later: put min-release-age=<days> in the project .npmrc (Fastify uses 2). pnpm: minimumReleaseAge in pnpm-workspace.yaml, counted in minutes.",
+      "Python: set exclude-newer = \"7 days\" under [tool.uv], or pass --uploaded-prior-to P7D to pip, as virtualenv's maintainer recommends.",
+      "Exempt your own packages or an urgent fix explicitly: Dependabot exclude (Node.js exempts its own doc-kit), npm min-release-age-exclude, uv exclude-newer-package.",
+      "If you run zizmor, its dependabot-cooldown audit flags Dependabot configs with no or a short cooldown."
+    ],
+    "snippets": [
+      {
+        "label": "Dependabot: .github/dependabot.yml",
+        "lang": "yaml",
+        "code": "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n    schedule:\n      interval: weekly\n    cooldown:\n      default-days: 7\n      semver-major-days: 14\n      exclude:\n        - \"my-own-package\"   # releases you trust can skip the wait\n"
+      },
+      {
+        "label": "Renovate: renovate.json",
+        "lang": "json",
+        "code": "{\n  \"$schema\": \"https://docs.renovatebot.com/renovate-schema.json\",\n  \"extends\": [\"config:recommended\"],\n  \"minimumReleaseAge\": \"7 days\",\n  \"packageRules\": [\n    {\n      \"description\": \"Exempt a dependency, as Pillow does for google/oss-fuzz\",\n      \"matchPackageNames\": [\"google/oss-fuzz\"],\n      \"minimumReleaseAge\": null\n    }\n  ]\n}\n"
+      },
+      {
+        "label": "npm 11.10 or later: .npmrc (Fastify's setting)",
+        "lang": "ini",
+        "code": "# Only install versions published more than 2 days ago\nmin-release-age=2\n"
+      },
+      {
+        "label": "uv: pyproject.toml",
+        "lang": "toml",
+        "code": "[tool.uv]\nexclude-newer = \"7 days\"\n# Let one package through for an urgent fix:\n# exclude-newer-package = { setuptools = false }\n"
+      }
+    ],
+    "pitfalls": [
+      "Bot cooldowns don't cover installs. Renovate's lock file maintenance and a plain npm install or uv lock --upgrade on a laptop skip them, so set the installer option too.",
+      "Renovate needs release timestamps. Dependencies without them never age in, so exempt them as Pillow does for google/oss-fuzz.",
+      "Adding a delay to security fixes. Dependabot and Renovate already exempt them; keep it that way."
+    ],
+    "docs": [
+      {
+        "label": "Dependabot cooldown option",
+        "url": "https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#cooldown-"
+      },
+      {
+        "label": "npm min-release-age",
+        "url": "https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age"
+      },
+      {
+        "label": "uv dependency cooldowns",
+        "url": "https://docs.astral.sh/uv/concepts/resolution/#dependency-cooldowns"
+      }
+    ]
+  },
+  "deps-no-install-scripts": {
+    "short": "Stop dependencies from running install scripts, and allow only the few that need them.",
+    "why": "In September 2025 the Shai-Hulud worm spread through npm install scripts, running on developers' machines with their credentials in reach. Fastify added ignore-scripts=true to its repositories' .npmrc; its test suites never needed those hooks, so it cost nothing.",
+    "steps": [
+      "Check npm -v. npm 12 already blocks dependency install scripts unless the allowScripts list in package.json approves them; approve with npm approve-scripts <pkg>.",
+      "On npm 11 or older, commit the .npmrc from the template so every clone and CI run skips dependency scripts.",
+      "Run your build and tests. For a package that needs a native build (Fastify's example is sharp), run npm rebuild <pkg> --ignore-scripts=false after installing.",
+      "In CI, install with npm ci so you get exactly the lockfile, with the committed .npmrc applied.",
+      "pnpm 10 and later skip dependency build scripts until you approve them (pnpm approve-builds); Bun runs them only for trustedDependencies and its built-in list; in Yarn, set enableScripts: false."
+    ],
+    "snippets": [
+      {
+        "label": "Allowing one package (sharp here) to run its install scripts",
+        "lang": "shell",
+        "code": "# npm 11 or older, with ignore-scripts=true in .npmrc:\nnpm ci\nnpm rebuild sharp --ignore-scripts=false\n\n# npm 12: scripts are blocked until approved in package.json \"allowScripts\"\nnpm approve-scripts sharp   # writes a version-pinned approval\nnpm rebuild sharp\n"
+      }
+    ],
+    "pitfalls": [
+      "ignore-scripts also skips your own lifecycle scripts, such as a prepare script that installs git hooks, and the pre/post scripts around npm test.",
+      "With ignore-scripts in .npmrc, a plain npm rebuild <pkg> runs nothing; add --ignore-scripts=false. It also overrides npm 12 approvals.",
+      "Code that runs when a package is imported still runs. Pair this with a cooldown and dependency review."
+    ],
+    "docs": [
+      {
+        "label": "npm config: ignore-scripts",
+        "url": "https://docs.npmjs.com/cli/v11/using-npm/config#ignore-scripts"
+      },
+      {
+        "label": "npm approve-scripts (npm 12)",
+        "url": "https://docs.npmjs.com/cli/v12/commands/npm-approve-scripts"
+      }
+    ]
+  },
+  "deps-prune": {
+    "short": "Remove dependencies you don't need; every one is code you're trusting.",
+    "why": "Every package brings code, maintainers and install-time hooks you trust on your users' behalf. DocsGPT cut dormant dependencies it hadn't touched in ages, OpenClaw moved features into plugins for a shorter dependency tree and a smaller attack surface, and Ollama pruned unused dependencies after threat modeling.",
+    "steps": [
+      "List what you ship, direct and transitive (npm ls --all, uv tree, cargo tree, go mod graph), and note which are runtime and which are dev-only.",
+      "Find unused ones with a tool: knip (JavaScript/TypeScript), deptry (Python), cargo-machete (Rust), go mod tidy (Go).",
+      "Ask why each remaining one is there (npm explain, uv tree --invert --package, cargo tree -i, go mod why -m), and replace tiny ones with your own code.",
+      "Move optional features behind extras or plugins so the core install stays small, as OpenClaw did.",
+      "Make each new dependency a reviewed decision with a reason in the PR. CocoIndex tracks what it depends on and why."
+    ],
+    "snippets": [
+      {
+        "label": "Finding unused dependencies",
+        "lang": "shell",
+        "code": "npx knip --dependencies                         # JavaScript/TypeScript\nuvx deptry .                                     # Python\ncargo install cargo-machete && cargo machete     # Rust\ngo mod tidy                                      # Go: drops modules nothing imports\n"
+      }
+    ],
+    "pitfalls": [
+      "Vendoring code to get rid of a dependency. You now own its security fixes; Nasiko vendors UI libraries as single reviewed files and replaces them wholesale on upgrade.",
+      "Removing a package that's still loaded dynamically or by plugins. Run the full test suite.",
+      "Ignoring dev dependencies. They run on your machine and in CI, next to your tokens."
+    ],
+    "docs": [
+      {
+        "label": "OpenSSF Concise Guide for Evaluating Open Source Software",
+        "url": "https://best.openssf.org/Concise-Guide-for-Evaluating-Open-Source-Software"
+      },
+      {
+        "label": "knip",
+        "url": "https://knip.dev/"
+      },
+      {
+        "label": "deptry",
+        "url": "https://deptry.com/"
+      }
+    ]
+  },
+  "deps-audit-tools": {
+    "short": "Audit your lockfile for known vulnerabilities in CI with your ecosystem's tool.",
+    "why": "Alerts cover your default branch; an audit in CI also checks pull requests and gives a clear pass or fail. GoReleaser says every Go project should run govulncheck in its pipeline, and virtualenv's maintainer recommends running pip-audit on the lock file.",
+    "steps": [
+      "Go: govulncheck only reports vulnerabilities in code you actually call. oapi-codegen sends its results to code scanning.",
+      "Python: pip-audit on your lock or hash-pinned requirements file. Rust: cargo audit, or cargo deny check advisories, which can also check licenses and sources.",
+      "JavaScript: npm audit --audit-level=high, or OSV-Scanner for most lockfiles. kgateway added OSV-Scanner during its sprint.",
+      "Run it on pull requests and on a schedule, since new advisories appear for code that hasn't changed.",
+      "Pin the audit tool's version in CI, as Warpgate does for cargo-deny, and decide what fails the build and what only warns.",
+      "When a finding has no fix yet, record an ignore with a reason and a review date instead of turning the check off."
+    ],
+    "snippets": [
+      {
+        "label": "One command per ecosystem",
+        "lang": "shell",
+        "code": "go run golang.org/x/vuln/cmd/govulncheck@latest ./...   # Go\npip-audit -r requirements.txt                             # Python\ncargo install --locked cargo-audit && cargo audit         # Rust\nnpm audit --audit-level=high                              # npm\nosv-scanner scan source -r .                              # many lockfile formats\n"
+      },
+      {
+        "label": "Go: .github/workflows/govulncheck.yml",
+        "lang": "yaml",
+        "code": "name: govulncheck\non:\n  pull_request:\n  push:\n    branches: [{branch}]\n  schedule:\n    - cron: '0 6 * * 1'\n\npermissions:\n  contents: read\n\njobs:\n  govulncheck:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: {{pin:actions/checkout}}\n        with:\n          persist-credentials: false\n      - uses: {{pin:golang/govulncheck-action}}\n        with:\n          repo-checkout: false\n          go-version-file: go.mod\n          go-package: ./...\n"
+      }
+    ],
+    "pitfalls": [
+      "Audits only know published advisories. A new malicious release passes, so use cooldowns and review too.",
+      "JSON and SARIF modes often exit 0 even with findings (govulncheck-action does), so the job won't fail unless you check the results.",
+      "Auditing the manifest instead of the lockfile misses the transitive versions you actually install."
+    ],
+    "docs": [
+      {
+        "label": "govulncheck tutorial",
+        "url": "https://go.dev/doc/tutorial/govulncheck"
+      },
+      {
+        "label": "pip-audit",
+        "url": "https://github.com/pypa/pip-audit"
+      },
+      {
+        "label": "OSV-Scanner",
+        "url": "https://google.github.io/osv-scanner/"
+      }
+    ]
+  },
+  "deps-licenses": {
+    "short": "Check in CI that dependency licenses are compatible with your project's license.",
+    "why": "A dependency with an incompatible license can force a relicense or a painful removal later. Polly audited its licenses and now checks an allow-list in CI with dependency-review-action, and DocsGPT resolved license conflicts so it stays compliant with its MIT license and everything underneath it.",
+    "steps": [
+      "Decide your allow-list: licenses compatible with yours and with how you distribute. A permissive project often allows MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause and ISC.",
+      "Enforce it on PRs with dependency-review-action's allow-licenses (config below), as Polly does, and move fail-on-severity into the same file.",
+      "Audit the existing tree once: Insights → Dependency graph → Export SBOM lists licenses. ZITADEL re-checked its licenses from generated SBOMs.",
+      "For the whole tree in CI, use your ecosystem's checker: cargo deny check licenses for Rust or go-licenses for Go. evcc checks its Go and npm dependencies.",
+      "Record reviewed exceptions explicitly (LicenseRef-... identifiers or allow-dependencies-licenses), and keep your own LICENSE files accurate, as aiohttp did."
+    ],
+    "snippets": [
+      {
+        "label": "License allow-list: .github/dependency-review-config.yml",
+        "lang": "yaml",
+        "code": "# Point the dependency review workflow at this file:\n#   config-file: ./.github/dependency-review-config.yml\nfail-on-severity: high\nallow-licenses:\n  - MIT\n  - Apache-2.0\n  - BSD-2-Clause\n  - BSD-3-Clause\n  - ISC\n"
+      }
+    ],
+    "pitfalls": [
+      "Dependency review only checks dependencies a PR adds or changes. Audit the existing tree separately.",
+      "License metadata can be missing or wrong. Treat unknown licenses as a manual check, not a pass."
+    ],
+    "docs": [
+      {
+        "label": "dependency-review-action license options",
+        "url": "https://github.com/actions/dependency-review-action"
+      },
+      {
+        "label": "Exporting an SBOM from the dependency graph",
+        "url": "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/export-dependencies-as-sbom"
+      },
+      {
+        "label": "cargo-deny",
+        "url": "https://embarkstudios.github.io/cargo-deny/"
+      }
+    ]
+  },
+  "deps-lockfiles": {
+    "short": "Commit lockfiles, with hashes where you can, and install from them exactly in CI.",
+    "why": "A lockfile records the exact versions, and usually hashes, that you tested, so CI and contributors can't silently pick up a new or tampered release. virtualenv found it was downloading pip and setuptools updates without checking hashes; with hash pinning, even a one-character change to a wheel is rejected.",
+    "steps": [
+      "Commit the lockfile for your ecosystem: package-lock.json, pnpm-lock.yaml, yarn.lock, uv.lock or pylock.toml, Cargo.lock, go.sum.",
+      "Install strictly from it in CI: npm ci, pnpm install --frozen-lockfile, uv sync --locked, cargo build --locked. Go checks downloads against go.sum.",
+      "For pip, add hashes: generate them with uv pip compile --generate-hashes or pip-tools, and install with --require-hashes.",
+      "Lock your release and build tools too, not just runtime dependencies (virtualenv's advice).",
+      "Review lockfile diffs in PRs: new packages, changed registry URLs, and hashes that change without a version bump."
+    ],
+    "snippets": [
+      {
+        "label": "Install exactly what's locked (CI)",
+        "lang": "shell",
+        "code": "npm ci                                    # fails if package-lock.json doesn't match package.json\npnpm install --frozen-lockfile\nuv sync --locked                          # fails if uv.lock is out of date\ncargo build --locked\ngo mod verify                             # checks the module cache against go.sum\npip install --require-hashes -r requirements.txt\n"
+      }
+    ],
+    "pitfalls": [
+      "Expecting a library's lockfile to protect users. They resolve from your version ranges; Cargo's FAQ says the lockfile doesn't affect your package's consumers.",
+      "Running npm install in CI. It rewrites the lockfile instead of failing on drift; use npm ci.",
+      "Waving through contributor lockfile changes. A swapped resolved URL can point at a different tarball."
+    ],
+    "docs": [
+      {
+        "label": "npm ci",
+        "url": "https://docs.npmjs.com/cli/v11/commands/npm-ci"
+      },
+      {
+        "label": "pip secure installs (hash-checking mode)",
+        "url": "https://pip.pypa.io/en/stable/topics/secure-installs/"
+      },
+      {
+        "label": "Cargo FAQ: Cargo.lock in version control",
+        "url": "https://doc.rust-lang.org/cargo/faq.html#why-have-cargolock-in-version-control"
+      }
+    ]
+  },
+  "deps-refresh": {
+    "short": "Bring stale dependencies up to date in one planned pass, then keep them current.",
+    "why": "The longer a dependency lags, the harder the upgrade, and the more likely a security fix lands only in a version you can't easily reach. Two.js updated its dependencies during the program, and shadcn/ui refreshed its dependencies, licenses and SECURITY.md in its sprint.",
+    "steps": [
+      "List what's behind (commands below) and start with dependencies that handle untrusted input or have open advisories.",
+      "Upgrade in small batches with the tests run between them: patch and minor versions first, then majors one at a time.",
+      "Read changelogs and upgrade guides for majors, and fix deprecation warnings before they become removals.",
+      "Drop dependencies you no longer need instead of upgrading them (see the prune item).",
+      "Once you've caught up, turn on update automation so you don't fall behind again."
+    ],
+    "snippets": [
+      {
+        "label": "What's out of date?",
+        "lang": "shell",
+        "code": "npm outdated\nuv tree --outdated\ngo list -m -u all\ncargo update --dry-run   # updates allowed by your version ranges; majors need Cargo.toml edits\n"
+      }
+    ],
+    "pitfalls": [
+      "One giant upgrade PR. When something breaks, you can't tell which bump did it.",
+      "Raising the minimum runtime (Node, Python, Go, Rust version) by accident. Check engines, requires-python and MSRV after upgrading."
+    ],
+    "docs": [
+      {
+        "label": "npm outdated",
+        "url": "https://docs.npmjs.com/cli/v11/commands/npm-outdated"
+      },
+      {
+        "label": "uv: locking and upgrading",
+        "url": "https://docs.astral.sh/uv/concepts/projects/sync/"
+      }
+    ]
+  },
+  "deps-upstream-relationships": {
+    "short": "Know who maintains your key dependencies, and support them before you need them.",
+    "why": "When the bug is in a dependency, your fix waits on its maintainers. aiohttp couldn't fix a decompression bomb until Google added an output cap to brotli, and after recent supply-chain attacks OpenClaw set out to build relationships with the maintainers it depends on.",
+    "steps": [
+      "List your critical dependencies: those that parse untrusted input, handle auth or crypto, or run at install time.",
+      "For each one, find the maintainers and how they take security reports (SECURITY.md, private vulnerability reporting) before you need it.",
+      "Send fixes upstream instead of keeping a private fork. OpenClaw's maintainers note that companies rarely do this by default.",
+      "Fund them: github.com/sponsors/explore lists the maintainers of your dependencies, and npm fund shows funding links for an npm tree. evcc asks companies to sponsor critical dependencies directly.",
+      "Watch releases of the few that matter most, and plan a replacement or offer help if one looks abandoned."
+    ],
+    "snippets": [],
+    "pitfalls": [
+      "Making first contact during an incident, when maintainers are swamped.",
+      "Assuming popular means maintained. Check recent releases and who can publish."
+    ],
+    "docs": [
+      {
+        "label": "Sponsoring an open source contributor",
+        "url": "https://docs.github.com/en/sponsors/sponsoring-open-source-contributors/sponsoring-an-open-source-contributor-through-github"
+      },
+      {
+        "label": "npm fund",
+        "url": "https://docs.npmjs.com/cli/v11/commands/npm-fund"
+      },
+      {
+        "label": "OpenSSF Concise Guide for Evaluating Open Source Software",
+        "url": "https://best.openssf.org/Concise-Guide-for-Evaluating-Open-Source-Software"
+      }
+    ]
+  }
+}

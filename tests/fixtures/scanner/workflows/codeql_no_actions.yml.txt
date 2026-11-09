@@ -1,0 +1,12 @@
+name: codeql
+on: [push]
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+          # language: actionscript

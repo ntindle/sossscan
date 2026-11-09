@@ -1,0 +1,9 @@
+# Never upload these: local credentials, caches, environments and build output.
+.secrets
+.env*
+.cache
+.venv
+.next
+node_modules
+**/__pycache__
+**/*.pyc

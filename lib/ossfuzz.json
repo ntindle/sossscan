@@ -1,0 +1,3748 @@
+{
+"9fans/plan9port": [
+"plan9port"
+],
+"aaugustin/websockets": [
+"websockets"
+],
+"abseil/abseil-cpp": [
+"abseil-cpp"
+],
+"abseil/abseil-py": [
+"abseil-py"
+],
+"academysoftwarefoundation/openexr": [
+"openexr"
+],
+"ada-url/ada": [
+"ada-url"
+],
+"adalogics/oss-fuzz-example": [
+"oss-fuzz-example"
+],
+"agronholm/cbor2": [
+"cbor2"
+],
+"aio-libs/aiohttp": [
+"aiohttp"
+],
+"aio-libs/multidict": [
+"multidict"
+],
+"aio-libs/yarl": [
+"yarl"
+],
+"akheron/jansson": [
+"jansson"
+],
+"alacritty/vte": [
+"utf8parse"
+],
+"alan32liu/github-scarecrow": [
+"github_scarecrow"
+],
+"alanxz/rabbitmq-c": [
+"rabbitmq-c"
+],
+"alculquicondor/psqlparse": [
+"psqlparse"
+],
+"alembic/alembic": [
+"alembic"
+],
+"alexcrichton/tar-rs": [
+"tar-rs"
+],
+"alexhuszagh/rust-lexical": [
+"rust-lexical"
+],
+"alexmojaki/stack_data": [
+"stack_data"
+],
+"alibaba/fastjson2": [
+"fastjson2"
+],
+"alir3z4/html2text": [
+"html2text"
+],
+"allegro/json-avro-converter": [
+"json2avro"
+],
+"alvations/sacremoses": [
+"sacremoses"
+],
+"amazon-ion/ion-java": [
+"ion-java"
+],
+"ampproject/amphtml": [
+"ampproject"
+],
+"andialbrecht/sqlparse": [
+"sqlparse"
+],
+"andybalholm/cascadia": [
+"cascadia"
+],
+"angr/pyvex": [
+"pyvex"
+],
+"angular/angular": [
+"angular"
+],
+"ansible/ansible": [
+"ansible"
+],
+"anssi-fr/libecc": [
+"libecc"
+],
+"antlr/antlr3": [
+"antlr3-java"
+],
+"antlr/antlr4": [
+"antlr4-java"
+],
+"antlr/stringtemplate4": [
+"stringtemplate4"
+],
+"aomediacodec/avm": [
+"avm"
+],
+"aomediacodec/libavif": [
+"libavif"
+],
+"aous72/openjph": [
+"openjph"
+],
+"apache/airflow": [
+"airflow"
+],
+"apache/arrow": [
+"arrow"
+],
+"apache/arrow-java": [
+"arrow-java"
+],
+"apache/avro": [
+"avro"
+],
+"apache/axis-axis2-java-core": [
+"apache-axis2"
+],
+"apache/calcite": [
+"calcite"
+],
+"apache/calcite-avatica": [
+"calcite-avatica"
+],
+"apache/commons-bcel": [
+"apache-commons-bcel"
+],
+"apache/commons-beanutils": [
+"apache-commons-beanutils"
+],
+"apache/commons-cli": [
+"apache-commons-cli"
+],
+"apache/commons-collections": [
+"apache-commons-collections"
+],
+"apache/commons-compress": [
+"apache-commons-compress"
+],
+"apache/commons-csv": [
+"apache-commons-csv"
+],
+"apache/commons-fileupload": [
+"apache-commons-fileupload"
+],
+"apache/commons-geometry": [
+"apache-commons-geometry"
+],
+"apache/commons-imaging": [
+"apache-commons-imaging"
+],
+"apache/commons-jxpath": [
+"apache-commons-jxpath"
+],
+"apache/commons-lang": [
+"apache-commons-lang"
+],
+"apache/commons-math": [
+"apache-commons-math"
+],
+"apache/commons-net": [
+"apache-commons-net"
+],
+"apache/commons-text": [
+"apache-commons-text"
+],
+"apache/commons-validator": [
+"apache-commons-validator"
+],
+"apache/cxf": [
+"apache-cxf"
+],
+"apache/doris": [
+"apache-doris"
+],
+"apache/felix-dev": [
+"apache-felix-dev"
+],
+"apache/groovy": [
+"groovy"
+],
+"apache/hadoop": [
+"hadoop"
+],
+"apache/hive": [
+"hive"
+],
+"apache/httpcomponents-client": [
+"httpcomponents-client"
+],
+"apache/httpcomponents-core": [
+"httpcomponents-core"
+],
+"apache/httpd": [
+"apache-httpd"
+],
+"apache/incubator-brpc": [
+"brpc"
+],
+"apache/logging-log4cxx": [
+"apache-logging-log4cxx"
+],
+"apache/logging-log4j2": [
+"log4j2"
+],
+"apache/lucene": [
+"lucene"
+],
+"apache/maven": [
+"maven",
+"maven-model"
+],
+"apache/opendal": [
+"opendal"
+],
+"apache/pdfbox": [
+"pdfbox"
+],
+"apache/poi": [
+"apache-poi"
+],
+"apache/qpid-proton": [
+"qpid-proton"
+],
+"apache/shiro": [
+"apache-shiro"
+],
+"apache/struts": [
+"struts"
+],
+"apache/thrift": [
+"thrift-c_glib",
+"thrift-cpp",
+"thrift-go",
+"thrift-java",
+"thrift-js",
+"thrift-py",
+"thrift-rb",
+"thrift-rust"
+],
+"apache/tika": [
+"apache-tika"
+],
+"apache/tomcat": [
+"tomcat"
+],
+"apache/trafficserver": [
+"trafficserver"
+],
+"apache/xmlbeans": [
+"xmlbeans"
+],
+"apache/zookeeper": [
+"zookeeper"
+],
+"apple/swift-nio": [
+"swift-nio"
+],
+"apple/swift-protobuf": [
+"swift-protobuf"
+],
+"appneta/tcpreplay": [
+"tcpreplay"
+],
+"aptos-labs/aptos-core": [
+"aptos-core"
+],
+"arashpartow/exprtk": [
+"exprtk"
+],
+"areski/python-nvd3": [
+"python-nvd3"
+],
+"argoproj/argo-cd": [
+"argo"
+],
+"arm-software/astc-encoder": [
+"astc-encoder"
+],
+"arrow-py/arrow": [
+"arrow-py"
+],
+"artifexsoftware/mupdf": [
+"mupdf"
+],
+"arvidn/libtorrent": [
+"libtorrent"
+],
+"arximboldi/immer": [
+"immer"
+],
+"askama-rs/askama": [
+"askama"
+],
+"assimp/assimp": [
+"assimp"
+],
+"astanin/python-tabulate": [
+"python-tabulate"
+],
+"asynchttpclient/async-http-client": [
+"async-http-client"
+],
+"atteo/evo-inflector": [
+"evo-inflector"
+],
+"auth0/java-jwt": [
+"java-jwt"
+],
+"avahi/avahi": [
+"avahi"
+],
+"axboe/fio": [
+"fio"
+],
+"azure/azure-sdk-for-python": [
+"azure-sdk-for-python"
+],
+"azuread/azure-activedirectory-library-for-python": [
+"adal"
+],
+"azuread/microsoft-authentication-library-for-python": [
+"msal"
+],
+"barebox/barebox": [
+"barebox"
+],
+"bazaarvoice/jolt": [
+"jolt"
+],
+"bazelbuild/rules_fuzzing": [
+"bazel-rules-fuzzing-test",
+"bazel-rules-fuzzing-test-java"
+],
+"bblanchon/arduinojson": [
+"arduinojson"
+],
+"bcgit/bc-java": [
+"bc-java"
+],
+"behaviortree/behaviortree": [
+"behaviortreecpp"
+],
+"bellard/quickjs": [
+"quickjs"
+],
+"beltoforion/muparser": [
+"muparser"
+],
+"ben-manes/caffeine": [
+"caffeine"
+],
+"benbjohnson/clock": [
+"clock"
+],
+"benhoyt/inih": [
+"inih"
+],
+"benjaminp/six": [
+"six"
+],
+"benoitc/gunicorn": [
+"gunicorn"
+],
+"betodealmeida/python-rison": [
+"python-rison"
+],
+"bitcoin/bitcoin": [
+"bitcoin-core"
+],
+"biydnd/et_xmlfile": [
+"et-xmlfile"
+],
+"blosc/c-blosc": [
+"c-blosc"
+],
+"blosc/c-blosc2": [
+"c-blosc2"
+],
+"bluez/bluez": [
+"bluez"
+],
+"bmc/digest": [
+"digest"
+],
+"boostorg/beast": [
+"boost-beast"
+],
+"boostorg/boost": [
+"boost"
+],
+"boostorg/json": [
+"boost-json"
+],
+"boto/botocore": [
+"botocore"
+],
+"brainboxdotcc/dpp": [
+"dpp"
+],
+"brettwooldridge/hikaricp": [
+"hikaricp"
+],
+"brianmario/yajl-ruby": [
+"yajl-ruby"
+],
+"briansmith/ring": [
+"ring"
+],
+"buddhi1980/mandelbulber2": [
+"mandelbulber"
+],
+"bufbuild/protoc-gen-validate": [
+"protoc-gen-validate"
+],
+"bufbuild/protocompile": [
+"protocompile"
+],
+"buger/jsonparser": [
+"jsonparser"
+],
+"burntsushi/toml": [
+"burntsushi-toml"
+],
+"bus1/dbus-broker": [
+"dbus-broker"
+],
+"bytecodealliance/javy": [
+"javy"
+],
+"bytecodealliance/wasm-micro-runtime": [
+"wamr"
+],
+"bytecodealliance/wasmtime": [
+"wasmtime"
+],
+"bytedance/sonic": [
+"sonic"
+],
+"bytedeco/javacpp": [
+"javacpp"
+],
+"c-ares/c-ares": [
+"c-ares"
+],
+"caddyserver/caddy": [
+"caddy"
+],
+"canvg/canvg": [
+"canvg"
+],
+"capnproto/capnproto": [
+"capnproto"
+],
+"capstone-engine/capstone": [
+"capstone"
+],
+"catenacyber/elliptic-curve-differential-fuzzer": [
+"ecc-diff-fuzzer"
+],
+"catenacyber/ngolo-fuzzing": [
+"ngolo-fuzzing",
+"ngolo-fuzzing-x"
+],
+"ccc-spdm-tools/spdm-rs": [
+"spdm-rs"
+],
+"cel-expr/cel-go": [
+"cel-go"
+],
+"cel-rust/cel-rust": [
+"cel-rust"
+],
+"celestiaorg/smt": [
+"smt"
+],
+"census-instrumentation/opencensus-cpp": [
+"opencensus-cpp"
+],
+"census-instrumentation/opencensus-go": [
+"opencensus-go"
+],
+"census-instrumentation/opencensus-java": [
+"opencensus-java"
+],
+"census-instrumentation/opencensus-python": [
+"opencensus-python"
+],
+"cert-manager/cert-manager": [
+"cert-manager"
+],
+"cesanta/mongoose": [
+"mongoose"
+],
+"cesnet/libyang": [
+"libyang"
+],
+"cfengine/core": [
+"cfengine"
+],
+"cglib/cglib": [
+"cglib"
+],
+"checkstyle/checkstyle": [
+"checkstyle"
+],
+"chenshuo/muduo": [
+"muduo"
+],
+"chronotope/chrono": [
+"chrono"
+],
+"chzyer/readline": [
+"go-readline"
+],
+"cilium/cilium": [
+"cilium"
+],
+"cisco-talos/clamav-devel": [
+"clamav"
+],
+"cisco/libsrtp": [
+"libsrtp"
+],
+"cisco/openh264": [
+"openh264"
+],
+"civetweb/civetweb": [
+"civetweb"
+],
+"clbanning/mxj": [
+"mxj"
+],
+"clibs/clib": [
+"clib"
+],
+"clickhouse/clickhouse": [
+"clickhouse"
+],
+"cloud-custodian/cloud-custodian": [
+"cloud-custodian"
+],
+"cloud-hypervisor/cloud-hypervisor": [
+"cloud-hypervisor"
+],
+"cloudflare/circl": [
+"circl"
+],
+"cloudflare/quiche": [
+"quiche-cloudflare"
+],
+"cloudflare/roughtime": [
+"roughtime"
+],
+"clusterlabs/pacemaker": [
+"pacemaker"
+],
+"cockroachdb/cockroach": [
+"cockroachdb"
+],
+"codehaus-plexus/plexus-utils": [
+"plexus-utils"
+],
+"codeintelligencetesting/jazzer": [
+"java-example",
+"javascript-example",
+"typescript-example"
+],
+"collective/icalendar": [
+"icalendar"
+],
+"cometbft/cometbft": [
+"tendermint"
+],
+"commonmark/cmark": [
+"cmark"
+],
+"confidential-containers/td-shim": [
+"td-shim"
+],
+"confluentinc/confluent-kafka-python": [
+"kafka"
+],
+"containerd/containerd": [
+"containerd"
+],
+"coredns/coredns": [
+"go-coredns"
+],
+"coreutils/coreutils": [
+"coreutils"
+],
+"cosmos/cosmos-sdk": [
+"cosmos-sdk"
+],
+"coturn/coturn": [
+"coturn"
+],
+"cowtowncoder/java-uuid-generator": [
+"java-uuid-generator"
+],
+"cpburnz/python-pathspec": [
+"python-pathspec"
+],
+"cppcheck-opensource/cppcheck": [
+"cppcheck"
+],
+"cri-o/cri-o": [
+"cri-o"
+],
+"crossplane/crossplane": [
+"crossplane"
+],
+"crowcpp/crow": [
+"crow"
+],
+"cubefs/cubefs": [
+"cubefs"
+],
+"curl/curl": [
+"curl"
+],
+"d3/d3": [
+"d3"
+],
+"dabeaz/ply": [
+"ply"
+],
+"danbloomberg/leptonica": [
+"leptonica"
+],
+"danielaparker/jsoncons": [
+"jsoncons"
+],
+"dapr/dapr": [
+"dapr"
+],
+"darktable-org/rawspeed": [
+"librawspeed"
+],
+"dart-lang/sdk": [
+"dart"
+],
+"dask/dask": [
+"dask"
+],
+"datasketches/sketches-core": [
+"sketches-core"
+],
+"dateutil/dateutil": [
+"pydateutil"
+],
+"davea42/libdwarf-code": [
+"libdwarf"
+],
+"davegamble/cjson": [
+"cjson"
+],
+"daviddrysdale/python-phonenumbers": [
+"python-phonenumbers"
+],
+"davidhalter/jedi": [
+"jedi"
+],
+"davidhalter/parso": [
+"parso"
+],
+"dbry/wavpack": [
+"wavpack"
+],
+"dcmtk/dcmtk": [
+"dcmtk"
+],
+"decalage2/olefile": [
+"olefile"
+],
+"denoland/deno": [
+"deno"
+],
+"derek73/python-nameparser": [
+"python-nameparser"
+],
+"dgasmith/opt_einsum": [
+"opt_einsum"
+],
+"dgraph-io/dgraph": [
+"dgraph"
+],
+"dhbaird/easywsclient": [
+"easywsclient"
+],
+"distribution/distribution": [
+"distribution"
+],
+"django/django": [
+"django"
+],
+"dloebl/cgif": [
+"cgif"
+],
+"dmtf/libspdm": [
+"libspdm"
+],
+"dnp3/opendnp3": [
+"opendnp3"
+],
+"doboy/underscore": [
+"underscore"
+],
+"dom4j/dom4j": [
+"dom4j"
+],
+"dopstar/requests-ntlm2": [
+"ntlm2"
+],
+"dovecot/core": [
+"dovecot"
+],
+"dpranke/pyjson5": [
+"pyjson5"
+],
+"dragonflyoss/dragonfly": [
+"dragonfly"
+],
+"dreamerc/mpg123": [
+"mpg123"
+],
+"drewnoakes/metadata-extractor": [
+"metadata-extractor"
+],
+"driftregion/iso14229": [
+"iso14229"
+],
+"dropbox/rust-brotli": [
+"rust-brotli"
+],
+"dropwizard/dropwizard": [
+"dropwizard"
+],
+"dtolnay/itoa": [
+"itoa"
+],
+"dtolnay/ryu": [
+"ryu"
+],
+"dtolnay/serde-yaml": [
+"serde-yaml"
+],
+"dtolnay/unsafe-libyaml": [
+"unsafe-libyaml"
+],
+"duckdb/duckdb": [
+"duckdb"
+],
+"dunglas/mercure": [
+"mercure"
+],
+"dustin/go-humanize": [
+"go-humanize"
+],
+"eaftan/safere": [
+"safere"
+],
+"ebourg/jsign": [
+"jsign"
+],
+"eclipse-cyclonedds/cyclonedds": [
+"cyclonedds"
+],
+"eclipse-ee4j/angus-mail": [
+"angus-mail"
+],
+"eclipse-ee4j/jax-rpc-ri": [
+"xnio-api"
+],
+"eclipse-ee4j/jaxb-ri": [
+"jaxb"
+],
+"eclipse-ee4j/jersey": [
+"jersey"
+],
+"eclipse-ee4j/jstl-api": [
+"jstl-api"
+],
+"eclipse-ee4j/mail": [
+"jakarta-mail-api"
+],
+"eclipse-ee4j/tyrus": [
+"tyrus"
+],
+"eclipse-equinox/equinox": [
+"eclipse-equinox"
+],
+"eclipse-mosquitto/mosquitto": [
+"mosquitto"
+],
+"eclipse-zenoh/zenoh": [
+"zenoh"
+],
+"eclipse/jetty": [
+"jetty"
+],
+"eclipse/org": [
+"aspectj"
+],
+"eclipse/rdf4j": [
+"rdf4j"
+],
+"edenhill/librdkafka": [
+"librdkafka"
+],
+"edgewall/genshi": [
+"genshi"
+],
+"eliben/pycparser": [
+"pycparser"
+],
+"emweb/wt": [
+"wt"
+],
+"encode/httpcore": [
+"httpcore"
+],
+"encode/httpx": [
+"httpx"
+],
+"envoyproxy/envoy": [
+"envoy"
+],
+"envoyproxy/gateway": [
+"gateway"
+],
+"eprosima/fast-dds": [
+"fast-dds"
+],
+"erigontech/erigon": [
+"erigon"
+],
+"erikrose/chardet": [
+"chardet"
+],
+"erikrose/parsimonious": [
+"parsimonious"
+],
+"ermig1979/simd": [
+"simd"
+],
+"esnet/iperf": [
+"iperf"
+],
+"esotericsoftware/kryo": [
+"kryo"
+],
+"esotericsoftware/yamlbeans": [
+"yamlbeans"
+],
+"espeak-ng/espeak-ng": [
+"espeak-ng"
+],
+"etcd-io/etcd": [
+"etcd"
+],
+"ethereum/go-ethereum": [
+"go-ethereum"
+],
+"etingof/pyasn1": [
+"pyasn1"
+],
+"evanphx/json-patch": [
+"json-patch"
+],
+"executablebooks/markdown-it-py": [
+"markdown-it-py"
+],
+"executablebooks/mdit-py-plugins": [
+"mdit-py-plugins"
+],
+"executablebooks/mdurl": [
+"mdurl"
+],
+"exelearning/exelearning": [
+"exelearning"
+],
+"exiv2/exiv2": [
+"exiv2"
+],
+"expr-lang/expr": [
+"expr"
+],
+"facebook/hermes": [
+"hermes"
+],
+"facebook/proxygen": [
+"proxygen"
+],
+"facebook/rocksdb": [
+"rocksdb"
+],
+"facebook/time": [
+"time"
+],
+"facebook/yoga": [
+"yoga"
+],
+"facebook/zstd": [
+"zstd"
+],
+"facebookexperimental/starlark-rust": [
+"starlark-rust"
+],
+"facelessuser/soupsieve": [
+"soupsieve"
+],
+"faisalman/ua-parser-js": [
+"ua-parser-js"
+],
+"fallow-rs/fallow": [
+"fallow"
+],
+"fancycode/lzma-fuzz": [
+"lzma"
+],
+"fangyidong/json-simple": [
+"json-simple"
+],
+"fasseg/exp4j": [
+"exp4j"
+],
+"fasterxml/jackson-core": [
+"jackson-core"
+],
+"fasterxml/jackson-databind": [
+"jackson-databind"
+],
+"fasterxml/jackson-dataformat-xml": [
+"jackson-dataformat-xml"
+],
+"fasterxml/jackson-dataformats-binary": [
+"jackson-dataformats-binary"
+],
+"fasterxml/jackson-dataformats-text": [
+"jackson-dataformats-text"
+],
+"fasterxml/jackson-datatype-joda": [
+"jackson-datatype-joda"
+],
+"fasterxml/jackson-datatypes-collections": [
+"jackson-datatypes-collections"
+],
+"fasterxml/jackson-modules-java8": [
+"jackson-modules-java8"
+],
+"fasterxml/woodstox": [
+"woodstox"
+],
+"fastfloat/fast_float": [
+"fast_float"
+],
+"fastify/fastify": [
+"fastify"
+],
+"ffmpeg/ffmpeg": [
+"ffmpeg"
+],
+"ffms/ffms2": [
+"ffms2"
+],
+"fftw/fftw3": [
+"fftw3"
+],
+"file/file": [
+"file"
+],
+"filecoin-project/lotus": [
+"lotus"
+],
+"firebase/firebase-ios-sdk": [
+"firestore"
+],
+"fluent/fluent-bit": [
+"fluent-bit"
+],
+"fluxcd/flux2": [
+"fluxcd"
+],
+"flyway/flyway": [
+"flyway"
+],
+"fmtlib/fmt": [
+"fmt"
+],
+"freeradius/freeradius-server": [
+"freeradius"
+],
+"freerdp/freerdp": [
+"freerdp"
+],
+"freetype/freetype2-testing": [
+"freetype2"
+],
+"fribidi/fribidi": [
+"fribidi"
+],
+"frommi/miniz_oxide": [
+"miniz_oxide"
+],
+"frrouting/frr": [
+"frr"
+],
+"fsnotify/fsnotify": [
+"fsnotify"
+],
+"fsspec/filesystem_spec": [
+"filesystem_spec"
+],
+"fusesource/jansi": [
+"jansi"
+],
+"fwupd/fwupd": [
+"fwupd"
+],
+"gabime/spdlog": [
+"spdlog"
+],
+"gabrielfalcao/httpretty": [
+"httpretty"
+],
+"gavinhoward/bc": [
+"bc-gh"
+],
+"geal/nom": [
+"nom"
+],
+"gfx-rs/naga": [
+"naga"
+],
+"ggerganov/llama": [
+"llamacpp"
+],
+"giampaolo/psutil": [
+"psutil"
+],
+"gimli-rs/gimli": [
+"gimli"
+],
+"git/git": [
+"git"
+],
+"gitoxidelabs/gitoxide": [
+"gitoxide"
+],
+"gitpython-developers/gitdb": [
+"gitdb"
+],
+"gitpython-developers/gitpython": [
+"gitpython"
+],
+"globaleaks/globaleaks-whistleblowing-software": [
+"globaleaks-whistleblowing-software"
+],
+"gnuaspell/aspell": [
+"aspell"
+],
+"go-git/go-git": [
+"go-git"
+],
+"go-gitea/gitea": [
+"gitea"
+],
+"go-ldap/ldap": [
+"go-ldap"
+],
+"go-ole/go-ole": [
+"go-ole"
+],
+"go-yaml/yaml": [
+"go-yaml"
+],
+"gogo/protobuf": [
+"gogo-protobuf"
+],
+"gohugoio/hugo": [
+"hugo"
+],
+"golang/appengine": [
+"golang-appengine"
+],
+"golang/go": [
+"golang"
+],
+"golang/snappy": [
+"go-snappy"
+],
+"google/bloaty": [
+"bloaty"
+],
+"google/brotli": [
+"brotli",
+"brotli-java"
+],
+"google/brunsli": [
+"brunsli"
+],
+"google/cctz": [
+"cctz"
+],
+"google/cel-cpp": [
+"cel-cpp"
+],
+"google/closure-compiler": [
+"closure-compiler"
+],
+"google/closure-library": [
+"closure-library"
+],
+"google/double-conversion": [
+"double-conversion"
+],
+"google/draco": [
+"draco"
+],
+"google/flatbuffers": [
+"flatbuffers"
+],
+"google/fuzzer-test-suite": [
+"fuzzing-puzzles"
+],
+"google/fuzztest": [
+"fuzztest-example",
+"fuzztest-raksha"
+],
+"google/glog": [
+"glog"
+],
+"google/go-attestation": [
+"go-attestation"
+],
+"google/go-cmp": [
+"go-cmp"
+],
+"google/go-containerregistry": [
+"go-containerregistry"
+],
+"google/gonids": [
+"gonids"
+],
+"google/gopacket": [
+"gopacket"
+],
+"google/gson": [
+"gson"
+],
+"google/guava": [
+"guava"
+],
+"google/guetzli": [
+"guetzli"
+],
+"google/guice": [
+"guice"
+],
+"google/highwayhash": [
+"highwayhash"
+],
+"google/http_pattern_matcher": [
+"http-pattern-matcher"
+],
+"google/jimfs": [
+"jimfs"
+],
+"google/json5format": [
+"json5format"
+],
+"google/jsonnet": [
+"jsonnet"
+],
+"google/jwt_verify_lib": [
+"jwt-verify-lib"
+],
+"google/leveldb": [
+"leveldb"
+],
+"google/libphonenumber": [
+"libphonenumber"
+],
+"google/libprotobuf-mutator": [
+"libprotobuf-mutator"
+],
+"google/libultrahdr": [
+"libultrahdr"
+],
+"google/lldb-eval": [
+"lldb-eval"
+],
+"google/mdbook-i18n-helpers": [
+"mdbook-i18n-helpers"
+],
+"google/mtail": [
+"mtail"
+],
+"google/myanmar-tools": [
+"myanmar-tools"
+],
+"google/opensk": [
+"opensk"
+],
+"google/oss-fuzz": [
+"example",
+"vulnerable-project"
+],
+"google/pasta": [
+"pasta"
+],
+"google/pprof": [
+"go-pprof"
+],
+"google/quiche": [
+"quiche"
+],
+"google/re2": [
+"re2"
+],
+"google/s2geometry": [
+"s2geometry"
+],
+"google/sentencepiece": [
+"sentencepiece"
+],
+"google/shaderc": [
+"shaderc"
+],
+"google/shlex": [
+"go-shlex"
+],
+"google/snappy": [
+"snappy"
+],
+"google/syzkaller": [
+"syzkaller"
+],
+"google/tcmalloc": [
+"tcmalloc"
+],
+"google/tink": [
+"tink-cc"
+],
+"google/woff2": [
+"woff2"
+],
+"google/wuffs": [
+"wuffs"
+],
+"google/xnnpack": [
+"xnnpack"
+],
+"google/zopfli": [
+"zopfli"
+],
+"googleapis/google-api-python-client": [
+"g-api-python-client"
+],
+"googleapis/google-auth-library-java": [
+"g-auth-library-java"
+],
+"googleapis/google-auth-library-python": [
+"g-api-auth-library-python"
+],
+"googleapis/google-auth-library-python-httplib2": [
+"g-api-auth-httplib2"
+],
+"googleapis/google-auth-library-python-oauthlib": [
+"g-api-py-oauthlib"
+],
+"googleapis/google-cloud-go": [
+"gcloud-go"
+],
+"googleapis/google-cloud-python": [
+"g-api-python-tasks",
+"g-api-resource-manager",
+"gc-iam"
+],
+"googleapis/google-http-java-client": [
+"g-http-java-client"
+],
+"googleapis/google-oauth-java-client": [
+"g-oauth-java-client"
+],
+"googleapis/google-resumable-media-python": [
+"g-api-resumable-media-python"
+],
+"googleapis/oauth2client": [
+"oauth2"
+],
+"googleapis/proto-plus-python": [
+"proto-plus-python"
+],
+"googleapis/python-api-common-protos": [
+"g-api-py-api-common-protos"
+],
+"googleapis/python-api-core": [
+"g-apis-py-api-core"
+],
+"googleapis/python-bigquery": [
+"g-py-bigquery"
+],
+"googleapis/python-bigquery-storage": [
+"g-api-python-bigquery-storage"
+],
+"googleapis/python-cloud-core": [
+"g-api-python-cloud-core"
+],
+"googleapis/python-crc32c": [
+"g-py-crc32c"
+],
+"googleapis/python-error-reporting": [
+"gcloud-error-py"
+],
+"googleapis/python-firestore": [
+"g-api-python-firestore"
+],
+"googleapis/python-logging": [
+"g-cloud-logging-py"
+],
+"googleapis/python-pubsub": [
+"g-api-pubsub"
+],
+"googleapis/python-secret-manager": [
+"g-api-secret-manager"
+],
+"googleapis/python-storage": [
+"gcp-python-cloud-storage"
+],
+"googlecloudplatform/config-validator": [
+"config-validator"
+],
+"googlecloudplatform/esp-v2": [
+"esp-v2"
+],
+"googlecloudplatform/magic-modules": [
+"magic-modules"
+],
+"googlefonts/fontations": [
+"fontations"
+],
+"googleprojectzero/sockfuzzer": [
+"xnu"
+],
+"gosnmp/gosnmp": [
+"gosnmp"
+],
+"gpac/gpac": [
+"gpac"
+],
+"grafana/loki": [
+"loki"
+],
+"graphql-java/graphql-java": [
+"graphql-java"
+],
+"gravitational/teleport": [
+"teleport"
+],
+"greenmail-mail-test/greenmail": [
+"greenmail"
+],
+"greg7mdp/parallel-hashmap": [
+"phmap"
+],
+"grindsa/acme2certifier": [
+"acme2certifier"
+],
+"gristlabs/asttokens": [
+"asttokens"
+],
+"grokimagecompression/grok": [
+"grok"
+],
+"grpc-ecosystem/grpc-gateway": [
+"grpc-gateway"
+],
+"grpc-ecosystem/grpc-httpjson-transcoding": [
+"grpc-httpjson-transcoding"
+],
+"grpc/grpc": [
+"grpc-py"
+],
+"grpc/grpc-go": [
+"grpc-go"
+],
+"grpc/grpc-swift": [
+"grpc-swift"
+],
+"gssapi/gss-ntlmssp": [
+"gss-ntlmssp"
+],
+"gweis/isodate": [
+"isodate"
+],
+"gwtproject/gwt": [
+"gwt"
+],
+"gyscos/zstd-rs": [
+"zstd-safe"
+],
+"h2database/h2database": [
+"h2database"
+],
+"h2o/h2o": [
+"h2o"
+],
+"h2o/picotls": [
+"picotls"
+],
+"h5py/h5py": [
+"h5py"
+],
+"halide/halide": [
+"halide"
+],
+"hamcrest/javahamcrest": [
+"hamcrest"
+],
+"haproxy/haproxy": [
+"haproxy"
+],
+"haraldk/twelvemonkeys": [
+"twelve-monkeys"
+],
+"harfbuzz/harfbuzz": [
+"harfbuzz"
+],
+"harfbuzz/harfrust": [
+"harfrust"
+],
+"hashicorp/hcl": [
+"hcl"
+],
+"hathach/tinyusb": [
+"tinyusb"
+],
+"hdfgroup/hdf5": [
+"hdf5"
+],
+"hdrhistogram/hdrhistogram": [
+"hdrhistogram"
+],
+"hellobertrand/zxc": [
+"zxc"
+],
+"helm/helm": [
+"helm"
+],
+"hercules-team/augeas": [
+"augeas"
+],
+"hhatto/autopep8": [
+"autopep8"
+],
+"hibernate/hibernate-orm": [
+"hibernate-orm"
+],
+"hibernate/hibernate-validator": [
+"hibernate-validator"
+],
+"hickory-dns/hickory-dns": [
+"trust-dns"
+],
+"holiman/uint256": [
+"uint256"
+],
+"horejsek/python-fastjsonschema": [
+"python-fastjsonschema"
+],
+"howardhinnant/date": [
+"date"
+],
+"htacg/tidy-html5": [
+"tidy-html5"
+],
+"html5lib/html5lib-python": [
+"html5lib-python"
+],
+"htmlunit/htmlunit": [
+"htmlunit"
+],
+"httplib2/httplib2": [
+"httplib2"
+],
+"hugelgupf/p9": [
+"p9"
+],
+"hukkinj1/tomli": [
+"tomli"
+],
+"hunspell/hunspell": [
+"hunspell"
+],
+"hunterhacker/jdom": [
+"jdom"
+],
+"hynek/pem": [
+"pem"
+],
+"hyperium/http": [
+"hyperium"
+],
+"hyperledger/fabric": [
+"fabric"
+],
+"hyperledger/iroha": [
+"iroha"
+],
+"hyperrealm/libconfig": [
+"libconfig"
+],
+"hyrise/sql-parser": [
+"sql-parser"
+],
+"ia0/data-encoding": [
+"data-encoding"
+],
+"ianlancetaylor/demangle": [
+"demangle"
+],
+"ibireme/yyjson": [
+"yyjson"
+],
+"ical4j/ical4j": [
+"ical4j"
+],
+"icrar/ijson": [
+"ijson"
+],
+"igraph/igraph": [
+"igraph"
+],
+"ijhack/qtpass": [
+"qtpass"
+],
+"ijl/orjson": [
+"orjson"
+],
+"image-rs/image": [
+"image-rs"
+],
+"image-rs/image-png": [
+"image-png"
+],
+"imageio/imageio": [
+"imageio"
+],
+"imagemagick/imagemagick": [
+"imagemagick"
+],
+"influxdata/influxdb": [
+"influxdb"
+],
+"insomniacslk/dhcp": [
+"go-dhcp"
+],
+"instagram/libcst": [
+"libcst"
+],
+"integritychain/fips203": [
+"fips203"
+],
+"intel/migtd": [
+"migtd"
+],
+"intel/vtpm-td": [
+"vtpm-td"
+],
+"invl/retry": [
+"retry"
+],
+"ipfs/go-datastore": [
+"ipfs"
+],
+"ipython/ipykernel": [
+"ipykernel"
+],
+"ipython/ipython": [
+"ipython"
+],
+"irssi/irssi": [
+"irssi"
+],
+"istio/istio": [
+"istio"
+],
+"istio/ztunnel": [
+"istio-ztunnel"
+],
+"itext/itext7": [
+"itext7"
+],
+"ittiam-systems/libavc": [
+"libavc"
+],
+"ittiam-systems/libhevc": [
+"libhevc"
+],
+"ittiam-systems/libmpeg2": [
+"libmpeg2"
+],
+"ittiam-systems/libxaac": [
+"libxaac"
+],
+"iupac-inchi/inchi": [
+"inchi"
+],
+"jakartaee/jsonp-api": [
+"jsonp-api"
+],
+"janet-lang/janet": [
+"janet"
+],
+"janino-compiler/janino": [
+"janino"
+],
+"jaraco/configparser": [
+"configparser"
+],
+"jaraco/zipp": [
+"zipp"
+],
+"jarro2783/cxxopts": [
+"cxxopts"
+],
+"java-diff-utils/java-diff-utils": [
+"java-diff-utils"
+],
+"javaparser/javaparser": [
+"javaparser"
+],
+"jawah/charset_normalizer": [
+"charset_normalizer"
+],
+"jazzband/pathlib2": [
+"pathlib2"
+],
+"jbeder/yaml-cpp": [
+"yaml-cpp"
+],
+"jborean93/ntlm-auth": [
+"ntlm-auth"
+],
+"jboss-javassist/javassist": [
+"javassist"
+],
+"jboss-logging/jboss-logging": [
+"jboss-logging"
+],
+"jedisct1/libsodium": [
+"libsodium"
+],
+"jelmer/dulwich": [
+"dulwich"
+],
+"jerryscript-project/jerryscript": [
+"jerryscript"
+],
+"jettison-json/jettison": [
+"jettison"
+],
+"jflex-de/jflex": [
+"jflex"
+],
+"jfree/jfreechart": [
+"jfreechart"
+],
+"jhy/jsoup": [
+"jsoup"
+],
+"jimp-dev/jimp": [
+"jimp"
+],
+"jline/jline3": [
+"jline3"
+],
+"jmcnamara/libxlsxwriter": [
+"libxlsxwriter"
+],
+"jmcnamara/xlsxwriter": [
+"xlsxwriter"
+],
+"jmespath/jmespath": [
+"jmespathpy"
+],
+"jmrozanec/cron-utils": [
+"cron-utils"
+],
+"jmurty/java-xmlbuilder": [
+"java-xmlbuilder"
+],
+"joblib/joblib": [
+"joblib"
+],
+"jodaorg/joda-convert": [
+"joda-convert"
+],
+"jodaorg/joda-time": [
+"joda-time"
+],
+"jonathanmetzman/cifuzz-example": [
+"cifuzz-example"
+],
+"jooq/jooq": [
+"jooq"
+],
+"jopt-simple/jopt-simple": [
+"jopt-simple"
+],
+"joshdata/python-email-validator": [
+"python-email-validator"
+],
+"jpadilla/pyjwt": [
+"pyjwt"
+],
+"jpeg-js/jpeg-js": [
+"jpeg-js"
+],
+"jqlang/jq": [
+"jq"
+],
+"jrfonseca/gprof2dot": [
+"gprof2dot"
+],
+"jruby/joni": [
+"joni"
+],
+"json-c/json-c": [
+"json-c"
+],
+"json-iterator/go": [
+"go-json-iterator"
+],
+"json-path/jsonpath": [
+"jsonpath"
+],
+"jsonpickle/jsonpickle": [
+"jsonpickle"
+],
+"jsqlparser/jsqlparser": [
+"jsqlparser"
+],
+"jsvine/pdfplumber": [
+"pdfplumber"
+],
+"jtablesaw/tablesaw": [
+"tablesaw"
+],
+"juju/juju": [
+"juju"
+],
+"julian/jsonschema": [
+"jsonschema"
+],
+"juliastrings/utf8proc": [
+"utf8proc"
+],
+"junrar/junrar": [
+"junrar"
+],
+"jupyter-server/jupyter_server": [
+"jupyter_server"
+],
+"jupyter/nbclassic": [
+"nbclassic"
+],
+"jupyter/nbconvert": [
+"jupyter-nbconvert"
+],
+"jupyter/nbformat": [
+"nbformat"
+],
+"jxlsteam/jxls": [
+"jxls"
+],
+"kalcutter/gfwx": [
+"gfwx"
+],
+"kamailio/kamailio": [
+"kamailio"
+],
+"kellyjonbrazil/jc": [
+"jc"
+],
+"keras-team/keras": [
+"keras"
+],
+"keycloak/keycloak": [
+"keycloak"
+],
+"keystone-engine/keystone": [
+"keystone"
+],
+"khaledhosny/ots": [
+"ots"
+],
+"khronosgroup/glslang": [
+"glslang"
+],
+"khronosgroup/spirv-cross": [
+"spirv-cross"
+],
+"khronosgroup/spirv-tools": [
+"spirv-tools"
+],
+"khronosgroup/vulkan-loader": [
+"vulkan-loader"
+],
+"kiegroup/kie-soup": [
+"kie-soup"
+],
+"kinetiknz/nestegg": [
+"nestegg"
+],
+"kiorky/croniter": [
+"croniter"
+],
+"kislyuk/argcomplete": [
+"argcomplete"
+],
+"kjd/idna": [
+"idna"
+],
+"kjdev/hoextdown": [
+"hoextdown"
+],
+"klauspost/compress": [
+"compress"
+],
+"kludex/python-multipart": [
+"python-multipart"
+],
+"knative/serving": [
+"knative"
+],
+"knik0/faad2": [
+"faad2"
+],
+"kohsuke/args4j": [
+"args4j"
+],
+"kornelski/pngquant": [
+"pngquant"
+],
+"kozea/tinycss2": [
+"tinycss2"
+],
+"krb5/krb5": [
+"krb5"
+],
+"kuba--/zip": [
+"zip"
+],
+"kubearmor/kubearmor": [
+"kubearmor"
+],
+"kubeedge/kubeedge": [
+"kubeedge"
+],
+"kubeflow/katib": [
+"kubeflow-katib"
+],
+"kubeflow/model-registry": [
+"kubeflow-model-registry"
+],
+"kubeflow/pipelines": [
+"kubeflow-pipelines"
+],
+"kubeflow/spark-operator": [
+"kubeflow-spark-operator"
+],
+"kubernetes-sigs/cluster-api": [
+"kubernetes-cluster-api"
+],
+"kubernetes/kubernetes": [
+"kubernetes"
+],
+"kubevirt/kubevirt": [
+"kubevirt"
+],
+"kvesteri/sqlalchemy-utils": [
+"sqlalchemy-utils"
+],
+"kyverno/kyverno": [
+"kyverno"
+],
+"lark-parser/lark": [
+"lark-parser"
+],
+"lballabio/quantlib": [
+"quantlib"
+],
+"leethomason/tinyxml2": [
+"tinyxml2"
+],
+"legrandin/pycryptodome": [
+"pycryptodome"
+],
+"leonidas-from-xiv/node-xml2js": [
+"node-xml2js"
+],
+"libarchive/libarchive": [
+"libarchive"
+],
+"libass/libass": [
+"libass"
+],
+"libbpf/libbpf": [
+"libbpf"
+],
+"libevent/libevent": [
+"libevent"
+],
+"libexif/libexif": [
+"libexif"
+],
+"libexpat/libexpat": [
+"expat"
+],
+"libfuse/libfuse": [
+"libfuse"
+],
+"libgd/libgd": [
+"libgd"
+],
+"libgit2/libgit2": [
+"libgit2"
+],
+"libical/libical": [
+"libical"
+],
+"libigl/libigl": [
+"libigl"
+],
+"libimobiledevice/libplist": [
+"libplist"
+],
+"libjpeg-turbo/libjpeg-turbo": [
+"libjpeg-turbo"
+],
+"libjxl/libjxl": [
+"libjxl"
+],
+"liblouis/liblouis": [
+"liblouis"
+],
+"libproxy/libproxy": [
+"libproxy"
+],
+"libra/libra": [
+"libra"
+],
+"libraw/libraw": [
+"libraw"
+],
+"libredwg/libredwg": [
+"libredwg"
+],
+"libressl/portable": [
+"libressl"
+],
+"librosa/librosa": [
+"librosa"
+],
+"libsndfile/libsndfile": [
+"libsndfile"
+],
+"libssh2/libssh2": [
+"libssh2"
+],
+"libunwind/libunwind": [
+"libunwind"
+],
+"libusb/libusb": [
+"libusb"
+],
+"libvips/libvips": [
+"libvips"
+],
+"libvnc/libvncserver": [
+"libvnc"
+],
+"libxls/libxls": [
+"libxls"
+],
+"libyal/libfplist": [
+"libyal"
+],
+"life4/textdistance": [
+"textdistance"
+],
+"lighttpd/lighttpd1": [
+"lighttpd"
+],
+"ligurio/luzer": [
+"lua-example"
+],
+"lima-vm/lima": [
+"lima"
+],
+"linkerd/linkerd2": [
+"linkerd2"
+],
+"linkerd/linkerd2-proxy": [
+"linkerd2-proxy"
+],
+"lipnitsk/libcue": [
+"libcue"
+],
+"lipoja/urlextract": [
+"urlextract"
+],
+"lit/lit": [
+"lit"
+],
+"litmuschaos/litmus": [
+"litmuschaos"
+],
+"ljharb/qs": [
+"qs"
+],
+"lldpd/lldpd": [
+"lldpd"
+],
+"llvm/llvm-project": [
+"llvm",
+"llvm_libcxx",
+"llvm_libcxxabi"
+],
+"locationtech/jts": [
+"jts"
+],
+"locationtech/spatial4j": [
+"spatial4j"
+],
+"lodash/lodash": [
+"lodash"
+],
+"looker-open-source/sdk-codegen": [
+"looker-sdk"
+],
+"lovell/sharp": [
+"sharp"
+],
+"lpereira/lwan": [
+"lwan"
+],
+"lsh123/xmlsec": [
+"xmlsec"
+],
+"lua/lua": [
+"lua"
+],
+"lvandeve/lodepng": [
+"lodepng"
+],
+"lxc/lxc": [
+"lxc"
+],
+"lxml/lxml": [
+"lxml"
+],
+"lz4/lz4": [
+"lz4",
+"python-lz4"
+],
+"mackron/dr_libs": [
+"dr_libs"
+],
+"madler/zlib": [
+"bad_example",
+"zlib"
+],
+"mahmoud/face": [
+"face"
+],
+"mahmoud/glom": [
+"glom"
+],
+"mapserver/mapserver": [
+"mapserver"
+],
+"mariadb-corporation/mariadb-connector-j": [
+"mariadb-connector-j"
+],
+"mariadb/server": [
+"mariadb"
+],
+"martinblech/xmltodict": [
+"xmltodict"
+],
+"marzer/tomlplusplus": [
+"tomlplusplus"
+],
+"mashape/unirest-java": [
+"unirest-java"
+],
+"matplotlib/matplotlib": [
+"matplotlib"
+],
+"matthewwithanm/python-markdownify": [
+"python-markdownify"
+],
+"mattn/go-sqlite3": [
+"go-sqlite3"
+],
+"mbed-tls/mbedtls": [
+"mbedtls"
+],
+"mdbtools/mdbtools": [
+"mdbtools"
+],
+"meetecho/janus-gateway": [
+"janus-gateway"
+],
+"memcached/memcached": [
+"memcached"
+],
+"metallb/metallb": [
+"metallb"
+],
+"mgeisler/textwrap": [
+"textwrap"
+],
+"micheles/decorator": [
+"decorator"
+],
+"micronaut-projects/micronaut-core": [
+"micronaut"
+],
+"microsoft/mfcmapi": [
+"mfcmapi"
+],
+"microsoft/ms-tpm-20-ref": [
+"ms-tpm-20-ref"
+],
+"microsoft/msquic": [
+"msquic"
+],
+"microsoft/presidio": [
+"presidio"
+],
+"microsoft/tslib": [
+"tslib"
+],
+"microsoft/typescript": [
+"typescript"
+],
+"miekg/dns": [
+"go-dns"
+],
+"mity/md4c": [
+"md4c"
+],
+"mkj/dropbear": [
+"dropbear"
+],
+"mkleehammer/pyodbc": [
+"pyodbc"
+],
+"mm2/little-cms": [
+"lcms"
+],
+"mobile-shell/mosh": [
+"mosh"
+],
+"moby/moby": [
+"moby"
+],
+"moddable-opensource/moddable": [
+"xs"
+],
+"monero-project/monero": [
+"monero"
+],
+"mongodb/bson-rust": [
+"bson-rust"
+],
+"mongodb/libmongocrypt": [
+"libmongocrypt"
+],
+"mongodb/mongo-go-driver": [
+"mongo-go-driver"
+],
+"more-itertools/more-itertools": [
+"more-itertools"
+],
+"morganstanley/hobbes": [
+"hobbes"
+],
+"mozilla/bleach": [
+"bleach"
+],
+"mozilla/mp4parse-rust": [
+"mp4parse-rust"
+],
+"mozilla/neqo": [
+"neqo"
+],
+"mozilla/pdf": [
+"pdf-js"
+],
+"mozilla/rhino": [
+"rhino"
+],
+"mozillasecurity/cryptofuzz": [
+"cryptofuzz"
+],
+"mpdavis/python-jose": [
+"python-jose"
+],
+"mpv-player/mpv": [
+"mpv"
+],
+"mrabarnett/mrab-regex": [
+"mrab-regex"
+],
+"mruby/mruby": [
+"mruby"
+],
+"msgpack/msgpack-c": [
+"msgpack-c"
+],
+"msgpack/msgpack-python": [
+"msgpack-python"
+],
+"mvel/mvel": [
+"mvel"
+],
+"mwiede/jsch": [
+"jsch"
+],
+"mwouts/jupytext": [
+"jupytext"
+],
+"mybatis/mybatis-3": [
+"mybatis-3"
+],
+"mysql/mysql-connector-j": [
+"mysql-connector-j"
+],
+"mysql/mysql-server": [
+"mysql-server"
+],
+"mz-automation/libiec61850": [
+"libiec61850"
+],
+"nanopb/nanopb": [
+"nanopb"
+],
+"nats-io/nats-server": [
+"nats"
+],
+"naturalintelligence/fast-xml-parser": [
+"fast-xml-parser"
+],
+"neargye/magic_enum": [
+"magic-enum"
+],
+"necaris/python3-openid": [
+"python3-openid"
+],
+"nedbat/coveragepy": [
+"coveragepy"
+],
+"nemtech/catapult-server": [
+"catapult"
+],
+"neomutt/neomutt": [
+"neomutt"
+],
+"net-snmp/net-snmp": [
+"net-snmp"
+],
+"netaddr/netaddr": [
+"netaddr-py"
+],
+"netdata/netdata": [
+"netdata"
+],
+"netflix/archaius": [
+"archaius-core"
+],
+"netflix/servo": [
+"servo-core"
+],
+"netplex/json-smart-v2": [
+"json-smart-v2"
+],
+"netty/netty": [
+"netty"
+],
+"netty/netty-tcnative": [
+"netty-tcnative"
+],
+"networkx/networkx": [
+"networkx"
+],
+"newville/asteval": [
+"asteval"
+],
+"nfstream/nfstream": [
+"nfstream"
+],
+"nghttp2/nghttp2": [
+"nghttp2"
+],
+"nginx/nginx": [
+"nginx"
+],
+"nginx/njs": [
+"njs"
+],
+"nginx/unit": [
+"unit"
+],
+"nih-at/libzip": [
+"libzip"
+],
+"ninja-build/ninja": [
+"ninja"
+],
+"nlnetlabs/unbound": [
+"unbound"
+],
+"nlohmann/json": [
+"json"
+],
+"nodeca/js-yaml": [
+"js-yaml"
+],
+"nodeca/pako": [
+"pako"
+],
+"nodejs/http-parser": [
+"http-parser"
+],
+"nodejs/llhttp": [
+"llhttp"
+],
+"nodejs/node": [
+"nodejs"
+],
+"notaryproject/notary": [
+"notary"
+],
+"nothings/stb": [
+"stb"
+],
+"nox/serde_urlencoded": [
+"serde_urlencoded"
+],
+"ntop/ndpi": [
+"ndpi"
+],
+"ntop/ntopng": [
+"ntopng"
+],
+"ntp-project/ntp": [
+"ntp"
+],
+"nucleic/kiwi": [
+"kiwisolver"
+],
+"numactl/numactl": [
+"numactl"
+],
+"numpy/numpy": [
+"numpy"
+],
+"nvawda/bz2file": [
+"bz2file"
+],
+"nvidia/nccl": [
+"nccl"
+],
+"nyx-space/anise": [
+"anise"
+],
+"oatpp/oatpp": [
+"oatpp"
+],
+"oauthlib/oauthlib": [
+"oauthlib"
+],
+"obgm/libcoap": [
+"libcoap"
+],
+"objectcomputing/opendds": [
+"opendds"
+],
+"ogrecave/ogre": [
+"ogre"
+],
+"ohler55/ox": [
+"ox-ruby"
+],
+"oisf/libhtp": [
+"libhtp"
+],
+"oisf/suricata": [
+"suricata"
+],
+"onekey-sec/unblob": [
+"unblob"
+],
+"onnx/onnx": [
+"onnx"
+],
+"open-mpi/hwloc": [
+"hwloc"
+],
+"open-quantum-safe/liboqs": [
+"liboqs"
+],
+"open-source-parsers/jsoncpp": [
+"jsoncpp"
+],
+"open-telemetry/opentelemetry-collector": [
+"opentelemetry-collector"
+],
+"open-telemetry/opentelemetry-collector-contrib": [
+"opentelemetry-collector-contrib"
+],
+"open-telemetry/opentelemetry-go": [
+"opentelemetry-go"
+],
+"open-telemetry/opentelemetry-go-contrib": [
+"opentelemetry-go-contrib"
+],
+"open5gs/open5gs": [
+"open5gs"
+],
+"open62541/open62541": [
+"open62541"
+],
+"openbabel/openbabel": [
+"openbabel"
+],
+"openbmc/bios-bmc-smm-error-logger": [
+"bios-bmc-smm-error-logger"
+],
+"openbmc/bmcweb": [
+"bmcweb"
+],
+"openbmc/dbus-sensors": [
+"dbus-sensors"
+],
+"openbmc/estoraged": [
+"estoraged"
+],
+"openbmc/ipmi-fru-parser": [
+"ipmi-fru-parser"
+],
+"openbmc/pam-ipmi": [
+"pam-ipmi"
+],
+"openbmc/phosphor-certificate-manager": [
+"phosphor-certificate-manager"
+],
+"openbmc/phosphor-host-ipmid": [
+"phosphor-host-ipmid"
+],
+"openbmc/phosphor-networkd": [
+"phosphor-networkd"
+],
+"openbmc/phosphor-state-manager": [
+"phosphor-state-manager"
+],
+"openconfig/ygot": [
+"ygot"
+],
+"opencontainers/runc": [
+"runc"
+],
+"opencv/opencv": [
+"opencv"
+],
+"openfeign/feign": [
+"feign"
+],
+"openfga/openfga": [
+"openfga"
+],
+"openidc/mod_auth_openidc": [
+"mod-auth-openidc"
+],
+"openiked/openiked-portable": [
+"openiked"
+],
+"openjdk/jdk": [
+"stax"
+],
+"openjdk/jmh": [
+"jmh"
+],
+"openkruise/kruise": [
+"openkruise"
+],
+"opennavigationsurface/bag": [
+"opennavsurf-bag"
+],
+"openprinting/cups": [
+"cups"
+],
+"openprinting/cups-filters": [
+"cups-filters"
+],
+"openprinting/goipp": [
+"goipp"
+],
+"openprinting/ipp-usb": [
+"ipp-usb"
+],
+"openprinting/libcups": [
+"libcups"
+],
+"openprinting/pycups": [
+"pycups"
+],
+"opensc/opensc": [
+"opensc"
+],
+"opensips/opensips": [
+"opensips"
+],
+"openslide/openslide": [
+"openslide"
+],
+"openssh/openssh-portable": [
+"openssh"
+],
+"openssl/openssl": [
+"openssl"
+],
+"openthread/openthread": [
+"openthread"
+],
+"openthread/wpantund": [
+"wpantund"
+],
+"openvpn/openvpn": [
+"openvpn"
+],
+"openvswitch/ovs": [
+"openvswitch"
+],
+"openweave/openweave-core": [
+"openweave"
+],
+"openyurtio/openyurt": [
+"openyurt"
+],
+"oracle/python-cx_oracle": [
+"oracle-py-cx"
+],
+"ordian/toml_edit": [
+"toml_edit"
+],
+"osgeo/gdal": [
+"gdal"
+],
+"osgeo/proj": [
+"proj4"
+],
+"osgi/osgi": [
+"osgi"
+],
+"osiegmar/fastcsv": [
+"fastcsv"
+],
+"osquery/osquery": [
+"osquery"
+],
+"osrg/gobgp": [
+"gobgp"
+],
+"ossec/ossec-hids": [
+"ossec-hids"
+],
+"ossf/scorecard": [
+"ossf-scorecard"
+],
+"ossf/scorecard-webapp": [
+"scorecard-web"
+],
+"ostreedev/ostree": [
+"ostree"
+],
+"owasp/json-sanitizer": [
+"json-sanitizer"
+],
+"oxia-db/oxia": [
+"oxia"
+],
+"p11-glue/p11-kit": [
+"p11-kit"
+],
+"p1c2u/openapi-schema-validator": [
+"openapi-schema-validator"
+],
+"pallets/click": [
+"click"
+],
+"pallets/flask": [
+"flask"
+],
+"pallets/itsdangerous": [
+"itsdangerous"
+],
+"pallets/jinja": [
+"jinja2"
+],
+"pallets/markupsafe": [
+"markupsafe"
+],
+"pandas-dev/pandas": [
+"pandas"
+],
+"paramiko/paramiko": [
+"paramiko"
+],
+"paul-hammant/qdox": [
+"qdox"
+],
+"pborman/uuid": [
+"pborman-uuid"
+],
+"pcre2project/pcre2": [
+"pcre2"
+],
+"pdeljanov/symphonia": [
+"symphonia"
+],
+"pdfminer/pdfminer": [
+"pdfminersix"
+],
+"pdoc3/pdoc": [
+"pdoc"
+],
+"pelletier/go-toml": [
+"go-toml"
+],
+"penguinolog/sqlalchemy_jsonfield": [
+"sqlalchemy_jsonfield"
+],
+"pest-parser/pest": [
+"pest"
+],
+"pganalyze/libpg_query": [
+"libpg_query"
+],
+"phihag/ipaddress": [
+"ipaddress"
+],
+"php/frankenphp": [
+"frankenphp"
+],
+"php/php-src": [
+"php"
+],
+"pidgin/pidgin": [
+"pidgin"
+],
+"pikepdf/pikepdf": [
+"pikepdf"
+],
+"pingcap/tidb": [
+"tidb"
+],
+"pistacheio/pistache": [
+"pistache"
+],
+"pjk/libcbor": [
+"libcbor"
+],
+"pjsip/pjproject": [
+"pjsip"
+],
+"pkg/sftp": [
+"go-sftp"
+],
+"plgd-dev/go-coap": [
+"go-coap"
+],
+"pnggroup/libpng": [
+"libpng",
+"libpng-proto"
+],
+"pocoproject/poco": [
+"poco"
+],
+"pointcloudlibrary/pcl": [
+"pcl"
+],
+"postcss/postcss": [
+"postcss"
+],
+"postgres/postgres": [
+"postgresql"
+],
+"powerdns/pdns": [
+"powerdns"
+],
+"powsybl/powsybl-core": [
+"powsybl-java"
+],
+"prestodb/presto": [
+"presto"
+],
+"proftpd/proftpd": [
+"proftpd"
+],
+"project-chip/connectedhomeip": [
+"connectedhomeip"
+],
+"project-oak/oak": [
+"oak"
+],
+"prometheus/prometheus": [
+"prometheus"
+],
+"prompt-toolkit/python-prompt-toolkit": [
+"python-prompt-toolkit"
+],
+"protobuf-c/protobuf-c": [
+"protobuf-c"
+],
+"protobufjs/protobuf": [
+"protobuf-js"
+],
+"protocolbuffers/protobuf": [
+"protobuf-java",
+"protobuf-python"
+],
+"protocolbuffers/protobuf-go": [
+"golang-protobuf"
+],
+"protonmail/gluon": [
+"gluon"
+],
+"protonmail/proton-bridge": [
+"proton-bridge"
+],
+"pseitz/lz4_flex": [
+"lz4_flex"
+],
+"psf/black": [
+"black"
+],
+"psf/requests": [
+"requests"
+],
+"psycopg/psycopg2": [
+"psycopg2"
+],
+"publicsuffix/list": [
+"publicsuffix-list"
+],
+"pulldown-cmark/pulldown-cmark": [
+"pulldown-cmark"
+],
+"pulumi/pulumi": [
+"pulumi"
+],
+"pupnp/pupnp": [
+"pupnp"
+],
+"py-pdf/pypdf": [
+"python-pypdf"
+],
+"pyasn1/pyasn1-modules": [
+"pyasn1-modules"
+],
+"pybind/pybind11": [
+"pybind11"
+],
+"pyca/cryptography": [
+"cryptography"
+],
+"pyca/pynacl": [
+"pynacl"
+],
+"pycqa/autoflake": [
+"autoflake"
+],
+"pycqa/mccabe": [
+"mccabe"
+],
+"pycrypto/pycrypto": [
+"pycrypto"
+],
+"pydantic/pydantic": [
+"pydantic"
+],
+"pydata/bottleneck": [
+"bottleneck"
+],
+"pydata/numexpr": [
+"numexpr"
+],
+"pygments/pygments": [
+"pygments"
+],
+"pylint-dev/astroid": [
+"astroid"
+],
+"pymysql/pymysql": [
+"pymysql"
+],
+"pypa/distlib": [
+"distlib"
+],
+"pypa/packaging": [
+"packaging"
+],
+"pypa/pip": [
+"pip"
+],
+"pypa/setuptools": [
+"setuptools"
+],
+"pypa/wheel": [
+"wheel"
+],
+"pyparsing/pyparsing": [
+"pyparsing"
+],
+"pypy/pypy": [
+"pypy3"
+],
+"pytables/pytables": [
+"pytables"
+],
+"pytest-dev/iniconfig": [
+"iniconfig"
+],
+"pytest-dev/py": [
+"pytest-py"
+],
+"python-attrs/attrs": [
+"attrs"
+],
+"python-babel/babel": [
+"babel"
+],
+"python-excel/xlrd": [
+"xlrd"
+],
+"python-hyper/h11": [
+"h11"
+],
+"python-hyper/hyperlink": [
+"python-hyperlink"
+],
+"python-hyper/rfc3986": [
+"rfc3967"
+],
+"python-hyper/uritemplate": [
+"uritemplate"
+],
+"python-markdown/markdown": [
+"python-markdown"
+],
+"python-pillow/pillow": [
+"pillow"
+],
+"python-restx/flask-restx": [
+"flask-restx"
+],
+"python-validators/validators": [
+"validators"
+],
+"python/cpython": [
+"cpython3",
+"python3-libraries"
+],
+"python/importlib_metadata": [
+"importlib_metadata"
+],
+"python/typing_extensions": [
+"typing_extensions"
+],
+"pythoncharmers/python-future": [
+"python-future"
+],
+"pytoolz/toolz": [
+"toolz"
+],
+"pytorch/cpuinfo": [
+"cpuinfo"
+],
+"qos-ch/logback": [
+"logback"
+],
+"qos-ch/reload4j": [
+"reload4j"
+],
+"qos-ch/slf4j": [
+"jul-to-slf4j",
+"slf4j-api"
+],
+"qpdf/qpdf": [
+"qpdf"
+],
+"quantumlib/cirq": [
+"cirq"
+],
+"quartz-scheduler/quartz": [
+"quartz"
+],
+"qubesos/qubes-app-linux-input-proxy": [
+"qubes-os"
+],
+"quic-go/connect-ip-go": [
+"connect-ip-go"
+],
+"quic-go/quic-go": [
+"quic-go"
+],
+"quodlibet/mutagen": [
+"mutagen"
+],
+"r1chardj0n3s/parse": [
+"parse"
+],
+"racket/racket": [
+"racket"
+],
+"radareorg/radare2": [
+"radare2"
+],
+"radondb/radon": [
+"radon"
+],
+"radvd-project/radvd": [
+"radvd"
+],
+"randombit/botan": [
+"botan"
+],
+"randy408/libspng": [
+"libspng"
+],
+"rapier1/hpn-ssh": [
+"hpn-ssh"
+],
+"rare-technologies/smart_open": [
+"smart_open"
+],
+"rauc/rauc": [
+"rauc"
+],
+"razrfalcon/ttf-parser": [
+"ttf-parser"
+],
+"rdkit/rdkit": [
+"rdkit"
+],
+"reactivex/rxjava": [
+"rxjava"
+],
+"realm/realm-core": [
+"realm-core"
+],
+"redis-rs/redis-rs": [
+"redis-rs"
+],
+"redis/go-redis": [
+"go-redis"
+],
+"redis/hiredis": [
+"hiredis"
+],
+"redis/hiredis-py": [
+"hiredis-py"
+],
+"redis/jedis": [
+"jedis"
+],
+"redis/redis-py": [
+"redis-py"
+],
+"reduxjs/redux": [
+"redux"
+],
+"relic-toolkit/relic": [
+"relic"
+],
+"requests/toolbelt": [
+"toolbelt"
+],
+"resiprocate/resiprocate": [
+"resiprocate"
+],
+"rhaiscript/rhai": [
+"rhai"
+],
+"richgel999/miniz": [
+"miniz"
+],
+"rnpgp/rnp": [
+"rnp"
+],
+"roaringbitmap/croaring": [
+"croaring"
+],
+"roaringbitmap/roaringbitmap": [
+"roaring-bitmap"
+],
+"rockdaboot/libpsl": [
+"libpsl"
+],
+"rometools/rome": [
+"rome"
+],
+"ron-rs/ron": [
+"ron"
+],
+"ronmamo/reflections": [
+"reflections"
+],
+"rossmacarthur/serde": [
+"py-serde"
+],
+"rspeer/python-ftfy": [
+"ftfy"
+],
+"rthalley/dnspython": [
+"dnspython"
+],
+"ruby/ruby": [
+"ruby"
+],
+"russross/blackfriday": [
+"blackfriday"
+],
+"rust-lang/flate2-rs": [
+"flate2-rs"
+],
+"rust-lang/regex": [
+"rust-regex"
+],
+"rust-num/num-bigint": [
+"num-bigint"
+],
+"rustcrypto/password-hashes": [
+"scrypt"
+],
+"rustls/rustls": [
+"rustls"
+],
+"ryanhaining/cppitertools": [
+"cppitertools"
+],
+"sahlberg/libnfs": [
+"libnfs"
+],
+"salesforce/ja3": [
+"ja3"
+],
+"samtools/htslib": [
+"htslib"
+],
+"sass/libsass": [
+"libsass"
+],
+"scikit-learn/scikit-learn": [
+"scikit-learn"
+],
+"scipy/scipy": [
+"scipy"
+],
+"scrapinghub/dateparser": [
+"dateparser"
+],
+"scrapy/cssselect": [
+"cssselect"
+],
+"scrapy/w3lib": [
+"w3lib"
+],
+"sctplab/usrsctp": [
+"usrsctp"
+],
+"sdispater/pendulum": [
+"pendulum"
+],
+"sdispater/tomlkit": [
+"tomlkit"
+],
+"seanmonstar/httparse": [
+"httparse"
+],
+"secdev/scapy": [
+"scapy"
+],
+"seladb/pcapplusplus": [
+"pcapplusplus"
+],
+"selinuxproject/selinux": [
+"selinux"
+],
+"selkies-project/selkies": [
+"selkies"
+],
+"sentrypeer/sentrypeer": [
+"sentrypeer"
+],
+"serde-rs/json": [
+"serde_json"
+],
+"serenityos/serenity": [
+"serenity"
+],
+"serge-sans-paille/gast": [
+"gast"
+],
+"servo/servo": [
+"servo"
+],
+"shirou/gopsutil": [
+"gopsutil"
+],
+"signalapp/mp4san": [
+"mp4san"
+],
+"sigstore/cosign": [
+"cosign"
+],
+"sigstore/model-transparency": [
+"model-transparency"
+],
+"sigstore/rekor": [
+"rekor"
+],
+"sigstore/sigstore": [
+"sigstore",
+"sigstore-go"
+],
+"sigstore/sigstore-java": [
+"sigstore-java"
+],
+"sigstore/sigstore-python": [
+"sigstore-python"
+],
+"sigstore/timestamp-authority": [
+"timestamp-authority"
+],
+"simdjson/simdjson": [
+"simdjson"
+],
+"simdutf/simdutf": [
+"simdutf"
+],
+"simplejson/simplejson": [
+"simplejson"
+],
+"sippy/rtpproxy": [
+"rtpproxy"
+],
+"sjamaan/bignum-fuzzer": [
+"bignum-fuzzer"
+],
+"sleuthkit/sleuthkit": [
+"sleuthkit"
+],
+"snapview/tungstenite-rs": [
+"tungstenite-rs"
+],
+"snazy/ohc": [
+"ohc"
+],
+"snort3/snort3": [
+"snort3"
+],
+"sparklemotion/nokogiri": [
+"nokogiri"
+],
+"spdk/spdk": [
+"spdk"
+],
+"spec-first/connexion": [
+"connexion"
+],
+"spnda/fastgltf": [
+"fastgltf"
+],
+"spotify/docker-client": [
+"docker-client"
+],
+"spotify/spotify-json": [
+"spotify-json"
+],
+"spring-cloud/spring-cloud-commons": [
+"spring-cloud-commons"
+],
+"spring-cloud/spring-cloud-config": [
+"spring-cloud-config"
+],
+"spring-cloud/spring-cloud-netflix": [
+"spring-cloud-netflix"
+],
+"spring-cloud/spring-cloud-sleuth": [
+"spring-cloud-sleuth-brave"
+],
+"spring-projects/spring-amqp": [
+"spring-amqp"
+],
+"spring-projects/spring-boot": [
+"spring-boot",
+"spring-data-redis"
+],
+"spring-projects/spring-data-jpa": [
+"spring-data-jpa"
+],
+"spring-projects/spring-data-keyvalue": [
+"spring-data-keyvalue"
+],
+"spring-projects/spring-data-mongodb": [
+"spring-cloud-stream",
+"spring-data-mongodb"
+],
+"spring-projects/spring-framework": [
+"spring-framework"
+],
+"spring-projects/spring-integration": [
+"spring-integration"
+],
+"spring-projects/spring-ldap": [
+"spring-ldap"
+],
+"spring-projects/spring-retry": [
+"spring-retry"
+],
+"spring-projects/spring-security": [
+"spring-security"
+],
+"spring-projects/spring-shell": [
+"spring-shell"
+],
+"spring-projects/spring-webflow": [
+"spring-webflow"
+],
+"sqlalchemy/mako": [
+"mako"
+],
+"sqlalchemy/sqlalchemy": [
+"sqlalchemy"
+],
+"sqlite/sqlite": [
+"sqlite3"
+],
+"square/javapoet": [
+"javapoet"
+],
+"square/okhttp": [
+"okhttp"
+],
+"square/retrofit": [
+"retrofit"
+],
+"srikanth-lingala/zip4j": [
+"zip4j"
+],
+"stacklok/toolhive": [
+"toolhive"
+],
+"starkbank/ecdsa-python": [
+"ecdsa-python"
+],
+"stefanberger/libtpms": [
+"libtpms"
+],
+"stephane/libmodbus": [
+"libmodbus"
+],
+"stephenberry/glaze": [
+"glaze"
+],
+"steveicarus/iverilog": [
+"iverilog"
+],
+"steveklabnik/semver-parser": [
+"rust-semver-parser"
+],
+"stleary/json-java": [
+"json-java"
+],
+"strongswan/strongswan": [
+"strongswan"
+],
+"strukturag/libheif": [
+"libheif"
+],
+"stub42/pytz": [
+"pytz"
+],
+"sudo-project/sudo": [
+"sudoers"
+],
+"supranational/blst": [
+"bls-signatures"
+],
+"surrealdb/surrealdb": [
+"surrealdb"
+],
+"swagger-api/swagger-core": [
+"swagger-core"
+],
+"swc-project/swc": [
+"swc"
+],
+"sybrenstuvel/python-rsa": [
+"python-rsa"
+],
+"syoyo/tinygltf": [
+"tinygltf"
+],
+"systemd/casync": [
+"casync"
+],
+"systemd/systemd": [
+"systemd"
+],
+"tabularisdb/tabularis": [
+"tabularis"
+],
+"tafia/quick-xml": [
+"quick-xml"
+],
+"taglib/taglib": [
+"taglib"
+],
+"tailscale/tailscale": [
+"tailscale"
+],
+"takluyver/pyxdg": [
+"pyxdg"
+],
+"taosdata/tdengine": [
+"tdengine"
+],
+"tarantool/tarantool": [
+"tarantool"
+],
+"tats/w3m": [
+"w3m"
+],
+"taylorhakes/promise-polyfill": [
+"promise-polyfill"
+],
+"taywee/args": [
+"args"
+],
+"tbeu/matio": [
+"matio"
+],
+"tdewolff/minify": [
+"minify"
+],
+"tdunning/open-json": [
+"open-json"
+],
+"tencent/rapidjson": [
+"rapidjson"
+],
+"tensorflow/addons": [
+"tensorflow-addons"
+],
+"tensorflow/serving": [
+"tensorflow-serving"
+],
+"tensorflow/tensorflow": [
+"tensorflow",
+"tensorflow-py"
+],
+"tesseract-ocr/tesseract": [
+"tesseract-ocr"
+],
+"textualize/rich": [
+"rich"
+],
+"the-tcpdump-group/libpcap": [
+"libpcap"
+],
+"thesofproject/sof": [
+"sound-open-firmware"
+],
+"threeten/threetenbp": [
+"threetenbp"
+],
+"tianocore/edk2": [
+"edk2"
+],
+"tikitu/jsmin": [
+"jsmin"
+],
+"tinyobjloader/tinyobjloader": [
+"tinyobjloader"
+],
+"tiran/defusedxml": [
+"defusedxml"
+],
+"tjko/jpegoptim": [
+"jpegoptim"
+],
+"tkem/cachetools": [
+"cachetools"
+],
+"tlsfuzzer/python-ecdsa": [
+"python-ecdsa"
+],
+"tmux/tmux": [
+"tmux"
+],
+"tobgu/pyrsistent": [
+"pyrsistent"
+],
+"tokio-rs/prost": [
+"prost"
+],
+"tokio-rs/tokio": [
+"tokio"
+],
+"tox-dev/filelock": [
+"filelock"
+],
+"tox-dev/turbohtml": [
+"turbohtml"
+],
+"tpm2-software/tpm2-tss": [
+"tpm2-tss"
+],
+"tqdm/tqdm": [
+"tqdm"
+],
+"tristanpenman/valijson": [
+"valijson"
+],
+"tukaani-project/xz": [
+"xz"
+],
+"tukaani-project/xz-java": [
+"xz-java"
+],
+"turfjs/turf": [
+"turf"
+],
+"twitter4j/twitter4j": [
+"twitter4j"
+],
+"typetools/checker-framework": [
+"checker-framework"
+],
+"typst/typst": [
+"typst"
+],
+"tytso/e2fsprogs": [
+"e2fsprogs"
+],
+"u-boot/u-boot": [
+"u-boot"
+],
+"u-root/u-root": [
+"u-root"
+],
+"uber-go/atomic": [
+"atomic"
+],
+"uber-go/multierr": [
+"multierr"
+],
+"uber/h3": [
+"h3"
+],
+"uclouvain/openjpeg": [
+"openjpeg"
+],
+"uiri/toml": [
+"toml"
+],
+"ultimaker/curaengine": [
+"cura-engine"
+],
+"ultrajson/ultrajson": [
+"ujson"
+],
+"undertow-io/undertow": [
+"undertow"
+],
+"unetworking/uwebsockets": [
+"uwebsockets"
+],
+"unicode-org/icu": [
+"icu"
+],
+"unicode-rs/unicode-normalization": [
+"unicode-rs"
+],
+"unicorn-engine/unicorn": [
+"unicorn"
+],
+"unidata/netcdf-c": [
+"netcdf"
+],
+"univocity/univocity-parsers": [
+"univocity-parsers"
+],
+"upx/upx": [
+"upx"
+],
+"uqfoundation/dill": [
+"dill"
+],
+"uriparser/uriparser": [
+"uriparser"
+],
+"urllib3/urllib3": [
+"urllib3"
+],
+"usbguard/usbguard": [
+"usbguard"
+],
+"userver-framework/userver": [
+"userver"
+],
+"util-linux/util-linux": [
+"util-linux"
+],
+"uutils/coreutils": [
+"rust-coreutils"
+],
+"uxlfoundation/onednn": [
+"onednn"
+],
+"valyala/fasthttp": [
+"fasthttp"
+],
+"valyala/fastjson": [
+"fastjson"
+],
+"varnishcache/varnish-cache": [
+"varnish"
+],
+"vdukhovni/postfix": [
+"postfix"
+],
+"videolan/vlc": [
+"vlc"
+],
+"vimalloc/flask-jwt-extended": [
+"flask-jwt-extended"
+],
+"virtuald/curvesapi": [
+"curvesapi"
+],
+"virustotal/yara": [
+"yara"
+],
+"vitessio/vitess": [
+"vitess"
+],
+"void-linux/xbps": [
+"xbps"
+],
+"volcano-sh/volcano": [
+"volcano"
+],
+"vstakhov/libucl": [
+"libucl"
+],
+"wasm3/wasm3": [
+"wasm3"
+],
+"wasmedge/wasmedge": [
+"wasmedge"
+],
+"wasmerio/wasmer": [
+"wasmer"
+],
+"wasmi-labs/wasmi": [
+"wasmi"
+],
+"wazuh/wazuh": [
+"wazuh"
+],
+"wbond/asn1crypto": [
+"asn1crypto"
+],
+"wbond/oscrypto": [
+"oscrypto"
+],
+"webassembly/wabt": [
+"wabt"
+],
+"webkit/webkit": [
+"jsc"
+],
+"websocket-client/websocket-client": [
+"websocket-client"
+],
+"weechat/weechat": [
+"weechat"
+],
+"westes/flex": [
+"flex"
+],
+"withastro/compiler": [
+"astro-compiler"
+],
+"wizardmac/readstat": [
+"readstat"
+],
+"wnameless/json-flattener": [
+"json-flattener"
+],
+"wolfssl/wolfboot": [
+"wolfboot"
+],
+"wolfssl/wolfmqtt": [
+"wolfmqtt"
+],
+"wolfssl/wolfssh": [
+"wolfssh"
+],
+"wolfssl/wolfssl": [
+"wolfssl"
+],
+"wolfssl/wolftpm": [
+"wolftpm"
+],
+"wtforms/flask-wtf": [
+"flask-wtf"
+],
+"wtforms/wtforms": [
+"wtforms"
+],
+"wxwidgets/wxwidgets": [
+"wxwidgets"
+],
+"x-stream/xstream": [
+"xstream"
+],
+"xdrop/fuzzywuzzy": [
+"fuzzywuzzy"
+],
+"xerial/snappy-java": [
+"snappy-java"
+],
+"xerial/sqlite-jdbc": [
+"sqlite-jdbc"
+],
+"xflr6/graphviz": [
+"python-graphviz"
+],
+"xiph/flac": [
+"flac"
+],
+"xmldom/xmldom": [
+"xmldom"
+],
+"xmlpull-org/xmlpull-api-v1": [
+"xmlpull"
+],
+"xmlunit/xmlunit": [
+"xmlunit"
+],
+"xroche/httrack": [
+"httrack"
+],
+"yaml/libyaml": [
+"libyaml"
+],
+"yaml/pyyaml": [
+"pyyaml"
+],
+"yhirose/cpp-httplib": [
+"cpp-httplib"
+],
+"yubico/libfido2": [
+"libfido2"
+],
+"zafarkhaja/jsemver": [
+"jsemver"
+],
+"zalando/skipper": [
+"skipper"
+],
+"zcashfoundation/zebra": [
+"zebra"
+],
+"zeek/spicy": [
+"spicy"
+],
+"zeek/zeek": [
+"zeek"
+],
+"zeromq/libzmq": [
+"libzmq"
+],
+"zeromq/pyzmq": [
+"pyzmq"
+],
+"zeroturnaround/zt-zip": [
+"zt-zip"
+],
+"zeux/meshoptimizer": [
+"meshoptimizer"
+],
+"zeux/pugixml": [
+"pugixml"
+],
+"zip-rs/zip": [
+"zip-rs"
+],
+"zlib-ng/minizip-ng": [
+"minizip"
+],
+"zlib-ng/zlib-ng": [
+"zlib-ng"
+],
+"znc/znc": [
+"znc"
+],
+"zxing/zxing": [
+"zxing"
+],
+"zyantific/zydis": [
+"zydis"
+]
+}

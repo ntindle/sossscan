@@ -1,0 +1,1073 @@
+{
+ "acct-2fa-required": {
+  "short": "Turn on 2FA for yourself and require it for everyone with write access.",
+  "why": "A phished or reused password is the cheapest way into a project: it lets an attacker push code or cut a release as you. actix-web, Hummingbird, FS2 and Mockoon made 2FA mandatory across their GitHub orgs; actix-web says it turns protection against a leaked password \"from an individual choice into an organization-wide baseline.\"",
+  "steps": [
+   "Turn on 2FA for your own account: Settings → Password and authentication → Enable two-factor authentication. Use an authenticator app rather than SMS, and save the recovery codes offline.",
+   "In an org, first list who lacks 2FA (snippet below) and warn them: members lose access to org resources until they enable it, and outside collaborators are removed.",
+   "Then open the org's Settings → Authentication security, tick \"Require two-factor authentication for everyone in your organization\", and save.",
+   "To shut out SMS as well, also tick \"Only allow secure two-factor methods\"; FS2 now requires secure methods across the Typelevel org.",
+   "On a personal account you can't enforce 2FA for collaborators. Ask each one to confirm they use it, or move the project into an organization."
+  ],
+  "snippets": [
+   {
+    "label": "Who would be locked out or removed? (run as an org owner before enforcing)",
+    "lang": "shell",
+    "code": "# Members and outside collaborators with no 2FA at all\ngh api \"orgs/{owner}/members?filter=2fa_disabled\" --paginate --jq '.[].login'\ngh api \"orgs/{owner}/outside_collaborators?filter=2fa_disabled\" --paginate --jq '.[].login'\n\n# Before ticking \"Only allow secure two-factor methods\": who still has SMS or another insecure method?\ngh api \"orgs/{owner}/members?filter=2fa_insecure\" --paginate --jq '.[].login'\n"
+   }
+  ],
+  "pitfalls": [
+   "Bot and service accounts added as outside collaborators are removed too, unless you set up 2FA on them first.",
+   "Losing your phone without recovery codes can lock you out of your own project. Keep the codes in a password manager or on paper."
+  ],
+  "docs": [
+   {
+    "label": "Requiring 2FA in your organization",
+    "url": "https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-two-factor-authentication-for-your-organization/requiring-two-factor-authentication-in-your-organization"
+   },
+   {
+    "label": "Configuring two-factor authentication",
+    "url": "https://docs.github.com/en/authentication/securing-your-account-with-two-factor-authentication-2fa/configuring-two-factor-authentication"
+   }
+  ]
+ },
+ "acct-phishing-resistant-2fa": {
+  "short": "Sign in with a passkey or security key so a fake login page can't steal your 2FA.",
+  "why": "App codes and SMS codes can be typed into a look-alike site. In September 2025 the maintainer of chalk and debug entered his password and 2FA code on a fake npm page, and malware shipped in 18 packages with billions of weekly downloads within hours. A passkey only works on the real domain, so that phish fails; Charset Normalizer dropped SMS for passkeys during its sprint.",
+  "steps": [
+   "On GitHub, go to Settings → Password and authentication → Passkeys → Add a passkey. If a hardware security key is already registered, choose \"Upgrade to passkey\" instead.",
+   "Use an authenticator app, not SMS, as your base 2FA method; GitHub requires an app or SMS before you can register security keys.",
+   "Register two authenticators, such as a phone passkey and a hardware key, and keep your recovery codes, so one lost device doesn't lock you out.",
+   "Do the same on your package registries: npm and PyPI both accept WebAuthn security keys, and PyPI prefers them because they resist phishing.",
+   "If you run an org, tick \"Only allow secure two-factor methods\" under Authentication security to block accounts that still have SMS configured."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "Your password plus app code still works as a fallback, so the passkey only protects you if you use it. If a login page asks for a 6-digit code when you expected a passkey prompt, stop and check the address.",
+   "A passkey that lives on a single phone disappears with it. Use a synced passkey or register a second key."
+  ],
+  "docs": [
+   {
+    "label": "About passkeys",
+    "url": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/about-passkeys"
+   },
+   {
+    "label": "Managing your passkeys",
+    "url": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/managing-your-passkeys"
+   },
+   {
+    "label": "PyPI: two-factor authentication",
+    "url": "https://docs.pypi.org/your-account/two-factor-authentication/"
+   }
+  ]
+ },
+ "acct-least-privilege": {
+  "short": "Give each person the lowest role that fits their work and remove access nobody uses.",
+  "why": "Every admin, write collaborator, deploy key and app is another way to push code as the project. Nasiko audited who had access to what and removed unnecessary permissions so \"a single compromised account reaches less\"; Fastify wrote scripts that offboard members to an emeritus team and flag inactive accounts.",
+  "steps": [
+   "List who has access: Settings → Collaborators & teams for each repo, and the People page for an org (snippet below).",
+   "Downgrade roles: Triage for people who label and close issues, Write for people who merge, Admin for one or two owners. Set the org base permission to Read or No permission.",
+   "Remove people inactive for a year or more, or move them to an emeritus team as Fastify does. Ask them first whether their account is still safe.",
+   "Review deploy keys, webhooks and installed GitHub Apps, and delete what you don't recognize. A deploy key keeps working even after the person who added it leaves the org.",
+   "Do the same cleanup on your package registry; Fastify syncs its npm teams with its GitHub repo topics and removes npm access when someone leaves.",
+   "In an org, invite regular maintainers as members rather than outside collaborators, as FS2 did, so you can manage their access through teams."
+  ],
+  "snippets": [
+   {
+    "label": "Who can push or administer? (run with admin rights)",
+    "lang": "shell",
+    "code": "gh api repos/{owner}/{repo}/collaborators --paginate --jq '.[] | \"\\(.role_name)\\t\\(.login)\"'\ngh api \"orgs/{owner}/members?role=admin\" --paginate --jq '.[].login'   # org owners\ngh api orgs/{owner}/outside_collaborators --paginate --jq '.[].login'\ngh api repos/{owner}/{repo}/keys --jq '.[] | \"\\(.read_only)\\t\\(.title)\\t\\(.created_at)\"'   # deploy keys\n"
+   }
+  ],
+  "pitfalls": [
+   "Org owners always have admin access to every repo in the org, so keep the owner list short.",
+   "Don't put an admin token in CI to automate membership. Fastify runs its org-admin scripts locally, with --dryRun, so a compromised workflow can't rewrite who has access."
+  ],
+  "docs": [
+   {
+    "label": "Repository roles for an organization",
+    "url": "https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization"
+   },
+   {
+    "label": "Reviewing your deploy keys",
+    "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/reviewing-your-deploy-keys"
+   },
+   {
+    "label": "Reviewing installed GitHub Apps",
+    "url": "https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps"
+   }
+  ]
+ },
+ "acct-registry-accounts": {
+  "short": "Protect npm, PyPI and other registry accounts with strong 2FA and few owners.",
+  "why": "Whoever controls your registry account can publish a malicious version under your name without touching your repo. The Shai-Hulud worm (September 2025) ran in npm install scripts, took the publish tokens it found and pushed infected versions of more packages. Fastify turned \"who can publish fastify?\" into a question with a reproducible answer by scripting its npm team membership and keeping publish tokens out of CI.",
+  "steps": [
+   "Turn on 2FA with a security key or passkey on every registry account that can publish (PyPI requires 2FA; npm supports WebAuthn keys), and store recovery codes offline.",
+   "On npm, if you publish by hand, set each package's Settings → Publishing access to \"Require two-factor authentication and disallow tokens\".",
+   "Publish from CI with trusted publishing instead of stored tokens, as aiohttp, Mockoon and GoReleaser do. npm will stop direct publishing with granular tokens in January 2027.",
+   "List everyone who can publish (npm owners and org teams, PyPI collaborators) and remove people who no longer maintain the package.",
+   "Revoke tokens you can't account for. If you must keep one, scope it to a single package and give it an expiry date.",
+   "Turn on 2FA for the email account behind each registry login, since password resets go there."
+  ],
+  "snippets": [
+   {
+    "label": "npm: who can publish, and which tokens exist on your account",
+    "lang": "shell",
+    "code": "npm owner ls <package>\nnpm access list collaborators <package>\nnpm token list\nnpm token revoke <id>   # anything you can't account for\n"
+   }
+  ],
+  "pitfalls": [
+   "Logging in to npm with a recovery code puts a 72-hour hold on the account: no publishing and no new tokens. Don't burn one in the middle of a release.",
+   "One token that can publish every package is a single point of failure. Fastify deliberately avoids having one."
+  ],
+  "docs": [
+   {
+    "label": "npm: requiring 2FA for publishing",
+    "url": "https://docs.npmjs.com/requiring-2fa-for-package-publishing-and-settings-modification/"
+   },
+   {
+    "label": "npm: about access tokens",
+    "url": "https://docs.npmjs.com/about-access-tokens/"
+   },
+   {
+    "label": "PyPI: two-factor authentication",
+    "url": "https://docs.pypi.org/your-account/two-factor-authentication/"
+   }
+  ]
+ },
+ "repo-branch-protection": {
+  "short": "Block force pushes and direct pushes to your default branch with a ruleset.",
+  "why": "Without it, a stolen token or a tired maintainer can push straight to main or rewrite its history, and CI never gets a say. GitHub Security Lab calls it the setting with the biggest impact because it makes code scanning and Dependabot findings block merges; ImageMagick and oapi-codegen moved from classic branch protection to rulesets during the program.",
+  "steps": [
+   "Go to Settings → Rulesets → New ruleset → New branch ruleset, set enforcement to Active, and add the default branch as the target.",
+   "Keep \"Restrict deletions\" and \"Block force pushes\" on, and turn on \"Require a pull request before merging\".",
+   "With two or more maintainers, require one approval. Solo, set approvals to 0 so PRs still run CI, or give the Repository admin role a \"For pull requests only\" bypass.",
+   "Once CI is stable, add \"Require status checks to pass before merging\" with your test and CodeQL checks.",
+   "Prefer rulesets to classic protection: anyone with read access can see them, and Scorecard can check them without an admin token.",
+   "After migrating, delete the old classic rule. Both apply at once and the stricter one wins, which confuses people."
+  ],
+  "snippets": [
+   {
+    "label": "ruleset.json for the default branch (set required_approving_review_count to 0 if you're the only maintainer)",
+    "lang": "json",
+    "code": "{\n  \"name\": \"Protect default branch\",\n  \"target\": \"branch\",\n  \"enforcement\": \"active\",\n  \"conditions\": {\n    \"ref_name\": {\n      \"include\": [\n        \"~DEFAULT_BRANCH\"\n      ],\n      \"exclude\": []\n    }\n  },\n  \"rules\": [\n    {\n      \"type\": \"deletion\"\n    },\n    {\n      \"type\": \"non_fast_forward\"\n    },\n    {\n      \"type\": \"pull_request\",\n      \"parameters\": {\n        \"required_approving_review_count\": 1,\n        \"dismiss_stale_reviews_on_push\": true,\n        \"require_code_owner_review\": false,\n        \"require_last_push_approval\": false,\n        \"required_review_thread_resolution\": false\n      }\n    }\n  ],\n  \"bypass_actors\": []\n}\n"
+   }
+  ],
+  "pitfalls": [
+   "Requiring an approval when you're the only maintainer blocks your own PRs; oapi-codegen's solo maintainer had no second reviewer for his own changes.",
+   "An \"Always allow\" bypass for admins means a stolen admin token is as powerful as before. Keep the bypass list short."
+  ],
+  "docs": [
+   {
+    "label": "About rulesets",
+    "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets"
+   },
+   {
+    "label": "Available rules for rulesets",
+    "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets"
+   },
+   {
+    "label": "REST API: repository rulesets",
+    "url": "https://docs.github.com/en/rest/repos/rules"
+   }
+  ]
+ },
+ "repo-codeowners": {
+  "short": "Make a maintainer's review mandatory for changes to workflows and release config.",
+  "why": "A PR that edits .github/workflows/ or your release scripts can change what runs with your secrets on the next push, and in a busy queue it can look like a routine fix. CODEOWNERS plus required code owner review makes sure someone who understands CI signs off; DataJourney added CODEOWNERS during the program \"to make responsibility visible\".",
+  "steps": [
+   "Create .github/CODEOWNERS covering /.github/, release and packaging config, and SECURITY.md. GitHub uses the copy on the PR's base branch, so a PR can't change who reviews it.",
+   "In your default-branch ruleset, edit \"Require a pull request before merging\" and require review from Code Owners. One owner's approval is enough.",
+   "Owners need write access, and teams must be visible with write permission, or GitHub assigns no owner. Open the file on GitHub to see any errors.",
+   "Order matters: the last matching pattern wins, so put broad rules first and specific paths after.",
+   "Update the file when people leave. CPython, external-secrets and PyPI's Warehouse all committed CODEOWNERS cleanups during their program windows."
+  ],
+  "snippets": [
+   {
+    "label": "CODEOWNERS covering CI and release config (adjust paths to your stack)",
+    "lang": "text",
+    "code": "# Last match wins: broad rules first, specific paths after.\n# In an org, name a team instead: @your-org/maintainers\n/.github/              {maintainer}\n/SECURITY.md           {maintainer}\n\n# Release and packaging config\n/package.json          {maintainer}\n/pyproject.toml        {maintainer}\n/Cargo.toml            {maintainer}\n/.goreleaser.yaml      {maintainer}\n/scripts/release/      {maintainer}\n"
+   }
+  ],
+  "pitfalls": [
+   "CODEOWNERS on its own only requests reviews. Without the ruleset option, PRs still merge without an owner's approval.",
+   "In an org, write teams as @org/team-name; a bare @org is not a valid owner.",
+   "With a single owner, required owner review blocks your own PRs. Turn it on once two people can approve."
+  ],
+  "docs": [
+   {
+    "label": "About code owners",
+    "url": "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners"
+   },
+   {
+    "label": "Available rules for rulesets",
+    "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets"
+   }
+  ]
+ },
+ "repo-signed-commits": {
+  "short": "Sign your commits and require verified signatures on the default branch.",
+  "why": "Git lets anyone write any name and email into a commit, so an unsigned commit that claims to be from you proves nothing. Requiring signatures ties every commit on main to a key its author controls; Electron, Next.js, Turborepo and shadcn/ui enforce it with a ruleset, though only 7 of the 193 Fund repos do.",
+  "steps": [
+   "Each maintainer sets up signing. SSH signing reuses a key you already have and needs Git 2.34 or later (snippet below).",
+   "Add the public key under Settings → SSH and GPG keys → New SSH key, choosing the signing key type. A login key must be uploaded again for signing.",
+   "Turn on vigilant mode so unsigned commits that claim to be yours show as Unverified.",
+   "Explain the requirement in CONTRIBUTING.md first, then add \"Require signed commits\" to your default-branch ruleset.",
+   "Merge with squash or merge commits. GitHub can't sign commits it rebases, so \"Rebase and merge\" doesn't fit a branch that requires signatures."
+  ],
+  "snippets": [
+   {
+    "label": "Sign commits and tags with your SSH key",
+    "lang": "shell",
+    "code": "git config --global gpg.format ssh\ngit config --global user.signingkey ~/.ssh/id_ed25519.pub\ngit config --global commit.gpgsign true\ngit config --global tag.gpgSign true\n\n# Upload the same public key as a signing key (separate from its login entry)\ngh ssh-key add ~/.ssh/id_ed25519.pub --type signing --title \"commit signing\"\n"
+   }
+  ],
+  "pitfalls": [
+   "Unsigned commits in a contributor's PR can block even a squash merge. They have to re-sign them, or someone with bypass rights merges.",
+   "Signing won't stop someone using your logged-in browser: GitHub signs commits made in its web UI with its own key."
+  ],
+  "docs": [
+   {
+    "label": "About commit signature verification",
+    "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification"
+   },
+   {
+    "label": "Telling Git about your signing key",
+    "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key"
+   },
+   {
+    "label": "Vigilant mode",
+    "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/displaying-verification-statuses-for-all-of-your-commits"
+   }
+  ]
+ },
+ "repo-org-security-config": {
+  "short": "Create one org security configuration and apply it to every repo, including new ones.",
+  "why": "Per-repo toggles drift: new repos start with features off, and nobody notices which of 40 packages lacks push protection. FS2 built a configuration with private vulnerability reporting and applied it to all of Typelevel's public repos, and Yii found configurations \"Very useful for Yii3, which has many packages.\"",
+  "steps": [
+   "Go to the org's Settings → Advanced Security → Configurations → New configuration → Custom configuration.",
+   "Turn on what's free for public repos: secret scanning and push protection, dependency graph, Dependabot alerts and security updates, code scanning default setup, and private vulnerability reporting.",
+   "For code scanning, choose \"Enabled with advanced setup allowed\", which only turns on default setup where CodeQL isn't already running.",
+   "Under Policy, set \"Use as default for newly created repositories\" to Public or All, and choose Enforce if repo admins shouldn't switch features off.",
+   "On the Repositories tab, select all and use Apply configuration. Check each repo's status, and apply it by hand to repos transferred in later.",
+   "Personal accounts have no configurations; loop over your repos with gh api instead."
+  ],
+  "snippets": [
+   {
+    "label": "Apply an existing configuration to all public repos and make it the default",
+    "lang": "shell",
+    "code": "gh api orgs/{owner}/code-security/configurations --jq '.[] | \"\\(.id)\\t\\(.name)\"'\ngh api -X POST orgs/{owner}/code-security/configurations/<id>/attach -f scope=public\ngh api -X PUT orgs/{owner}/code-security/configurations/<id>/defaults -f default_for_new_repos=public\n"
+   }
+  ],
+  "pitfalls": [
+   "Secret Protection and Code Security cost money on private and internal repos. Scope the configuration to public repos unless you have licenses.",
+   "A configuration doesn't cover org-wide settings such as required 2FA; set those separately."
+  ],
+  "docs": [
+   {
+    "label": "Creating a custom security configuration",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/create-custom-configuration"
+   },
+   {
+    "label": "Applying a custom security configuration",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-at-scale/configure-organization-security/establish-complete-coverage/apply-custom-configuration"
+   },
+   {
+    "label": "REST API: code security configurations",
+    "url": "https://docs.github.com/en/rest/code-security/configurations"
+   }
+  ]
+ },
+ "repo-settings-review": {
+  "short": "Put a recurring date on the calendar to re-check access, apps, keys and settings.",
+  "why": "Settings drift: a collaborator from three years ago keeps write access, a webhook still posts to a service you stopped using, a feature gets switched off while debugging. ImageMagick's advice after the program was to \"Regularly review GitHub's security best practices and updates\", and actix-web's settings review is what led it to require 2FA.",
+  "steps": [
+   "Every 3 to 6 months, and whenever a maintainer leaves, run the snippet below or walk the same list in Settings.",
+   "Access: remove stale collaborators, outside collaborators and org owners; check deploy keys, webhooks and installed GitHub Apps.",
+   "Security features: secret scanning, push protection, private vulnerability reporting and Dependabot still on, and rulesets active with a short bypass list.",
+   "Actions: the default token still read-only, approval still required for first-time contributors' workflows, and no unused repository secrets.",
+   "Accounts: read your own security log, which covers the last 90 days, and for an org the audit log, looking for changes you didn't make.",
+   "Close gaps with GitHub Security Lab's \"Protect Your Project\" guided flow, which covers six core settings in under half an hour, or with OpenSSF Scorecard."
+  ],
+  "snippets": [
+   {
+    "label": "Quick settings review for one repo (run as a repo admin)",
+    "lang": "shell",
+    "code": "R={owner}/{repo}\ngh api repos/$R --jq '.security_and_analysis'\ngh api repos/$R/private-vulnerability-reporting\ngh api repos/$R/actions/permissions/workflow\ngh api repos/$R/rulesets --jq '.[] | {name, target, enforcement}'\ngh api repos/$R/collaborators --paginate --jq '.[] | \"\\(.role_name)\\t\\(.login)\"'\ngh api repos/$R/keys --jq '.[] | {title, read_only, created_at}'\ngh api repos/$R/hooks --jq '.[] | {url: .config.url, active}'\ngh api repos/$R/actions/secrets --jq '.secrets[] | {name, updated_at}'\n"
+   }
+  ],
+  "pitfalls": [
+   "Some settings, such as security_and_analysis, are only visible to admins. Run the review with admin rights or everything will look switched off.",
+   "A setting that's wrong in one repo is usually wrong in all of them. Fix it everywhere, or with an org configuration."
+  ],
+  "docs": [
+   {
+    "label": "Quickstart for securing your repository",
+    "url": "https://docs.github.com/en/code-security/getting-started/quickstart-for-securing-your-repository"
+   },
+   {
+    "label": "Reviewing your security log",
+    "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/reviewing-your-security-log"
+   },
+   {
+    "label": "Reviewing your organization's audit log",
+    "url": "https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-security-settings-for-your-organization/reviewing-the-audit-log-for-your-organization"
+   }
+  ]
+ },
+ "secrets-scanning": {
+  "short": "Turn on secret scanning so leaked keys in your code and history raise an alert.",
+  "why": "GitHub Security Lab cites 28.65 million new secrets leaked on public GitHub in 2025, with AI-assisted commits leaking them at about twice the usual rate. Secret scanning checks your entire Git history plus issues, PRs, discussions and wikis, and it's free on public repos; a dozen Fund teams list it among their changes, and Cucumber used it to drive fixes across more than 130 repositories.",
+  "steps": [
+   "Settings → Advanced Security (in the \"Security and quality\" section; \"Code security\" on some accounts) → Secret Protection → Enable.",
+   "Turn on push protection on the same page, so new leaks are blocked before they land.",
+   "Check open alerts in the repo's Security tab under Secret scanning, and watch the repo for security alerts so you hear about new ones.",
+   "Treat every real alert as a leak: rotate the secret first, then close the alert as revoked.",
+   "For many repos, use an org security configuration or the loop below; Mockoon turned it on for all of its repositories.",
+   "Optionally add a scanner such as gitleaks in CI or pre-commit, as GoReleaser does, to catch formats GitHub doesn't recognize."
+  ],
+  "snippets": [
+   {
+    "label": "Turn on secret scanning and push protection for every public repo you own",
+    "lang": "shell",
+    "code": "gh repo list {owner} --visibility public --no-archived --source --limit 1000 \\\n  --json nameWithOwner --jq '.[].nameWithOwner' |\nwhile read -r r; do\n  gh api -X PATCH \"repos/$r\" --silent -f 'security_and_analysis[secret_scanning][status]=enabled' &&\n  gh api -X PATCH \"repos/$r\" --silent -f 'security_and_analysis[secret_scanning_push_protection][status]=enabled' &&\n  echo \"on: $r\"\ndone\n"
+   }
+  ],
+  "pitfalls": [
+   "Deleting the commit neither closes the alert nor un-leaks the key. Alerts stay open until you resolve them.",
+   "Private repos in an org need a paid Secret Protection license; public repos don't."
+  ],
+  "docs": [
+   {
+    "label": "About secret scanning",
+    "url": "https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning"
+   },
+   {
+    "label": "Enabling secret scanning",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-your-secrets/detect-secret-leaks/enable-secret-scanning"
+   }
+  ]
+ },
+ "secrets-push-protection": {
+  "short": "Turn on push protection so pushes containing secrets are rejected before they land.",
+  "why": "Once a key is pushed you have to assume it's stolen and rotate it; a blocked push costs you a minute. Your personal \"push protection for users\" already blocks supported secrets in your own pushes to public repos, but only repo-level push protection covers every contributor and raises an alert when someone bypasses it.",
+  "steps": [
+   "Settings → Advanced Security → in the Secret Protection section, click Enable next to \"Push protection\".",
+   "When a push is blocked, remove the secret from every commit it appears in (snippet below) instead of bypassing.",
+   "Move real secrets into environment variables or your CI's secret store, and add .env files to .gitignore.",
+   "Check bypasses: each one creates an alert and emails admins. \"I'll fix it later\" leaves an open alert for a real secret, so rotate it.",
+   "In an org, consider delegated bypass, so only named people can approve pushing a flagged secret."
+  ],
+  "snippets": [
+   {
+    "label": "Unblock a push by removing the secret from your commits",
+    "lang": "shell",
+    "code": "# Secret is in your latest commit: delete it from the file, then\ngit commit --amend --all\ngit push\n\n# Secret is in an earlier commit (the push error lists every commit that has it)\ngit rebase -i <EARLIEST-COMMIT>~1   # change \"pick\" to \"edit\" for that commit\n# ...delete the secret from the file, then:\ngit add .\ngit commit --amend\ngit rebase --continue\ngit push\n"
+   }
+  ],
+  "pitfalls": [
+   "\"It's used in tests\" and \"It's a false positive\" bypasses create alerts that are already closed. Make sure the key really isn't live.",
+   "Push protection only knows supported patterns. It won't catch every password or homemade token."
+  ],
+  "docs": [
+   {
+    "label": "About push protection",
+    "url": "https://docs.github.com/en/code-security/concepts/secret-security/push-protection"
+   },
+   {
+    "label": "Push protection on the command line",
+    "url": "https://docs.github.com/en/code-security/how-tos/secure-your-secrets/work-with-leak-prevention/push-protection-on-the-command-line"
+   }
+  ]
+ },
+ "secrets-rotate-leaked": {
+  "short": "If a secret leaks, revoke and replace it first; cleaning up Git history comes later.",
+  "why": "A pushed secret is compromised the moment it's public: copies live on in clones, forks, caches and PR refs, so deleting the commit protects nothing. In the Ultralytics attack, the later malicious PyPI uploads came through an old API token, which is why every credential that could have been exposed needs revoking, not just the one you spotted.",
+  "steps": [
+   "Revoke or rotate the secret at the provider now: create a replacement, update CI and deployments, then revoke the old one.",
+   "Check the provider's logs and your registry's release history for anything done with the old credential since it leaked.",
+   "Rotate anything stored next to it, such as other secrets in the same CI environment, and any token you can't account for.",
+   "Close the secret scanning alert as revoked, with a note (snippet below).",
+   "Only then decide about history. Once the secret is revoked, rewriting is usually unnecessary; for sensitive data, use git-filter-repo --sensitive-data-removal and ask GitHub Support to purge cached views.",
+   "Prevent a repeat: push protection, env files in .gitignore, OIDC instead of stored tokens. Two.js treats anything pasted into an AI chat as public."
+  ],
+  "snippets": [
+   {
+    "label": "List open secret scanning alerts, then close one as revoked",
+    "lang": "shell",
+    "code": "gh api \"repos/{owner}/{repo}/secret-scanning/alerts?state=open\" \\\n  --jq '.[] | \"\\(.number)\\t\\(.secret_type_display_name)\\t\\(.created_at)\"'\n\n# After revoking the secret at the provider:\ngh api -X PATCH \"repos/{owner}/{repo}/secret-scanning/alerts/<number>\" \\\n  -f state=resolved -f resolution=revoked \\\n  -f resolution_comment=\"Revoked and replaced on YYYY-MM-DD; provider logs checked\"\n"
+   }
+  ],
+  "pitfalls": [
+   "Rewriting history before revoking: anyone with an old clone notices the rewrite, which points them at what you removed while the key still works.",
+   "Rotating only the token you found. Look for older tokens and keys with the same reach."
+  ],
+  "docs": [
+   {
+    "label": "Resolving secret scanning alerts",
+    "url": "https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-secret-scanning-alerts/resolving-alerts"
+   },
+   {
+    "label": "Removing sensitive data from a repository",
+    "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository"
+   }
+  ]
+ },
+ "posture-scorecard": {
+  "short": "Run OpenSSF Scorecard on a schedule and fix its high-risk findings first.",
+  "why": "Scorecard runs 18 automated checks, such as branch protection, token permissions, pinned dependencies and dangerous workflows, and weights them by how easy they are to exploit. Bootstrap reintegrated it (\"for the second time, actually!\"), Jupyter Docker Stacks and Readest added it, and fabric.js pinned its workflow dependencies and changed its permission model specifically to raise its score.",
+  "steps": [
+   "See where you stand: scorecard.dev's viewer has results for many popular repos, or run the CLI locally (snippet below).",
+   "Add the workflow from the template; results appear in the Security tab under Code scanning.",
+   "Fix the critical and high-risk checks first: Dangerous-Workflow, Token-Permissions, Branch-Protection, Code-Review and Vulnerabilities.",
+   "Move from classic branch protection to rulesets, so the Branch-Protection check can read them with the default token.",
+   "Keep publish_results on and add the badge, so users can see your score.",
+   "Treat the score as a guide, not a goal. Some checks won't fit your project; note why you skip them."
+  ],
+  "snippets": [
+   {
+    "label": "One-off local run (works on any public repo)",
+    "lang": "shell",
+    "code": "brew install scorecard        # or download a release binary\nexport GITHUB_AUTH_TOKEN=$(gh auth token)\nscorecard --repo=github.com/{owner}/{repo} --show-details\n"
+   },
+   {
+    "label": "README badge (needs publish_results: true)",
+    "lang": "markdown",
+    "code": "[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/{owner}/{repo}/badge)](https://scorecard.dev/viewer/?uri=github.com/{owner}/{repo})\n"
+   }
+  ],
+  "pitfalls": [
+   "With publish_results on, the Scorecard job may only use approved actions, with no run steps and no workflow-level env, or publishing is rejected.",
+   "A low Code-Review or Contributors score on a solo project reflects reality, not a misconfiguration."
+  ],
+  "docs": [
+   {
+    "label": "OpenSSF Scorecard",
+    "url": "https://scorecard.dev/"
+   },
+   {
+    "label": "Scorecard GitHub Action",
+    "url": "https://github.com/ossf/scorecard-action"
+   },
+   {
+    "label": "Scorecard checks explained",
+    "url": "https://github.com/ossf/scorecard/blob/main/docs/checks.md"
+   }
+  ]
+ },
+ "posture-best-practices-badge": {
+  "short": "Self-assess against the OpenSSF Best Practices criteria and display the badge.",
+  "why": "The passing level's 67 criteria catch gaps that are easy to miss, such as no published way to report vulnerabilities or no reply to reports within 14 days. Gleam's maintainers note that a company with this kind of evidence \"is much more likely to trust a technology\"; 66 Fund repos show a badge, and curl and Caracal have reached gold.",
+  "steps": [
+   "Sign in at bestpractices.dev and add your repo; automated analysis fills in many answers for you.",
+   "Work through the passing criteria. Most map to items in this guide: SECURITY.md, a 14-day first response, static analysis, secure delivery, no leaked credentials.",
+   "Back every Met with a URL and every N/A with a reason, so others can check your claims.",
+   "Add the badge to your README (snippet below); Scorecard's CII-Best-Practices check picks up your badge level.",
+   "Later, aim for silver and gold. Gold adds required 2FA, a second reviewer on at least half of all changes, and a security review within five years.",
+   "If your foundation has a baseline, use it too: Node.js was the first big adopter of the OpenJS Security Compliance Guide, and aiohttp is working toward OSPS Baseline level 3."
+  ],
+  "snippets": [
+   {
+    "label": "README badge (replace <id> with your project number)",
+    "lang": "markdown",
+    "code": "[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<id>/badge)](https://www.bestpractices.dev/projects/<id>)\n"
+   }
+  ],
+  "pitfalls": [
+   "Starting and stalling: nearly half of the Fund repos that show a badge are still \"in progress\".",
+   "Answers go stale. Revisit them once a year or when your release process changes."
+  ],
+  "docs": [
+   {
+    "label": "Best Practices badge criteria (passing)",
+    "url": "https://www.bestpractices.dev/en/criteria/0"
+   },
+   {
+    "label": "OSPS Baseline",
+    "url": "https://baseline.openssf.org/"
+   }
+  ]
+ },
+ "disc-security-md": {
+  "short": "Publish a SECURITY.md that says how to report privately and what happens next.",
+  "why": "Without one, a well-meaning reporter's options are a public issue, which is now a public exploit, or your personal email if they can find it. It was one of the most common Fund changes: Two.js had no policy before the program, ImageMagick put one SECURITY.md in its .github repo so every repo shows it, and SciPy's now says what not to report to cut false reports.",
+  "steps": [
+   "Start from the template and put the file in .github/, the repo root, or docs/.",
+   "Give a private channel: the private vulnerability reporting link plus an email fallback. virtualenv and n8n-MCP both added a contact email to theirs.",
+   "Say which versions get fixes, what's in scope and what isn't, and what helps a report: version, reproduction, impact.",
+   "Set response targets you can keep. actix-web calls its times \"targets rather than a strict SLA\" because volunteers maintain it; DocsGPT promises acknowledgment within 48 hours.",
+   "Maintaining several repos? Put one SECURITY.md in your public .github repository; every repo without its own shows it (snippet below).",
+   "Link it from your README and docs, and re-read it when maintainers or supported versions change."
+  ],
+  "snippets": [
+   {
+    "label": "Share one policy across every repo you own (run outside your project folder)",
+    "lang": "shell",
+    "code": "gh repo create {owner}/.github --public --clone   # or: gh repo clone {owner}/.github\ncp /path/to/SECURITY.md .github/SECURITY.md\ncd .github\ngit add SECURITY.md && git commit -m \"Add default security policy\"\ngit push -u origin HEAD\n"
+   }
+  ],
+  "pitfalls": [
+   "An inbox nobody reads. Test the address, and make sure at least two people receive it.",
+   "Asking reporters to open an issue with a security label: issues are public.",
+   "Promising a 24/7 response you can't give. GitHub Security Lab points to systemd's policy as an example that sets expectations without one."
+  ],
+  "docs": [
+   {
+    "label": "Adding a security policy",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/add-security-policy"
+   },
+   {
+    "label": "Default community health files",
+    "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file"
+   },
+   {
+    "label": "OpenSSF guide to coordinated vulnerability disclosure",
+    "url": "https://oss-vulnerability-guide.openssf.org/maintainer-guide"
+   }
+  ]
+ },
+ "disc-private-reporting": {
+  "short": "Turn on private vulnerability reporting so researchers never need a public issue.",
+  "why": "A vulnerability filed as a public issue is disclosed before a fix exists and \"starts a clock you did not choose\", as Nasiko put it. With private reporting on, reports arrive on your Advisories page, where you can accept one as a draft advisory, fix it in a temporary private fork and publish when ready; 165 of the 193 Fund repos have it enabled.",
+  "steps": [
+   "Settings → Advanced Security → click Enable next to \"Private vulnerability reporting\" (public repos).",
+   "Make sure you'll see reports: GitHub only notifies admins and security managers who watch the repo, so set Watch → Custom → Security alerts and allow email.",
+   "Point SECURITY.md at the \"Report a vulnerability\" form so reporters don't fall back to issues.",
+   "Triage each report: accept it as a draft, ask questions in comments, or close it with a short explanation. Use confidential comments to talk among maintainers.",
+   "Optionally add .github/VULNERABILITY_REPORT.yml to require details such as a proof of concept, and set rate limits to curb spam.",
+   "For many repos, enable it through an org security configuration, as FS2 did for every public repo, or with the loop below."
+  ],
+  "snippets": [
+   {
+    "label": "Turn it on for every public repo you own",
+    "lang": "shell",
+    "code": "gh repo list {owner} --visibility public --no-archived --source --limit 1000 \\\n  --json nameWithOwner --jq '.[].nameWithOwner' |\nwhile read -r r; do\n  gh api -X PUT \"repos/$r/private-vulnerability-reporting\" --silent && echo \"on: $r\"\ndone\n"
+   }
+  ],
+  "pitfalls": [
+   "Turning it on without watching the repo: reports can sit unseen for weeks.",
+   "Leaving an old SECURITY.md that tells people to open an issue, or to email someone who has left."
+  ],
+  "docs": [
+   {
+    "label": "Configuring private vulnerability reporting",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository"
+   },
+   {
+    "label": "Managing privately reported vulnerabilities",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/manage-vulnerability-reports"
+   }
+  ]
+ },
+ "disc-triage-sla": {
+  "short": "Publish realistic response targets and a clear scope for vulnerability reports.",
+  "why": "Reporters go public when they hear nothing, and maintainers burn out on out-of-scope reports. Teams set targets they could keep: DocsGPT acknowledges within 48 hours, actix-web treats its times as targets because volunteers run it, Vapor stopped issuing advisories for its dependencies' vulnerabilities, and Yii may rule a report out of scope when it depends on ignoring several documented practices.",
+  "steps": [
+   "Pick targets you can meet in a bad month, such as acknowledging in 3 business days and assessing in 10; the OpenSSF guide suggests acknowledging within 1 to 2 days.",
+   "Stay inside the Best Practices badge bar: a first response within 14 days, and no medium or higher issue left unpatched 60 days after it becomes public.",
+   "Write down what's out of scope (snippet below) and link it when closing reports. aiohttp's threat model lets AI-assisted reporters check scope before filing.",
+   "Agree the disclosure date with each reporter. 90 days is the longest common default, and many are shorter.",
+   "Name who triages and who backs them up; CocoIndex wrote down who gets involved, how they communicate and how quickly fixes ship.",
+   "Send short status updates while you work. Silence is what pushes reporters to disclose early."
+  ],
+  "snippets": [
+   {
+    "label": "\"What to expect\" and \"Out of scope\" sections for SECURITY.md",
+    "lang": "markdown",
+    "code": "## What to expect\n\nWe are volunteers, so these are targets, not guarantees.\n\n| Step | Target |\n| --- | --- |\n| Acknowledge your report | 3 business days |\n| First assessment (valid? severity?) | 10 business days |\n| Status updates while we work | every 2 weeks |\n| Fix and disclosure date | agreed with you, usually within 90 days |\n\n## Out of scope\n\n- Vulnerabilities in our dependencies that our code doesn't expose: please report them upstream.\n- Problems that only occur when the security guidance in our docs is ignored.\n- Reports without a reproduction or a concrete impact.\n- Missing hardening that doesn't lead to an exploit.\n"
+   }
+  ],
+  "pitfalls": [
+   "Promising an SLA you can't keep. One missed deadline costs more trust than a modest target.",
+   "Waving off every dependency CVE. If you ship or pin the vulnerable code, it's your issue too."
+  ],
+  "docs": [
+   {
+    "label": "OpenSSF guide to coordinated vulnerability disclosure",
+    "url": "https://oss-vulnerability-guide.openssf.org/maintainer-guide"
+   },
+   {
+    "label": "Best Practices badge criteria (passing)",
+    "url": "https://www.bestpractices.dev/en/criteria/0"
+   }
+  ]
+ },
+ "disc-advisories-cves": {
+  "short": "Publish a GitHub security advisory for every fixed vulnerability and request a CVE.",
+  "why": "A silent fix leaves downstream users exposed, because Dependabot, audit tools and scanners only flag vulnerable versions once an advisory exists. GitHub is a CVE Numbering Authority and usually reviews CVE requests within 72 hours; Mockoon requested its first CVE during the program, Termux learned to score CVSS and request CVEs from GitHub, and virtualenv published 21 advisories in five weeks.",
+  "steps": [
+   "Open the Security tab → Advisories → New draft security advisory, or accept a private report as a draft.",
+   "Fill in affected and patched versions, severity (the CVSS calculator helps) and CWE, and credit the reporter unless they decline.",
+   "Fix it in a temporary private fork, so the patch isn't public before the release.",
+   "Click \"Request CVE\" at the bottom of the advisory. It stays private while GitHub reviews it; public repos only.",
+   "Release the fix, then publish the advisory and flag it in the release notes. GitHub reviews it for the Advisory Database, which drives Dependabot alerts in affected repos.",
+   "If another CNA covers your project, such as your foundation, request the CVE there; GitHub can't assign one."
+  ],
+  "snippets": [
+   {
+    "label": "Advisory description outline",
+    "lang": "markdown",
+    "code": "### Impact\nWhat kind of vulnerability this is, who is affected, and under which configuration.\n\n### Patches\nFixed in <version>. Users of <affected range> should upgrade.\n\n### Workarounds\nA configuration change users can make until they upgrade, or \"None\".\n\n### References\n- Fix: https://github.com/{owner}/{repo}/commit/<sha>\n- Release notes: https://github.com/{owner}/{repo}/releases/tag/<version>\n"
+   }
+  ],
+  "pitfalls": [
+   "Publishing without a patched version: Dependabot then alerts every user with no safe version to move to.",
+   "Fixing in a public PR titled \"fix XSS\" before the release tells attackers where to look.",
+   "Temporary private forks don't run CI, so test the fix locally before merging."
+  ],
+  "docs": [
+   {
+    "label": "Creating a repository security advisory",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/create-repository-advisory"
+   },
+   {
+    "label": "Publishing an advisory and requesting a CVE",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/publish-repository-advisory"
+   },
+   {
+    "label": "Fixing in a temporary private fork",
+    "url": "https://docs.github.com/en/code-security/tutorials/fix-reported-vulnerabilities/collaborate-in-a-fork"
+   }
+  ]
+ },
+ "disc-coordinated-disclosure": {
+  "short": "Agree a disclosure date with the reporter and give key downstream users time to patch.",
+  "why": "Some fixes need other people: a distribution, a hosted service or an upstream library. aiohttp's decompression-bomb fix (CVE-2025-69223) had to wait for Google to ship brotli 1.2, Node.js ships coordinated security releases across its supported lines, and Nasiko wants embargoes to be \"a process rather than an improvisation.\"",
+  "steps": [
+   "Agree a public date with the reporter early. 90 days is the longest common default; release Monday to Wednesday and avoid holidays.",
+   "If an upstream library needs the fix, report it privately upstream and add its maintainers as collaborators on your draft advisory.",
+   "Decide whether anyone needs advance notice. The OpenSSF guide says that mostly applies to projects with a large vendor or hosted-service ecosystem.",
+   "If so, send an embargoed notice 1 to 30 working days before release with the CVE, summary, affected versions, fix and public date (template below).",
+   "Keep a private list of downstream contacts in your incident plan; OpenClaw has a direct vulnerability-sync line with Tencent's security team.",
+   "On release day, publish the advisory, label the release notes as a security fix, and credit the reporter."
+  ],
+  "snippets": [
+   {
+    "label": "Embargoed pre-notification",
+    "lang": "text",
+    "code": "Subject: [EMBARGOED until <date> <time> UTC] {repo} security release\n\nThis is a private notice. Do not share it or ship the fix before the date above.\n\nIssue:       CVE-XXXX-NNNNN (GHSA-xxxx-xxxx-xxxx), severity <level>\nSummary:     One or two sentences on the flaw and its impact.\nAffected:    {repo} <first affected> to <last affected>\nFixed in:    <version>, published at the time above\nMitigation:  Workaround until you can upgrade, if any.\nCredit:      <reporter, as they prefer>\nContact:     <security contact from SECURITY.md>\n\nPlease reply to confirm you received this, and tell us at once if it looks like it has leaked.\n"
+   }
+  ],
+  "pitfalls": [
+   "Pre-notifying a long list: every extra reader raises the chance of a leak.",
+   "Letting the agreed date slip without telling the reporter. Ask for more time early, and explain why."
+  ],
+  "docs": [
+   {
+    "label": "OpenSSF guide to coordinated vulnerability disclosure",
+    "url": "https://oss-vulnerability-guide.openssf.org/maintainer-guide"
+   },
+   {
+    "label": "Coordinated disclosure on GitHub",
+    "url": "https://docs.github.com/en/code-security/concepts/vulnerability-reporting-and-management/coordinated-disclosure"
+   },
+   {
+    "label": "Adding collaborators to an advisory",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/add-collaborators"
+   }
+  ]
+ },
+ "ai-contribution-policy": {
+  "short": "Write down how you handle AI-assisted PRs and reports, and ask for proof, not polish.",
+  "why": "AI makes plausible-looking PRs and vulnerability reports cheap to produce and costly to review. OpenClaw received 1,309 advisories in under four months and closed 746 as invalid, including 95 of the 109 rated critical, and curl ended its bug bounty in January 2026 after a flood of reports that sounded technical but contained nothing exploitable.",
+  "steps": [
+   "Decide your stance and put it in CONTRIBUTING.md: allowed with disclosure (Sniffnet), case by case (Cobra: \"Let AI handle the volume. Stay responsible for the judgment.\"), or not accepted (Gleam).",
+   "Require contributors to understand every line they submit and to say which AI tools they used. That is the first of Sniffnet's 10 contributing rules.",
+   "Add a section to SECURITY.md. Like actix-web, accept AI-assisted reports but reject fully AI-generated ones that lack project-specific details and a credible reproduction or impact.",
+   "Make it enforceable: a PR template that asks how the change was tested, and a custom private-report form that requires a proof of concept (snippets below).",
+   "Publish a trust model or threat model to check reports against. OpenClaw's SECURITY.md gives maintainers \"something concrete to point at when closing bad reports.\"",
+   "On PRs, look for evidence: tests, screenshots, agent transcripts and the contributor's own reasoning, the signals OpenClaw now looks for."
+  ],
+  "snippets": [
+   {
+    "label": ".github/VULNERABILITY_REPORT.yml: require a reproduction and AI disclosure",
+    "lang": "yaml",
+    "code": "name: Private vulnerability report\ndescription: Help us reproduce and assess the issue.\nbody:\n  - type: textarea\n    id: summary\n    attributes:\n      label: Summary\n      description: The vulnerability, the affected version, and why it matters.\n    validations:\n      required: true\n  - type: textarea\n    id: proof_of_concept\n    attributes:\n      label: Proof of concept\n      description: Exact steps or code that reproduce it against this project.\n    validations:\n      required: true\n      min_length: 100\n  - type: textarea\n    id: impact\n    attributes:\n      label: Impact\n      description: What an attacker gains, and under which configuration.\n    validations:\n      required: true\n  - type: dropdown\n    id: ai_use\n    attributes:\n      label: Did you use AI tools to find or write this report?\n      options:\n        - \"No\"\n        - \"Yes, to help write the report\"\n        - \"Yes, to find the issue\"\n    validations:\n      required: true\n"
+   },
+   {
+    "label": ".github/pull_request_template.md",
+    "lang": "markdown",
+    "code": "## What and why\n\n## How I tested it\n<!-- Commands you ran, screenshots, or a link to a passing CI run -->\n\n## AI assistance\n- [ ] No AI tools were used\n- [ ] AI tools helped (which ones, and for what):\n- [ ] I understand every line of this change and can explain it in review\n"
+   }
+  ],
+  "pitfalls": [
+   "Treating contribution counts as trust: OpenClaw saw people duplicate other contributors' PRs to collect merge badges.",
+   "A ban you can't verify invites quiet violations. Ask for disclosure and evidence instead."
+  ],
+  "docs": [
+   {
+    "label": "Custom private vulnerability report forms",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository"
+   },
+   {
+    "label": "Creating a pull request template",
+    "url": "https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/creating-a-pull-request-template-for-your-repository"
+   },
+   {
+    "label": "Setting guidelines for contributors",
+    "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors"
+   }
+  ]
+ },
+ "people-security-owner": {
+  "short": "Name a security lead and a backup, and give them time and access to do the job.",
+  "why": "When security is everyone's job, reports and alerts sit unanswered: Cobra's maintainer discovered a reported vulnerability in Afero that had been open since June 2025, lost in an overwhelming backlog. After the program, Typelevel's board appointed Antonio Jimenez to its Security Team, and oapi-codegen used the Fund's money for \"a dedicated pool of time\" spent on security.",
+  "steps": [
+   "Name a primary and a backup, even on a solo project. The backup can be a trusted contributor who can at least acknowledge reports.",
+   "Give them the access they need: admin rights or, in an org, the security manager role, which grants read access to every repo and write access to security alerts.",
+   "Make sure reports reach them: watch each repo with Custom → Security alerts, and list their contact or a team alias in SECURITY.md and the incident plan.",
+   "Budget time: a fixed slot each week or month for alerts, reports and the backlog. Readest set aside three weeks for threat modeling, code scanning and incident response.",
+   "As the project grows, form a small security team; Mautic and Typelevel each have a named team that handles reports."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "A single owner with no backup: holidays and burnout are when reports go unanswered.",
+   "A security@ address that forwards to someone who left. Test it twice a year."
+  ],
+  "docs": [
+   {
+    "label": "Managing security managers in your organization",
+    "url": "https://docs.github.com/en/organizations/managing-peoples-access-to-your-organization-with-roles/managing-security-managers-in-your-organization"
+   },
+   {
+    "label": "Getting notified of private reports",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository"
+   }
+  ]
+ },
+ "people-contributor-guidance": {
+  "short": "Add a short security section to CONTRIBUTING.md and back each rule with a check.",
+  "why": "Contributors can't follow rules they've never seen, and new maintainers inherit habits rather than documents. Sniffnet rewrote its contributing guide as 10 rules to observe before opening a PR, NetBird wrote clearer security guidelines for new contributors, and Bootstrap wants practices that are \"easily actionable by maintainers remotely and autonomously\".",
+  "steps": [
+   "Add a security section to CONTRIBUTING.md (snippet below). GitHub links the file whenever someone opens an issue or PR.",
+   "Cover the basics: report vulnerabilities privately, never commit secrets, discuss new dependencies first, and expect extra review on workflow changes.",
+   "Say how AI-assisted contributions are handled and what evidence a PR needs.",
+   "Back each rule with a check so nobody has to remember it: push protection, CODEOWNERS on .github/, CodeQL and dependency review in CI.",
+   "Repeat the key points as a checklist in your PR template, and keep the section short enough to actually read.",
+   "For an org, put a default CONTRIBUTING.md in the public .github repo so every repo gets it."
+  ],
+  "snippets": [
+   {
+    "label": "Security section for CONTRIBUTING.md",
+    "lang": "markdown",
+    "code": "## Security rules for contributors\n\n1. Never report a vulnerability in a public issue or PR. Use the private form linked in SECURITY.md.\n2. Never commit secrets, tokens or real credentials, not even in tests or fixtures. If push protection blocks you, remove the secret; don't bypass.\n3. Changes under `.github/` (workflows, CODEOWNERS) need a maintainer's review. Don't add `pull_request_target` triggers or new secrets.\n4. Open an issue before adding a dependency, and say why it's needed.\n5. Treat input from users, files and the network as untrusted, and validate it where it enters.\n6. Every security fix needs a regression test.\n7. AI-assisted code is welcome if you understand every line and say which tool you used.\n"
+   }
+  ],
+  "pitfalls": [
+   "A long policy nobody reads. Seven rules is already a lot.",
+   "Rules without enforcement: if CI doesn't check it, assume it will be skipped."
+  ],
+  "docs": [
+   {
+    "label": "Setting guidelines for contributors",
+    "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors"
+   },
+   {
+    "label": "OpenSSF Concise Guide for Developing More Secure Software",
+    "url": "https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software"
+   }
+  ]
+ },
+ "people-user-security-docs": {
+  "short": "Tell users which APIs and settings are risky, and how to use your project safely.",
+  "why": "Many security bugs come from developers misunderstanding a library's API, not from direct attacks on it. Two.js chose to document that its SVG interpreter renders markup through innerHTML rather than restrict the API (\"If something carries risk, that risk should be visible and documented.\"), Hummingbird added a guide to securing apps built on it, and aiohttp's threat model marks which mitigations are the application's job.",
+  "steps": [
+   "Add a security considerations page (snippet below): what you trust, what you don't, and what users must handle themselves.",
+   "Flag dangerous functions and options in the reference docs, where people actually read them, and point to a safe alternative.",
+   "Document safe defaults and limits, such as timeouts, size limits and sandboxing, and what happens when users turn them off.",
+   "Link the page from your README and SECURITY.md, and say that reports relying on ignoring it may be out of scope, as Yii does.",
+   "Give security news its own place, like the security category Termux added to its site, so users can follow advisories."
+  ],
+  "snippets": [
+   {
+    "label": "Security considerations page outline",
+    "lang": "markdown",
+    "code": "## Security considerations\n\n**Trust model.** <Project> trusts <the caller's code and config files>. It treats <user input, uploaded files, network data> as untrusted.\n\n**Risky APIs.** `<function>` passes its input to <innerHTML / a shell / eval>. Never call it with untrusted input; use `<safe alternative>` or sanitize first.\n\n**Safe defaults.** <Limit or timeout> is on by default. If you turn it off, <consequence>.\n\n**Your application's job.** Authentication, rate limiting and <...> are up to you.\n\n**Reporting.** Found a problem? See SECURITY.md.\n"
+   }
+  ],
+  "pitfalls": [
+   "Docs that drift from the code. Review the page whenever you change a default."
+  ],
+  "docs": [
+   {
+    "label": "Best Practices silver criteria (security expectations)",
+    "url": "https://www.bestpractices.dev/en/criteria/1"
+   }
+  ]
+ },
+ "people-security-training": {
+  "short": "Spend a few hours a year on structured security training, and apply to the Fund.",
+  "why": "Most of this checklist is cheap once you know it exists; the hard part is not knowing what you don't know. Log4j's maintainer, looking back at Log4Shell, put it as \"Ignorance is the biggest security hole\", and Mautic, evcc, Bootstrap, scikit-learn and Hummingbird all urge other maintainers to apply to the Fund.",
+  "steps": [
+   "Take OpenSSF's free, self-paced course LFD121, Developing Secure Software: about 14 to 18 hours, with a free certificate.",
+   "Play GitHub's Secure Code Game in a Codespace. Its seasons cover secure coding in C and Python, and protecting CI/CD pipelines and GitHub Actions.",
+   "Read GitHub Security Lab's GitHub Actions series, starting with \"Preventing pwn requests\" and \"Untrusted input\".",
+   "Apply to the GitHub Secure Open Source Fund: $10,000, a three-week sprint of about 15 hours with GitHub Security Lab, and check-ins at 6 and 12 months.",
+   "Train alongside a co-maintainer if you can, and turn each session into one concrete change to your repo the same week."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "Training without follow-through. After each session, pick one item from this checklist and do it."
+  ],
+  "docs": [
+   {
+    "label": "OpenSSF training courses",
+    "url": "https://openssf.org/training/courses/"
+   },
+   {
+    "label": "GitHub Secure Code Game",
+    "url": "https://github.com/skills/secure-code-game"
+   },
+   {
+    "label": "GitHub Secure Open Source Fund",
+    "url": "https://github.com/open-source/github-secure-open-source-fund"
+   }
+  ]
+ },
+ "people-share-learnings": {
+  "short": "Write up what you changed and why, and publish templates others can copy.",
+  "why": "Security knowledge scales one-to-many: every published lesson saves the next maintainer from learning it the hard way. Fastify wrote up the three changes \"you can copy into your own organization today\", GoReleaser published an example-secure repository, and Node.js's post on hardening GitHub Actions was \"shared widely within the ecosystem\".",
+  "steps": [
+   "Write a short post: what you changed, why, what it cost, and what you'd do first next time. Include the config others can copy.",
+   "Publish reusable pieces such as your SECURITY.md, incident plan, threat model or workflows; scikit-learn shared a list of the public training material from its cohort.",
+   "Talk to your ecosystem: evcc joined a Fund panel and a podcast, virtualenv gave a PyBeach talk, and Typelevel planned a Scala Days talk.",
+   "Help a neighbor: kgateway applied its lessons to agentgateway, and nvm planned to share its playbook with Express.",
+   "When you find a flaw in someone else's project, report it privately and write it up after the fix, as ImageMagick's maintainer did for a popular editor extension."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "Publishing details of issues that aren't fixed yet, or the contacts and procedures in your internal incident plan. As Nasiko puts it, the plan may stay internal; the lessons don't have to."
+  ],
+  "docs": [
+   {
+    "label": "Get involved with OpenSSF",
+    "url": "https://openssf.org/getinvolved/"
+   }
+  ]
+ },
+ "people-support-programs": {
+  "short": "Free money, audits and AI tools exist for maintainers. Apply to the ones your project fits.",
+  "why": "Several programs give open source maintainers security help at no cost: funding with security training, free audits and hardening, and free AI coding tools. This guide itself is built from what the projects in one of them, GitHub's Secure Open Source Fund, changed. Each program picks its own projects, so the site doesn't check whether you're in any of them: this is a list to apply from.",
+  "steps": [
+   "GitHub Secure Open Source Fund: $10,000 per project, paid to the maintainers over a year, and a 3-week security program with GitHub Security Lab (about 15 hours), then check-ins at 6 and 12 months. It's for up to 2 maintainers of an open source project with a clear license, clear governance and real adoption. Applications are rolling and count for every session.",
+   "Claude for Open Source (Anthropic): 6 months of Claude Ultra for maintainers. Any one route qualifies, such as 500 or more dependent repos, 100 or more dependent packages, 200,000 or more monthly downloads, being a listed maintainer of a recognized foundation or language project, or a repo with an OpenSSF criticality score of 0.4 or more. Anthropic also says to apply anyway if the ecosystem quietly depends on your work. It's separate from Anthropic's OSS Scanner, which scans the project itself (its own check in this guide).",
+   "Codex for Open Source (OpenAI): API credits, ChatGPT Pro with Codex and, for some, access to Codex Security, for maintainers of widely used projects. Anyone can nominate a maintainer.",
+   "Sovereign Tech Resilience (Germany's Sovereign Tech Agency): free work by partner firms for open source that critical digital infrastructure depends on: security audits, supply chain hardening (reproducible builds, signed releases), memory-safety transitions, post-quantum readiness, Cyber Resilience Act compliance and technical debt. Apply through its portal; applications are reviewed as they come in. Its bug and fix bounties were paused in September 2026 while it works through a backlog.",
+   "In each application, say why your project matters: who depends on it, where untrusted input enters it, how many downloads it has. Most of these decide case by case, and one clear sentence helps."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "Some programs ask for your time as well: the Fund's sessions are mandatory. Read the terms before you apply.",
+   "Free AI tools don't change who signs off on a fix. Keep a human review on security changes, whatever wrote them.",
+   "These programs change often. Check each program's page for its current criteria and dates; this list was checked in November 2026."
+  ],
+  "docs": [
+   {
+    "label": "Claude for Open Source terms",
+    "url": "https://www.anthropic.com/claude-for-oss-terms"
+   },
+   {
+    "label": "Codex for Open Source terms",
+    "url": "https://developers.openai.com/codex/codex-for-oss-terms"
+   },
+   {
+    "label": "Sovereign Tech Resilience: criteria",
+    "url": "https://www.sovereign.tech/programs/resilience/criteria"
+   },
+   {
+    "label": "Sovereign Tech Resilience: FAQ",
+    "url": "https://www.sovereign.tech/programs/resilience/faq"
+   }
+  ]
+ },
+ "plan-threat-model": {
+  "short": "Write down what you protect, where untrusted input enters, and what could go wrong.",
+  "why": "Without a map, reviews and scanners spend their time in the wrong places, and every report turns into an argument about intended behavior. aiohttp's STRIDE model covers nineteen subsystems from the HTTP parser to the release pipeline and lets AI-assisted reporters check scope, and DocsGPT found its public model doubles as \"a map for automated reviewers\".",
+  "steps": [
+   "Start small with your most exposed part, such as a parser, authentication or the release pipeline. Sniffnet ranked its assets by likelihood and impact first.",
+   "List assets and entry points. Readest asks: what user data does this touch, which input can someone else control, what crosses into native code, who can publish?",
+   "At each trust boundary, walk STRIDE (spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege) and note mitigations and gaps.",
+   "Include the path to users: GitHub Actions, tags, releases and registry credentials, as actix-web's model does.",
+   "Mark what is the user's responsibility, publish the model and link it from SECURITY.md. Keep unfixed gaps private; ImageMagick kept its whole model private.",
+   "Revisit it when you add an input format or feature, and feed each new advisory back in, as aiohttp now does."
+  ],
+  "snippets": [
+   {
+    "label": "Threat-model questions for feature PRs (adapted from Readest)",
+    "lang": "markdown",
+    "code": "### Security questions (new features)\n- What user data does this touch?\n- Which input can someone outside the project control?\n- Does anything cross into native code, a shell, or a network call?\n- Does this change who or what can publish a release?\n- Does THREAT_MODEL.md need an update?\n"
+   }
+  ],
+  "pitfalls": [
+   "Trying to cover everything at once. Termux put its model off because the full scope would take weeks.",
+   "Writing it once. A model that predates your last three features misleads more than it helps."
+  ],
+  "docs": [
+   {
+    "label": "OWASP Threat Modeling Cheat Sheet",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html"
+   },
+   {
+    "label": "STRIDE threat categories",
+    "url": "https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats"
+   }
+  ]
+ },
+ "plan-irp": {
+  "short": "Write a short incident plan: who leads, and how you triage, fix, disclose and recover.",
+  "why": "\"A plan written during a crisis inherits the crisis,\" as Nasiko put it: severity, disclosure and who to call get decided at the worst possible moment. 31 Fund teams wrote or refreshed a plan, and aiohttp's covers severity tiers, an advisory-to-release runbook, and playbooks for a compromised release pipeline, maintainer account or CI.",
+  "steps": [
+   "Start from the template. Name an incident lead and a backup, and how to reach them outside GitHub.",
+   "Define severity levels and what each one triggers. actix-web separates code vulnerabilities, release integrity issues, security regressions and dependency issues.",
+   "Write the vulnerability path: acknowledge, open a draft advisory, fix in a private fork, request a CVE, release, publish, notify.",
+   "Add playbooks for incidents that aren't bug reports: a compromised account, a leaked token, a malicious release on the registry, a hijacked workflow.",
+   "List contacts (GitHub Support, your registry's security team, key downstream projects) and check them whenever maintainers change.",
+   "Publish a short public version and keep sensitive details internal, as Mockoon did. ImageMagick drew its process as a Mermaid diagram in SECURITY.md (snippet below)."
+  ],
+  "snippets": [
+   {
+    "label": "Process diagram for SECURITY.md (GitHub renders Mermaid blocks)",
+    "lang": "mermaid",
+    "code": "flowchart TD\n  A[Private report or incident] --> B[Acknowledge within 3 business days]\n  B --> C{Real and in scope?}\n  C -- No --> D[Explain and close]\n  C -- Yes --> E[Draft advisory and rate severity]\n  E --> F[Fix in a temporary private fork]\n  F --> G[Request CVE and agree a date]\n  G --> H[Release, publish advisory, notify users]\n  H --> I[Review and update the threat model]\n"
+   }
+  ],
+  "pitfalls": [
+   "Planning only for vulnerability reports. Account and pipeline compromises need different first steps, like revoking tokens and yanking releases.",
+   "A plan nobody has practiced. Run a one-hour drill once a year."
+  ],
+  "docs": [
+   {
+    "label": "OpenSSF vulnerability response runbook",
+    "url": "https://oss-vulnerability-guide.openssf.org/runbook"
+   },
+   {
+    "label": "GitHub: what is incident response?",
+    "url": "https://github.com/resources/articles/what-is-incident-response"
+   }
+  ]
+ },
+ "plan-irp-exercise": {
+  "short": "Run a one-hour drill of your incident plan every year, using a fake report.",
+  "why": "The first real run of a plan always finds gaps: a contact who left, missing registry rights, nobody who has requested a CVE before. Nasiko wants its first run to be \"a drill rather than a real report\", CAMEL-AI rehearsed its plan during the sprint, and FS2 reviewed past Typelevel incidents to bring new Security Team members up to speed.",
+  "steps": [
+   "Book an hour with everyone named in the plan, once a year and whenever a maintainer joins.",
+   "Pick a scenario: a fake private report, a leaked publish token, or a malicious release on your registry.",
+   "Use the real tools: open a draft advisory titled DRILL, start a temporary private fork, rate severity and draft the text, then close the draft.",
+   "Time each step and note blockers: missing permissions, stale contacts, steps nobody understood.",
+   "Also replay a past incident, yours or a public one like the tj-actions compromise, and ask what your plan would have done.",
+   "Update the plan the same day and record the drill date in it."
+  ],
+  "snippets": [
+   {
+    "label": "Drill card",
+    "lang": "markdown",
+    "code": "## Drill: leaked publish token (60 minutes)\n\nScenario: \"The publish token for {repo} appeared in a public CI log two hours ago.\"\n\n1. Who leads, and who is backup? Can both be reached right now?\n2. Revoke the token. Who has the rights, and how long did it take?\n3. Check the registry's release history. Any versions you didn't publish?\n4. Decide: yank or deprecate? Advisory? Who tells users, and where?\n5. Practice the advisory in a draft titled DRILL, then close it.\n\nRecord blockers, missing access and outdated contacts. Fix the plan today.\n"
+   }
+  ],
+  "pitfalls": [
+   "Requesting a CVE or publishing during a drill. Never press those buttons on a practice advisory.",
+   "Drilling only the person who wrote the plan. The backup needs the practice most."
+  ],
+  "docs": [
+   {
+    "label": "Creating a repository security advisory",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/create-repository-advisory"
+   },
+   {
+    "label": "OpenSSF vulnerability response runbook",
+    "url": "https://oss-vulnerability-guide.openssf.org/runbook"
+   }
+  ]
+ },
+ "plan-security-roadmap": {
+  "short": "Keep a ranked list of security tasks and finish a few every release.",
+  "why": "Security work arrives as dozens of small tasks that lose to feature work unless they're written down and ranked. AutoGPT's GravitasML team mapped 28 follow-up tasks, from fuzzing its XML parser to completing OpenSSF Scorecard, and Mautic came away from the program with \"a clearer security backlog and a shared understanding of priorities\".",
+  "steps": [
+   "Create a security label or a GitHub Project board for hardening tasks (snippet below). Never use it for vulnerability details.",
+   "Seed it from this checklist, Scorecard findings, open code scanning and Dependabot alerts, and the gaps in your threat model.",
+   "Rank by risk removed per hour of effort, and tag quick wins so contributors can pick them up.",
+   "Commit to a pace, such as one task per release, and review the list at fixed points; the Fund checks in at 6 and 12 months.",
+   "Publish the non-sensitive part as a roadmap, as CAMEL-AI and shadcn/ui did, so contributors know where to help."
+  ],
+  "snippets": [
+   {
+    "label": "A label and a first task",
+    "lang": "shell",
+    "code": "gh label create security --color B60205 --description \"Security hardening work (no vulnerability details)\"\ngh issue create --label security --title \"Turn on push protection\" --body \"From the security checklist\"\ngh issue list --label security --state open\n"
+   }
+  ],
+  "pitfalls": [
+   "Tracking unfixed vulnerabilities in public issues. Keep those in draft advisories.",
+   "A backlog that only grows. Close items you've decided against, and say why."
+  ],
+  "docs": [
+   {
+    "label": "About GitHub Projects",
+    "url": "https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/about-projects"
+   },
+   {
+    "label": "OSPS Baseline",
+    "url": "https://baseline.openssf.org/"
+   }
+  ]
+ },
+ "plan-external-audit": {
+  "short": "Have outside experts review your riskiest code once the basics are in place.",
+  "why": "Maintainers can't easily see their own blind spots. aiohttp's audit by Radically Open Security, arranged through NLnet's NGI Zero program, led to five CVEs, and a later Trail of Bits review found 10 more issues (8 CVEs). Gleam's review with GitHub Security Lab and the EEF security team found no gaps, which still mattered: \"Being secure is one thing; having confidence in security is another.\"",
+  "steps": [
+   "Do the basics in this checklist first, so auditors spend their time on design and code. OSTIF asks projects to run its preliminary checks before an audit.",
+   "Scope it to the riskiest parts, such as parsers, authentication, crypto, sandboxing or the release pipeline, and hand over your threat model and build instructions.",
+   "Find funding: NGI Zero grantees can request an audit by Radically Open Security, and OSTIF scopes audits, picks auditors and helps raise the money; initial audits run from about $30k to $200k.",
+   "Reserve maintainer time to fix the findings; NLnet also paid for the time aiohttp spent fixing.",
+   "Handle findings like any report, with private advisories, CVEs and a coordinated release; aiohttp shipped eight advisories together in 3.13.3.",
+   "Publish the report once fixes ship, and repeat after big changes. Stalwart's second audit came two years after its first."
+  ],
+  "snippets": [],
+  "pitfalls": [
+   "Treating a clean audit as permanent. New features need fresh eyes.",
+   "Booking an audit with no time set aside to fix what it finds."
+  ],
+  "docs": [
+   {
+    "label": "OSTIF: get an audit",
+    "url": "https://ostif.org/get-an-audit/"
+   },
+   {
+    "label": "NLnet NGI Zero support services",
+    "url": "https://nlnet.nl/NGI0/services/"
+   }
+  ]
+ },
+ "plan-postmortem": {
+  "short": "After an incident, publish what happened, who was affected and what you changed.",
+  "why": "Users need to know whether they were affected and what to do, and a clear account rebuilds trust faster than silence. After the March 2025 breach of its test infrastructure, Node.js published a full disclosure with a timeline, remediation and long-term prevention; PyPI's analysis of the Ultralytics attack showed that the later malicious uploads, which had no attestations, came through an old API token.",
+  "steps": [
+   "Within two weeks of containment, write it up (template below): summary, impact, timeline in UTC, root cause, fixes and what users should do.",
+   "Keep it blameless: describe decisions and systems, not people.",
+   "Name the exact affected versions, artifacts and time window, so users can check their lockfiles and logs.",
+   "Publish where users look: a GitHub advisory if it's a vulnerability, the release notes, and your blog or discussions. Link it from SECURITY.md.",
+   "Turn follow-ups into backlog items, and update your threat model and incident plan."
+  ],
+  "snippets": [
+   {
+    "label": "Incident report template",
+    "lang": "markdown",
+    "code": "# Incident report: <one-line title>\n\nStatus: resolved on YYYY-MM-DD. Severity: <level>.\n\n## Summary\nWhat happened, in two or three sentences.\n\n## Impact\n- Affected: <versions, artifacts, registries> between <time> and <time> UTC\n- Not affected: <...>\n\n## What you should do\nUpgrade to <version>, rotate <credential>, or check for <indicator>.\n\n## Timeline (UTC)\n- YYYY-MM-DD HH:MM: <event>\n\n## Root cause\nWhat made this possible.\n\n## What we changed\n- Done: <fix>\n- Planned: <follow-up, with a link to the issue>\n"
+   }
+  ],
+  "pitfalls": [
+   "Publishing details that still help an attacker before every fix is out.",
+   "Waiting for a perfect write-up. Post a short status first, then the full account."
+  ],
+  "docs": [
+   {
+    "label": "Publishing a repository security advisory",
+    "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/publish-repository-advisory"
+   },
+   {
+    "label": "OpenSSF guide to coordinated vulnerability disclosure",
+    "url": "https://oss-vulnerability-guide.openssf.org/maintainer-guide"
+   }
+  ]
+ }
+}

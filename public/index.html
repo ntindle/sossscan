@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" class="is-booting">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secure Open Source guide</title>
+<meta name="description" content="A security guide for open source maintainers: see where a change is exposed between your keyboard and your users, what to fix first, and how other projects fixed it.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#edefea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1d2225" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/shared/core.css">
+<link rel="stylesheet" href="/pipeline/pipeline.css">
+<script>try { var t = localStorage.getItem('pl:theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) { /* storage blocked */ }</script>
+<noscript><style>.scan__wait { display: none; }</style></noscript>
+</head>
+<body>
+<a class="skip" href="#map">Skip to the pipeline map</a>
+
+<header class="bar">
+  <div class="wrap bar__in">
+    <a class="bar__brand" href="/">Secure Open Source guide</a>
+    <button class="sg-btn sg-btn--small bar__theme" id="theme" type="button">Theme: system</button>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="top">
+    <section class="intro" aria-labelledby="title">
+      <h1 id="title">Secure every stage from your keyboard to your users</h1>
+      <p class="lede">Every change passes the same stages on its way to your users, from your accounts to the release, and reports of problems travel back the same way. Scan a repo to find its security gaps and what to fix first, then close each one the way teams in GitHub's Secure Open Source Fund did.</p>
+    </section>
+    <section class="scan" aria-labelledby="scan-title">
+      <h2 class="scan__h" id="scan-title">Scan your repo</h2>
+      <div id="scan-mount">
+        <p class="sg-muted scan__wait">Loading the guide…</p>
+        <noscript><p class="noscript">This guide needs JavaScript to scan a repo and draw the map.</p></noscript>
+      </div>
+      <div class="first" id="first" hidden></div>
+      <details class="layers" id="layers"><summary>Three ways to scan: public, private and the GitHub App</summary></details>
+    </section>
+  </div>
+
+  <div class="readout" id="readout"></div>
+
+  <section class="map" id="map" aria-labelledby="map-title" tabindex="-1">
+    <div class="map__head">
+      <h2 class="plate" id="map-title">Security at each stage</h2>
+      <ul class="legend" id="legend" aria-label="What the lights and bars mean"></ul>
+      <div class="map__tools">
+        <span class="map__busy" id="busy" aria-hidden="true"></span>
+        <button class="sg-btn sg-btn--small map__trace" id="trace" type="button">Trace a change</button>
+      </div>
+    </div>
+    <ol class="line" id="line" aria-label="Stages, in the order a change passes them"></ol>
+    <span class="token" id="token" aria-hidden="true" hidden></span>
+  </section>
+
+  <div id="stage-slot">
+    <section class="stage" id="stage-panel" aria-labelledby="stage-title">
+      <header class="stage__head" id="stage-head"></header>
+      <div class="stage__body">
+        <div class="stage__list" id="stage-list"></div>
+        <aside class="reader" id="reader" tabindex="-1" aria-label="How to fix the selected check"></aside>
+      </div>
+    </section>
+  </div>
+  <p class="vh" id="announce" aria-live="polite"></p>
+</main>
+
+<footer class="foot wrap" id="foot"></footer>
+
+<dialog class="sheet" id="sheet" aria-label="How to fix">
+  <div class="sheet__bar">
+    <p class="sheet__title" id="sheet-title">How to fix</p>
+    <button class="sg-btn" id="sheet-close" type="button" autofocus>Close</button>
+  </div>
+  <div class="sheet__body" id="sheet-body"></div>
+</dialog>
+
+<script type="module" src="/pipeline/pipeline.js"></script>
+</body>
+</html>

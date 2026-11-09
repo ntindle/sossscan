@@ -1,0 +1,11 @@
+# The page's browser code keeps its own compact style (ESLint checks it); docs and data aren't code.
+public/
+build/
+docs/
+*.md
+package-lock.json
+lib/ossfuzz.json
+.next/
+.venv/
+.secrets/
+.cache/

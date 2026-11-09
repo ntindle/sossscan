@@ -1,0 +1,38 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: "actions/checkout@v4"
+        with:
+          persist-credentials: false
+      - name: quoted false
+        uses: 'actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11' # v4.1.1
+        with:
+          fetch-depth: 0
+          persist-credentials: "false"
+
+      # a comment between steps
+      - uses: actions/setup-node@v4
+      - uses: docker://alpine:3.19
+      - uses: ./.github/actions/local
+      - uses: octo/thing/sub@main
+      - uses: github/codeql-action/upload-sarif@v3
+      -   uses:   actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+      - name: checkout with creds kept
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - run: |
+          cat <<'YAML'
+          - uses: actions/checkout@v3
+          YAML
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/checkout@v4

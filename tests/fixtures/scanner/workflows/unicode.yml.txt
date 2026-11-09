@@ -1,0 +1,17 @@
+name: weird
+on: push
+permissions: read-all
+jobs:
+  naïve:
+    runs-on: ubuntu-latest
+    steps:
+      - run:　echo ${{ github.event.issue.title }}
+      - naïve: ${{ github.event.issue.body }}
+  - uses: actions/checkout@v4
+      - run: echo "${{ github.event.issue.title }}"   more
+      - uses: actions/checkout@v4﻿
+      -uses: actions/checkout@v4
+      - run: echo SBOMé İnstall syft
+        env:
+          K: ${{ github.event.İssue.title }}
+﻿      - run: echo "${{ github.event.review.body }}"

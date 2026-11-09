@@ -1,0 +1,13 @@
+<div class="table-list-header-toggle states flex-auto pl-0">
+  <a class="btn-link selected" href="/octo/demo/network/dependents?dependent_type=REPOSITORY">
+    <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75"></path></svg>
+    1,234
+    Repositories
+  </a>
+  <a class="btn-link " href="/octo/demo/network/dependents?dependent_type=PACKAGE">
+    <svg aria-hidden="true" height="16" viewBox="0 0 16 16"><path d="m8.878.392"></path></svg>
+    56
+    Packages
+  </a>
+</div>
+<p>7 Repositories were not counted</p>

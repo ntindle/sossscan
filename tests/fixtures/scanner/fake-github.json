@@ -1,0 +1,755 @@
+{
+  "_comment": "Canned GitHub responses for the offline scan tests. The Python scanner was served them when expected.json was recorded; scanner.test.ts serves them to lib/scanner. A route is a response or a list of responses given in turn (the last repeats). status 0 is a network failure. Unlisted URLs get a 404. The fixes and admin-denied scenarios were added with 0.3.0, for the focused tests of its bug fixes. The oss-scanner-* scenarios (and the anthropics/oss-scanner routes in public) were added with 0.4.0, for the OSS Scanner check. The private-large scenarios were added with 0.4.1: a private repo big enough for every program lookup, whose Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner routes answer as if it were enrolled, and the same repo made public. Since 0.4.1 a private repo's scan never requests those routes (admin-org's included).",
+  "scenarios": {
+    "public": {
+      "repo": "Octo/Demo",
+      "options": { "token": "test-token" },
+      "routes": {
+        "https://api.github.com/repos/Octo/Demo": {
+          "json": {
+            "name": "demo",
+            "full_name": "octo/demo",
+            "owner": { "login": "octo", "type": "User" },
+            "private": false,
+            "default_branch": "main",
+            "stargazers_count": 1234,
+            "forks_count": 56,
+            "subscribers_count": 7,
+            "language": "Python",
+            "topics": ["security", "demo"],
+            "archived": false,
+            "description": "A demo repo",
+            "html_url": "https://github.com/octo/demo",
+            "permissions": { "admin": false, "push": false, "pull": true }
+          }
+        },
+        "https://api.github.com/repos/octo/demo/git/trees/main?recursive=1": {
+          "json": {
+            "sha": "0000000000000000000000000000000000000001",
+            "truncated": false,
+            "tree": [
+              { "path": ".clusterfuzzlite", "type": "tree" },
+              { "path": ".clusterfuzzlite/Dockerfile", "type": "blob" },
+              { "path": ".github", "type": "tree" },
+              { "path": ".github/CODEOWNERS", "type": "blob" },
+              { "path": ".github/dependabot.yml", "type": "blob" },
+              { "path": ".github/workflows", "type": "tree" },
+              { "path": ".github/workflows/checkout.yml", "type": "blob" },
+              { "path": ".github/workflows/codeql.yml", "type": "blob" },
+              { "path": ".github/workflows/empty.yml", "type": "blob" },
+              { "path": ".github/workflows/injection.yml", "type": "blob" },
+              { "path": ".github/workflows/jobs_some.yml", "type": "blob" },
+              { "path": ".github/workflows/missing.yml", "type": "blob" },
+              { "path": ".github/workflows/prt.yml", "type": "blob" },
+              { "path": ".github/workflows/release.yaml", "type": "blob" },
+              { "path": ".github/workflows/sub", "type": "tree" },
+              { "path": ".github/workflows/sub/nested.yml", "type": "blob" },
+              { "path": ".github/workflows/unicode.yml", "type": "blob" },
+              { "path": ".github/workflows/workflow_run.yml", "type": "blob" },
+              { "path": ".goreleaser.yaml", "type": "blob" },
+              { "path": ".npmrc", "type": "blob" },
+              { "path": ".zizmor.yml", "type": "blob" },
+              { "path": "AGENTS.md", "type": "blob" },
+              { "path": "CLAUDE.md", "type": "blob" },
+              { "path": "SECURITY.md", "type": "blob" },
+              { "path": "deny.toml", "type": "blob" },
+              { "path": "docs", "type": "tree" },
+              { "path": "docs/INCIDENT_RESPONSE.md", "type": "blob" },
+              { "path": "docs/threat-model.md", "type": "blob" },
+              { "path": "fuzz", "type": "tree" },
+              { "path": "fuzz/fuzz_targets", "type": "tree" },
+              { "path": "fuzz/fuzz_targets/parse.rs", "type": "blob" },
+              { "path": "go.mod", "type": "blob" },
+              { "path": "package.json", "type": "blob" },
+              { "path": "pyproject.toml", "type": "blob" },
+              { "path": "src", "type": "tree" },
+              { "path": "src/fuzzy.c", "type": "blob" },
+              { "path": "uv.lock", "type": "blob" },
+              { "path": "vendor", "type": "tree" },
+              { "path": "vendor/fuzz", "type": "tree" },
+              { "path": "vendor/fuzz/x.c", "type": "blob" },
+              { "path": "web", "type": "tree" },
+              { "path": "web/package-lock.json", "type": "blob" },
+              { "path": "web/package.json", "type": "blob" }
+            ]
+          }
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/checkout.yml": {
+          "file": "workflows/checkout.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/codeql.yml": {
+          "file": "workflows/codeql.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/empty.yml": {
+          "file": "workflows/empty.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/injection.yml": {
+          "file": "workflows/injection.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/jobs_some.yml": {
+          "file": "workflows/jobs_some.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/prt.yml": {
+          "file": "workflows/prt.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/release.yaml": {
+          "file": "workflows/release.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/unicode.yml": {
+          "file": "workflows/unicode.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/workflows/workflow_run.yml": {
+          "file": "workflows/workflow_run.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/SECURITY.md": { "file": "files/SECURITY.md.txt" },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/CODEOWNERS": {
+          "file": "files/CODEOWNERS_partial.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.github/dependabot.yml": {
+          "file": "files/dependabot.yml.txt"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/.npmrc": { "file": "files/npmrc.txt" },
+        "https://raw.githubusercontent.com/octo/demo/main/pyproject.toml": { "file": "files/pyproject.toml.txt" },
+        "https://raw.githubusercontent.com/octo/demo/main/.goreleaser.yaml": { "file": "files/goreleaser.yaml.txt" },
+        "https://raw.githubusercontent.com/octo/demo/main/AGENTS.md": { "file": "files/AGENTS.md.txt" },
+        "https://raw.githubusercontent.com/octo/demo/main/CLAUDE.md": { "file": "files/CLAUDE.md.txt" },
+        "https://api.github.com/repos/octo/demo/private-vulnerability-reporting": { "json": { "enabled": true } },
+        "https://api.github.com/repos/octo/demo/branches/main": { "json": { "name": "main", "protected": true } },
+        "https://api.github.com/repos/octo/demo/rules/branches/main": {
+          "json": [
+            { "type": "pull_request", "ruleset_id": 1 },
+            { "type": "non_fast_forward", "ruleset_id": 1 },
+            { "type": "required_signatures", "ruleset_id": 2 },
+            { "type": "pull_request", "ruleset_id": 2 }
+          ]
+        },
+        "https://api.github.com/repos/octo/demo/rulesets?includes_parents=true": {
+          "json": [
+            { "id": 1, "name": "tags", "target": "tag" },
+            { "id": 2, "name": "main", "target": "branch" }
+          ]
+        },
+        "https://api.github.com/repos/octo/demo/releases/latest": [
+          { "status": 502, "text": "Bad gateway" },
+          { "json": { "tag_name": "v1.2.3", "immutable": false } }
+        ],
+        "https://api.github.com/repos/octo/demo/security-advisories?state=published&per_page=100": {
+          "json": [
+            { "ghsa_id": "GHSA-aaaa", "cve_id": "CVE-2026-0001", "published_at": "2026-10-01T09:00:00Z" },
+            { "ghsa_id": "GHSA-bbbb", "cve_id": null, "published_at": "2026-01-15T09:00:00Z" }
+          ]
+        },
+        "https://api.github.com/repos/octo/demo/actions/workflows?per_page=100": {
+          "json": {
+            "total_count": 2,
+            "workflows": [
+              { "path": ".github/workflows/checkout.yml" },
+              { "path": "dynamic/github-code-scanning/codeql" }
+            ]
+          }
+        },
+        "https://api.securityscorecards.dev/projects/github.com/octo/demo": {
+          "json": {
+            "date": "2026-11-01T12:00:00Z",
+            "score": 7.3,
+            "checks": [
+              { "name": "Code-Review", "score": 10, "reason": "all changesets reviewed" },
+              { "name": "Fuzzing", "score": -1, "reason": null },
+              { "name": "Pinned-Dependencies", "score": 4 }
+            ]
+          }
+        },
+        "https://www.bestpractices.dev/projects.json?url=https%3A//github.com/octo/demo": {
+          "json": [{ "id": 4242, "badge_level": "in_progress", "badge_percentage_0": 87 }]
+        },
+        "https://github.com/octo/demo/network/dependents": { "file": "files/dependents.html.txt" },
+        "https://raw.githubusercontent.com/google/oss-fuzz/master/projects/demo/project.yaml": {
+          "file": "files/oss-fuzz-demo.yaml.txt"
+        },
+        "https://raw.githubusercontent.com/google/oss-fuzz/master/projects/octo/project.yaml": {
+          "file": "files/oss-fuzz-other.yaml.txt"
+        },
+        "https://api.github.com/repos/anthropics/oss-scanner/git/trees/main": {
+          "json": {
+            "sha": "0a55ca7700000000000000000000000000000001",
+            "truncated": false,
+            "tree": [
+              { "path": "README.md", "type": "blob", "sha": "0a55ca7700000000000000000000000000000002" },
+              { "path": "projects", "type": "tree", "sha": "0a55ca7700000000000000000000000000000003" },
+              { "path": "tools", "type": "tree", "sha": "0a55ca7700000000000000000000000000000004" }
+            ]
+          }
+        },
+        "https://api.github.com/repos/anthropics/oss-scanner/git/trees/0a55ca7700000000000000000000000000000003": {
+          "json": {
+            "sha": "0a55ca7700000000000000000000000000000003",
+            "truncated": false,
+            "tree": [
+              { "path": "README.md", "type": "blob" },
+              { "path": "airflow", "type": "tree" },
+              { "path": "demo", "type": "tree" },
+              { "path": "demo-core", "type": "tree" },
+              { "path": "demolition", "type": "tree" },
+              { "path": "octopus", "type": "tree" },
+              { "path": "pandemonium", "type": "tree" },
+              { "path": "zlib", "type": "tree" }
+            ]
+          }
+        },
+        "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/demo/project.yaml": {
+          "text": "repo: https://github.com/elsewhere/demo#main\nprimary_contact: security@elsewhere.example\n"
+        },
+        "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/demo-core/project.yaml": {
+          "text": "# Demo, enrolled under a folder name of its own\nrepo: \"https://www.github.com/Octo/Demo.git/\"   # the repository to scan\nprimary_contact: security@octo.example\ndisabled: false\n"
+        }
+      }
+    },
+    "no-token": {
+      "repo": "Octo/Demo",
+      "options": { "token": null },
+      "routes_from": "public"
+    },
+    "admin-org": {
+      "repo": "acme/secret",
+      "options": { "token": "test-token" },
+      "routes": {
+        "https://api.github.com/repos/acme/secret": {
+          "json": {
+            "name": "secret",
+            "full_name": "acme/secret",
+            "owner": { "login": "acme", "type": "Organization" },
+            "private": true,
+            "default_branch": "release/2.x",
+            "stargazers_count": 0,
+            "forks_count": 0,
+            "subscribers_count": 2,
+            "language": null,
+            "topics": [],
+            "archived": false,
+            "description": null,
+            "html_url": "https://github.com/acme/secret",
+            "permissions": { "admin": true, "push": true, "pull": true },
+            "security_and_analysis": {
+              "secret_scanning": { "status": "enabled" },
+              "secret_scanning_push_protection": { "status": "disabled" },
+              "dependabot_security_updates": { "status": "enabled" }
+            }
+          }
+        },
+        "https://api.github.com/repos/acme/secret/git/trees/release/2.x?recursive=1": {
+          "json": {
+            "truncated": true,
+            "tree": [{ "path": "too-many-files", "type": "blob" }]
+          }
+        },
+        "https://api.github.com/repos/acme/secret/git/trees/release/2.x": {
+          "json": {
+            "tree": [
+              { "path": ".github", "type": "tree", "sha": "aaaa" },
+              { "path": "Cargo.lock", "type": "blob", "sha": "x1" },
+              { "path": "Cargo.toml", "type": "blob", "sha": "x2" },
+              { "path": "README.md", "type": "blob", "sha": "x3" },
+              { "path": "docs", "type": "tree", "sha": "bbbb" },
+              { "path": "package.json", "type": "blob", "sha": "x4" },
+              { "path": "src", "type": "tree", "sha": "cccc" }
+            ]
+          }
+        },
+        "https://api.github.com/repos/acme/secret/git/trees/aaaa?recursive=1": {
+          "json": {
+            "tree": [
+              { "path": "SECURITY.md", "type": "blob" },
+              { "path": "dependabot.yaml", "type": "blob" },
+              { "path": "workflows", "type": "tree" },
+              { "path": "workflows/ci.yml", "type": "blob" },
+              { "path": "workflows/jobs_all.yml", "type": "blob" }
+            ]
+          }
+        },
+        "https://api.github.com/repos/acme/secret/git/trees/bbbb?recursive=1": {
+          "json": { "tree": [{ "path": "threat_model.md", "type": "blob" }] }
+        },
+        "https://api.github.com/repos/acme/secret/contents/.github/workflows/ci.yml?ref=release/2.x": {
+          "file": "workflows/checkout.yml.txt"
+        },
+        "https://api.github.com/repos/acme/secret/contents/.github/workflows/jobs_all.yml?ref=release/2.x": {
+          "file": "workflows/jobs_all.yml.txt"
+        },
+        "https://api.github.com/repos/acme/secret/contents/.github/SECURITY.md?ref=release/2.x": {
+          "text": "# Security\n\nEmail us.\n"
+        },
+        "https://api.github.com/repos/acme/secret/contents/.github/dependabot.yaml?ref=release/2.x": {
+          "text": "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n  - package-ecosystem: cargo\n    directory: /\n"
+        },
+        "https://api.github.com/repos/acme/secret/private-vulnerability-reporting": {
+          "status": 404,
+          "json": { "message": "Not Found" }
+        },
+        "https://api.github.com/repos/acme/secret/branches/release/2.x": {
+          "json": { "name": "release/2.x", "protected": false }
+        },
+        "https://api.github.com/repos/acme/secret/rules/branches/release/2.x": { "json": [] },
+        "https://api.github.com/repos/acme/secret/rulesets?includes_parents=true": {
+          "status": 403,
+          "json": { "message": "Upgrade to GitHub Pro" }
+        },
+        "https://api.github.com/repos/acme/secret/security-advisories?state=published&per_page=100": { "json": [] },
+        "https://api.github.com/repos/acme/secret/actions/workflows?per_page=100": {
+          "json": { "workflows": [{ "path": "dynamic/dependabot/dependabot-updates" }] }
+        },
+        "https://api.securityscorecards.dev/projects/github.com/acme/secret": [{ "status": 0 }, { "status": 0 }],
+        "https://www.bestpractices.dev/projects.json?url=https%3A//github.com/acme/secret": [
+          { "status": 500, "text": "oops" },
+          { "status": 500, "text": "oops" }
+        ],
+        "https://api.github.com/repos/acme/secret/vulnerability-alerts": { "status": 204 },
+        "https://api.github.com/repos/acme/secret/automated-security-fixes": {
+          "json": { "enabled": true, "paused": false }
+        },
+        "https://api.github.com/repos/acme/secret/code-scanning/default-setup": {
+          "json": { "state": "configured", "languages": ["python", "actions"] }
+        },
+        "https://api.github.com/repos/acme/secret/actions/permissions": {
+          "json": { "enabled": true, "allowed_actions": "selected", "sha_pinning_required": true }
+        },
+        "https://api.github.com/repos/acme/secret/actions/permissions/workflow": {
+          "json": { "default_workflow_permissions": "read", "can_approve_pull_request_reviews": false }
+        },
+        "https://api.github.com/repos/acme/secret/actions/permissions/fork-pr-contributor-approval": {
+          "json": { "approval_policy": "first_time_contributors_new_to_github" }
+        },
+        "https://api.github.com/repos/acme/secret/branches/release/2.x/protection": {
+          "json": {
+            "required_pull_request_reviews": {
+              "required_approving_review_count": 2,
+              "require_code_owner_reviews": true
+            },
+            "enforce_admins": { "enabled": true },
+            "allow_force_pushes": { "enabled": false }
+          }
+        },
+        "https://api.github.com/repos/acme/secret/immutable-releases": {
+          "json": { "enabled": false, "enforced_by_owner": false }
+        },
+        "https://api.github.com/repos/acme/secret/environments": {
+          "json": {
+            "total_count": 2,
+            "environments": [
+              { "name": "pypi", "protection_rules": [{ "type": "wait_timer" }, { "type": "required_reviewers" }] },
+              { "name": "docs", "protection_rules": [] }
+            ]
+          }
+        },
+        "https://api.github.com/repos/acme/secret/code-scanning/alerts?state=open&per_page=100": {
+          "json": [
+            { "number": 1, "rule": { "security_severity_level": "high" } },
+            { "number": 2, "rule": { "security_severity_level": "low" } },
+            { "number": 3, "rule": null }
+          ]
+        },
+        "https://api.github.com/repos/acme/secret/secret-scanning/alerts?state=open&per_page=100": { "json": [] },
+        "https://api.github.com/repos/acme/secret/dependabot/alerts?state=open&per_page=100": {
+          "json": [
+            { "number": 1, "security_advisory": { "severity": "critical" } },
+            { "number": 2, "security_advisory": { "severity": "medium" } },
+            { "number": 3, "security_advisory": { "severity": "high" } }
+          ]
+        },
+        "https://api.github.com/repos/acme/secret/collaborators?affiliation=all&permission=admin&per_page=100": {
+          "json": [{ "login": "ada" }, { "login": "bo" }, { "login": "cy" }, { "login": "di" }]
+        },
+        "https://api.github.com/repos/acme/secret/actions/secrets?per_page=1": {
+          "json": { "total_count": 3, "secrets": [{ "name": "NPM_TOKEN" }] }
+        },
+        "https://api.github.com/orgs/acme": { "json": { "login": "acme", "two_factor_requirement_enabled": false } },
+        "https://api.github.com/orgs/acme/members?filter=2fa_disabled&per_page=100": {
+          "json": [{ "login": "x" }, { "login": "y" }]
+        }
+      }
+    },
+    "admin-org-public-layer": {
+      "repo": "acme/secret",
+      "options": { "token": "test-token", "layer": "public" },
+      "routes_from": "admin-org"
+    },
+    "assume-admin": {
+      "repo": "solo/tool",
+      "options": {
+        "token": "app-token",
+        "assume_admin": true,
+        "oss_fuzz_lookup": { "solo/tool": ["tool", "tool-extra"] }
+      },
+      "routes": {
+        "https://api.github.com/repos/solo/tool": {
+          "json": {
+            "name": "tool",
+            "full_name": "solo/tool",
+            "owner": { "login": "solo", "type": "User" },
+            "private": false,
+            "default_branch": "trunk",
+            "stargazers_count": 3,
+            "forks_count": 1,
+            "language": "Rust",
+            "archived": true,
+            "description": "A tool",
+            "html_url": "https://github.com/solo/tool"
+          }
+        },
+        "https://api.github.com/repos/solo/tool/git/trees/trunk?recursive=1": {
+          "json": {
+            "tree": [
+              { "path": ".github", "type": "tree" },
+              { "path": ".github/instructions", "type": "tree" },
+              { "path": ".github/instructions/review.md", "type": "blob" },
+              { "path": "Cargo.lock", "type": "blob" },
+              { "path": "Cargo.toml", "type": "blob" },
+              { "path": "README.md", "type": "blob" },
+              { "path": "deny.toml", "type": "blob" },
+              { "path": "renovate.json", "type": "blob" }
+            ]
+          }
+        },
+        "https://raw.githubusercontent.com/solo/tool/trunk/renovate.json": { "file": "files/renovate.json.txt" },
+        "https://raw.githubusercontent.com/solo/tool/trunk/.github/instructions/review.md": {
+          "text": "Review for clarity.\n"
+        },
+        "https://api.github.com/repos/solo/tool/branches/trunk": { "json": { "name": "trunk", "protected": false } },
+        "https://api.github.com/repos/solo/tool/releases/latest": { "json": { "tag_name": null } },
+        "https://api.github.com/repos/solo/tool/actions/workflows?per_page=100": { "json": { "total_count": 0 } },
+        "https://api.securityscorecards.dev/projects/github.com/solo/tool": {
+          "json": { "date": null, "score": 10, "checks": [] }
+        },
+        "https://www.bestpractices.dev/projects.json?url=https%3A//github.com/solo/tool": {
+          "json": [{ "id": 7, "badge_level": "", "badge_percentage_0": 0 }]
+        },
+        "https://github.com/solo/tool/network/dependents": { "text": "<b>0</b>\n Repositories <i>3 Packages</i>" },
+        "https://api.github.com/repos/solo/tool/vulnerability-alerts": {
+          "status": 404,
+          "json": { "message": "Disabled" }
+        },
+        "https://api.github.com/repos/solo/tool/actions/permissions": { "json": { "enabled": true } },
+        "https://api.github.com/repos/solo/tool/actions/permissions/workflow": {
+          "json": { "default_workflow_permissions": "write", "can_approve_pull_request_reviews": true }
+        },
+        "https://api.github.com/repos/solo/tool/actions/permissions/fork-pr-contributor-approval": {
+          "json": { "approval_policy": "all_external_contributors" }
+        },
+        "https://api.github.com/repos/solo/tool/immutable-releases": { "json": { "enabled": true } },
+        "https://api.github.com/repos/solo/tool/environments": { "json": { "total_count": 0, "environments": [] } },
+        "https://api.github.com/repos/solo/tool/dependabot/alerts?state=open&per_page=100": {
+          "status": 403,
+          "json": { "message": "Dependabot alerts are disabled" }
+        },
+        "https://api.github.com/repos/solo/tool/collaborators?affiliation=all&permission=admin&per_page=100": {
+          "json": [{ "login": "solo" }]
+        },
+        "https://api.github.com/repos/solo/tool/actions/secrets?per_page=1": { "json": { "total_count": 0 } }
+      }
+    },
+    "empty-repo": {
+      "repo": "octo/empty",
+      "options": { "token": "test-token", "layer": "private" },
+      "routes": {
+        "https://api.github.com/repos/octo/empty": {
+          "json": {
+            "name": "empty",
+            "full_name": "octo/empty",
+            "owner": { "login": "octo", "type": "User" },
+            "private": false,
+            "default_branch": "main",
+            "stargazers_count": 0,
+            "permissions": { "admin": false }
+          }
+        },
+        "https://api.github.com/repos/octo/empty/git/trees/main?recursive=1": {
+          "status": 409,
+          "json": { "message": "Git Repository is empty." }
+        },
+        "https://github.com/octo/empty/network/dependents": { "text": "no counts here" }
+      }
+    },
+    "refused": {
+      "repo": "acme/secret",
+      "options": { "token": "server-token", "layer": "public", "allow_private": false },
+      "routes_from": "admin-org"
+    },
+    "not-found": { "repo": "ghost/none", "options": { "token": null }, "routes": {} },
+    "lookup-500": {
+      "repo": "octo/flaky",
+      "options": { "token": "test-token" },
+      "routes": { "https://api.github.com/repos/octo/flaky": { "status": 503, "text": "unavailable" } }
+    },
+    "network-down": {
+      "repo": "octo/offline",
+      "options": { "token": "test-token" },
+      "routes": { "https://api.github.com/repos/octo/offline": { "status": 0 } }
+    },
+    "fixes": {
+      "repo": "octo/fixes",
+      "options": { "token": "test-token" },
+      "routes": {
+        "https://api.github.com/repos/octo/fixes": {
+          "json": {
+            "name": "fixes",
+            "full_name": "octo/fixes",
+            "owner": { "login": "octo", "type": "User" },
+            "private": false,
+            "default_branch": "main",
+            "stargazers_count": 3,
+            "permissions": { "admin": false }
+          }
+        },
+        "https://api.github.com/repos/octo/fixes/git/trees/main?recursive=1": {
+          "json": {
+            "truncated": false,
+            "tree": [
+              { "path": ".github", "type": "tree" },
+              { "path": ".github/workflows", "type": "tree" },
+              { "path": ".github/workflows/both.yml", "type": "blob" },
+              { "path": ".github/workflows/go.yml", "type": "blob" },
+              { "path": ".github/workflows/pr.yml", "type": "blob" },
+              { "path": ".github/workflows/push.yml", "type": "blob" },
+              { "path": ".github/workflows/python.yml", "type": "blob" },
+              { "path": ".github/workflows/review.yml", "type": "blob" },
+              { "path": "docs", "type": "tree" },
+              { "path": "docs/security", "type": "tree" },
+              { "path": "docs/security/index.md", "type": "blob" },
+              { "path": "fuzz", "type": "tree" },
+              { "path": "fuzz/parse.c", "type": "blob" },
+              { "path": "security", "type": "tree" },
+              { "path": "security/selinux.c", "type": "blob" },
+              { "path": "threat-model", "type": "commit" }
+            ]
+          }
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/both.yml": {
+          "text": "on:\n  pull_request_target:\n  workflow_run:\n    workflows: [ci]\n    types: [completed]\npermissions:\n  contents: read\njobs:\n  label:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4\n        with:\n          persist-credentials: false\n          allow-unsafe-pr-checkout: true\n"
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/go.yml": {
+          "text": "on: [push]\npermissions:\n  contents: read\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go install github.com/securego/gosec/v2/cmd/gosec@latest\n      - run: gosec ./...\n      - run: semgrep scan --config auto\n"
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/pr.yml": {
+          "text": "on: [push, pull_request]\npermissions: {}\njobs:\n  test:\n    runs-on: [self-hosted, linux]\n    steps:\n      - run: make test\n"
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/push.yml": {
+          "text": "on:\n  push:\n    branches: [main]\npermissions: {}\njobs:\n  deploy:\n    runs-on: self-hosted\n    steps:\n      - run: ./deploy.sh\n"
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/python.yml": {
+          "text": "on: [push]\npermissions:\n  contents: read\njobs:\n  sast:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pip install bandit\n      - run: bandit -r src\n      - name: Semgrep\n        run: semgrep ci\n"
+        },
+        "https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/review.yml": {
+          "text": "on:\n  pull_request:\n    types: [opened, synchronize]\npermissions: {}\njobs:\n  check:\n    runs-on:\n      - self-hosted\n    steps:\n      - run: ./check.sh\n"
+        },
+        "https://api.github.com/repos/octo/fixes/security-advisories?state=published&per_page=100": {
+          "json": [
+            { "ghsa_id": "GHSA-1111-1111-1111", "cve_id": "CVE-2026-1111", "published_at": null },
+            { "ghsa_id": "GHSA-2222-2222-2222", "cve_id": null },
+            { "ghsa_id": "GHSA-3333-3333-3333", "cve_id": "CVE-2025-3333", "published_at": "2025-03-04T05:06:07Z" },
+            { "ghsa_id": "GHSA-4444-4444-4444", "cve_id": null, "published_at": "2024-12-01T00:00:00Z" }
+          ]
+        }
+      }
+    },
+    "admin-denied": {
+      "repo": "solo/tool",
+      "options": { "token": "app-token", "assume_admin": true, "oss_fuzz_lookup": { "solo/tool": [] } },
+      "routes_from": "assume-admin",
+      "routes": {
+        "https://api.github.com/repos/solo/tool/vulnerability-alerts": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/code-scanning/alerts?state=open&per_page=100": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/secret-scanning/alerts?state=open&per_page=100": {
+          "status": 404,
+          "json": { "message": "Secret scanning is disabled on this repository." }
+        },
+        "https://api.github.com/repos/solo/tool/actions/permissions/fork-pr-contributor-approval": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/environments": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/collaborators?affiliation=all&permission=admin&per_page=100": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/actions/secrets?per_page=1": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        }
+      }
+    },
+    "oss-scanner-paused": {
+      "repo": "Octo/Demo",
+      "options": { "token": "test-token" },
+      "routes_from": "public",
+      "routes": {
+        "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/demo-core/project.yaml": {
+          "text": "repo: https://github.com/octo/demo#main\nprimary_contact: security@octo.example\ndisabled: 'Yes'   # paused until the next release\n"
+        }
+      }
+    },
+    "oss-scanner-not-enrolled": {
+      "repo": "Octo/Demo",
+      "options": { "token": "test-token" },
+      "routes_from": "public",
+      "routes": {
+        "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/demo-core/project.yaml": {
+          "text": "repo: https://gitlab.com/octo/demo\nprimary_contact: security@octo.example\n"
+        }
+      }
+    },
+    "oss-scanner-small": {
+      "repo": "Octo/Demo",
+      "options": { "token": "test-token" },
+      "routes_from": "public",
+      "routes": {
+        "https://api.github.com/repos/Octo/Demo": {
+          "json": {
+            "name": "demo",
+            "full_name": "octo/demo",
+            "owner": { "login": "octo", "type": "User" },
+            "private": false,
+            "default_branch": "main",
+            "stargazers_count": 1000,
+            "forks_count": 56,
+            "subscribers_count": 7,
+            "language": "Python",
+            "topics": ["security", "demo"],
+            "archived": false,
+            "description": "A demo repo",
+            "html_url": "https://github.com/octo/demo",
+            "permissions": { "admin": false, "push": false, "pull": true }
+          }
+        },
+        "https://github.com/octo/demo/network/dependents": { "text": "<b>150</b>\n Repositories <i>50 Packages</i>" }
+      }
+    },
+    "oss-scanner-down": {
+      "repo": "Octo/Demo",
+      "options": { "token": "test-token" },
+      "routes_from": "public",
+      "routes": {
+        "https://api.github.com/repos/anthropics/oss-scanner/git/trees/main": [
+          { "status": 502 },
+          { "status": 503, "json": { "message": "Service Unavailable" } }
+        ]
+      }
+    },
+    "private-large": {
+      "repo": "octo/vault",
+      "options": { "token": "test-token" },
+      "routes": {
+        "https://api.github.com/repos/octo/vault": {
+          "json": {
+            "name": "vault",
+            "full_name": "octo/vault",
+            "owner": { "login": "octo", "type": "User" },
+            "private": true,
+            "default_branch": "main",
+            "stargazers_count": 4321,
+            "forks_count": 12,
+            "subscribers_count": 9,
+            "language": "Go",
+            "topics": [],
+            "archived": false,
+            "description": "A private repo big enough for every program lookup",
+            "html_url": "https://github.com/octo/vault",
+            "permissions": { "admin": false, "push": true, "pull": true }
+          }
+        },
+        "https://api.github.com/repos/octo/vault/git/trees/main?recursive=1": {
+          "json": {
+            "truncated": false,
+            "tree": [
+              { "path": ".clusterfuzzlite", "type": "tree" },
+              { "path": ".clusterfuzzlite/Dockerfile", "type": "blob" },
+              { "path": ".github", "type": "tree" },
+              { "path": ".github/workflows", "type": "tree" },
+              { "path": ".github/workflows/fuzz.yml", "type": "blob" },
+              { "path": ".github/workflows/scorecard.yml", "type": "blob" },
+              { "path": "go.mod", "type": "blob" },
+              { "path": "go.sum", "type": "blob" }
+            ]
+          }
+        },
+        "https://api.github.com/repos/octo/vault/contents/.github/workflows/fuzz.yml?ref=main": {
+          "text": "name: ClusterFuzzLite\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  fuzz:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: google/clusterfuzzlite/actions/build_fuzzers@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v1\n        with:\n          language: go\n      - uses: google/clusterfuzzlite/actions/run_fuzzers@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v1\n        with:\n          fuzz-seconds: 300\n          mode: code-change\n"
+        },
+        "https://api.github.com/repos/octo/vault/contents/.github/workflows/scorecard.yml?ref=main": {
+          "text": "name: Scorecard\non:\n  push:\n    branches: [main]\npermissions: read-all\njobs:\n  analysis:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4\n        with:\n          persist-credentials: false\n      - uses: ossf/scorecard-action@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb # v2\n        with:\n          results_file: results.sarif\n          results_format: sarif\n"
+        },
+        "https://api.securityscorecards.dev/projects/github.com/octo/vault": {
+          "json": {
+            "date": "2026-11-02T08:00:00Z",
+            "score": 8.1,
+            "checks": [{ "name": "Fuzzing", "score": 10, "reason": "project is fuzzed" }]
+          }
+        },
+        "https://www.bestpractices.dev/projects.json?url=https%3A//github.com/octo/vault": {
+          "json": [{ "id": 9001, "badge_level": "passing", "badge_percentage_0": 100 }]
+        },
+        "https://raw.githubusercontent.com/google/oss-fuzz/master/projects/vault/project.yaml": {
+          "text": "homepage: https://vault.example\nlanguage: go\nmain_repo: https://github.com/octo/vault\n"
+        },
+        "https://api.github.com/repos/anthropics/oss-scanner/git/trees/main": {
+          "json": {
+            "sha": "0a55ca7700000000000000000000000000000011",
+            "truncated": false,
+            "tree": [{ "path": "projects", "type": "tree", "sha": "0a55ca7700000000000000000000000000000013" }]
+          }
+        },
+        "https://api.github.com/repos/anthropics/oss-scanner/git/trees/0a55ca7700000000000000000000000000000013": {
+          "json": {
+            "sha": "0a55ca7700000000000000000000000000000013",
+            "truncated": false,
+            "tree": [
+              { "path": "vault", "type": "tree" },
+              { "path": "zlib", "type": "tree" }
+            ]
+          }
+        },
+        "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/vault/project.yaml": {
+          "text": "repo: https://github.com/octo/vault\nprimary_contact: security@octo.example\n"
+        }
+      }
+    },
+    "private-large-made-public": {
+      "repo": "octo/vault",
+      "options": { "token": "test-token" },
+      "routes_from": "private-large",
+      "routes": {
+        "https://api.github.com/repos/octo/vault": {
+          "json": {
+            "name": "vault",
+            "full_name": "octo/vault",
+            "owner": { "login": "octo", "type": "User" },
+            "private": false,
+            "default_branch": "main",
+            "stargazers_count": 4321,
+            "forks_count": 12,
+            "subscribers_count": 9,
+            "language": "Go",
+            "topics": [],
+            "archived": false,
+            "description": "A private repo big enough for every program lookup",
+            "html_url": "https://github.com/octo/vault",
+            "permissions": { "admin": false, "push": true, "pull": true }
+          }
+        },
+        "https://raw.githubusercontent.com/octo/vault/main/.github/workflows/fuzz.yml": {
+          "text": "name: ClusterFuzzLite\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  fuzz:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: google/clusterfuzzlite/actions/build_fuzzers@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v1\n        with:\n          language: go\n      - uses: google/clusterfuzzlite/actions/run_fuzzers@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v1\n        with:\n          fuzz-seconds: 300\n          mode: code-change\n"
+        },
+        "https://raw.githubusercontent.com/octo/vault/main/.github/workflows/scorecard.yml": {
+          "text": "name: Scorecard\non:\n  push:\n    branches: [main]\npermissions: read-all\njobs:\n  analysis:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4\n        with:\n          persist-credentials: false\n      - uses: ossf/scorecard-action@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb # v2\n        with:\n          results_file: results.sarif\n          results_format: sarif\n"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+# Fly.io settings for running the site as one container. See DEPLOY.md for the one-time setup.
+# One machine with one volume, which holds caches only (see Dockerfile). Every secret comes from `fly secrets set`.
+app = "sossscan"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The site's public address. Change it to your own domain if you add one; the GitHub App's URLs must match it.
+  SITE_BASE_URL = "https://sossscan.fly.dev"
+
+[[mounts]]
+  source = "sosf_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 80
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
