@@ -25,7 +25,7 @@ Two things are only per instance on Vercel, so treat them as speed bumps, not ha
 2. **Create the Vercel project.** At vercel.com/new, import the GitHub repo `ntindle/sossscan`.
    - Leave **Root Directory** at the repository root (`.`). Vercel detects Next.js from `package.json`.
    - Leave the build settings alone: `npm run build` builds the scanner download and the site, `package-lock.json` pins every dependency, and `engines` picks Node 24.
-   - From the command line, the same is `npx vercel@65.8.0 link` from the repo root.
+   - From the command line, the same is `npx vercel@65.9.0 link` from the repo root.
 3. **Public scans need no token of yours.** Once the GitHub App (below) is installed on its owner's account, public scans use the app's own installation token:
    - It can't change anything. In the owner's private repositories it can only read metadata, such as their names; public repositories it reads like any token.
    - It allows about 12,500 GitHub requests an hour. A server with no token gets 60.
@@ -40,7 +40,7 @@ Two things are only per instance on Vercel, so treat them as speed bumps, not ha
    | `SOSF_SECRET` | Required for sign-in: a random string of at least 32 characters, `openssl rand -hex 32`. Without it, sign-in says the site isn't fully set up (public scans still work). Changing it later signs everyone out. |
    | `GITHUB_APP_*` | The app's seven settings: see The GitHub App, below. |
 5. **Deploy and add the domain.**
-   - Deploy: a push to `main`, or `npx vercel@65.8.0 deploy --prod` from the repo root.
+   - Deploy: a push to `main`, or `npx vercel@65.9.0 deploy --prod` from the repo root.
    - Under Project, Settings, Domains, add the site's domain, and add the DNS records Vercel shows you.
    - With Cloudflare DNS, set those records to **DNS only** (grey cloud), so Vercel can issue the certificate.
 6. **Install the app.** From its page, install it on its owner's account (yours, or the organization's): public scans use that installation, and one repository is enough. Then install it on the repositories you want to fix.
@@ -115,8 +115,8 @@ They stay off until an OpenAI-compatible service is configured. Add these variab
 Only signed-in admins of a repo with the app installed can start one.
 
 ## Updating
-- **Code:** a push to `main` deploys, if the project is connected to the repo. Otherwise run `npx vercel@65.8.0 deploy --prod` from the repo root.
-- **Build check:** to test a build locally without an account, run `npx vercel@65.8.0 build`. It needs a linked project, or a placeholder `.vercel/project.json` with `{"projectId":"x","orgId":"x","settings":{"framework":"nextjs"}}`.
+- **Code:** a push to `main` deploys, if the project is connected to the repo. Otherwise run `npx vercel@65.9.0 deploy --prod` from the repo root.
+- **Build check:** to test a build locally without an account, run `npx vercel@65.9.0 build`. It needs a linked project, or a placeholder `.vercel/project.json` with `{"projectId":"x","orgId":"x","settings":{"framework":"nextjs"}}`.
 - **Dependencies:** `npm install <package>@<version>`, then commit `package.json` and `package-lock.json`. `.npmrc` keeps out anything published in the last 7 days and runs no install scripts.
 - **The OSS-Fuzz list:** refresh it now and then with `npm run ossfuzz` (with `GITHUB_TOKEN` set, or `gh` signed in), and commit `lib/ossfuzz.json`.
 - **An inline script in `public/index.html`:** its hash in the content security policy is computed when the site builds, so a deploy picks it up. A test (`tests/hardening.test.ts`) checks that every inline script has one.
