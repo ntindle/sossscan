@@ -1,8 +1,10 @@
 // The scan itself, ported statement by statement from scan() in the Python scanner. The order of requests,
 // reads, results and findings is the Python order, so the port gave the same report (and the same api_calls).
+// Checks added since make their requests where they report.
 import { mapLimit } from '../pool.ts';
 import {
   API,
+  CODEQL_ECOSYSTEMS,
   ECOSYSTEM_FILES,
   FUZZ_EXCLUDE,
   FUZZ_PATH,
@@ -14,7 +16,9 @@ import {
   TOOLS,
   TRUSTED_TOOLS,
   VERSION,
+  codeqlSource,
   tierFor,
+  updatableFile,
 } from './constants.ts';
 import { Http, decodeReplace } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
@@ -70,7 +74,9 @@ const WORKFLOW_FILE = re(String.raw`^\.github/workflows/[^/]+\.ya?ml$`);
 const DEPENDENTS = re(String.raw`(?s)([\d,]+)\s*(?:<[^>]+>\s*)*\s*(Repositories|Packages)\b`);
 const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.rst|\.txt|\.adoc)?$`);
 const HOW_TO_REPORT = re(
-  String.raw`(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability`,
+  // Any email address or bug bounty program counts too: both are ways to report privately.
+  String.raw`(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability|` +
+    String.raw`[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+|bug bounty|hackerone|bugcrowd|intigriti`,
 );
 const THREAT_MODEL = re(String.raw`(?i)threat[-_ ]?model`);
 const INCIDENT_RESPONSE = re(String.raw`(?i)incident[-_ ]?response|(^|/)irp[-_.]|security[-_]incident`);
@@ -165,7 +171,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const [, tree] = await http.json(`/repos/${repo}/git/trees/${quote(branch)}?recursive=1`);
   const entry = (t: any, prefix = '') => ({ path: prefix + item(t, 'path'), file: get(t, 'type') === 'blob' });
   let entries = pyIter(get(pyOr(tree, {}), 'tree', [])).map((t) => entry(t));
+  // A truncated tree lists only some files, so no check may conclude from it that a kind of file is absent.
+  let treeTruncated = false;
   if (truthy(tree) && truthy(get(tree, 'truncated'))) {
+    treeTruncated = true;
     const [, root] = await http.json(`/repos/${repo}/git/trees/${quote(branch)}`);
     const top = pyIter(get(pyOr(root, {}), 'tree', []));
     entries = top.map((t) => entry(t));
@@ -189,6 +198,32 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       return s === 200 ? decodeReplace(body) : null;
     }
     return (await http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`))[1];
+  };
+  /**
+   * A community health file the account provides for every repo without its own: GitHub takes it from the account's
+   * .github repo, which must be public, looking in its .github/ folder, then its root, then docs/. Costs two API calls
+   * and a read when there is one; null when there isn't (or this is that repo).
+   */
+  const accountDefault = async (rx: RegExp): Promise<{ label: string; url: string; body: string } | null> => {
+    if (name.toLowerCase() === '.github') return null;
+    const [s, defaults] = await http.json(`/repos/${owner}/.github`);
+    if (s !== 200 || !isDict(defaults) || truthy(get(defaults, 'private'))) return null;
+    const br = String(get(defaults, 'default_branch') || 'main');
+    const [, t] = await http.json(`/repos/${owner}/.github/git/trees/${quote(br)}?recursive=1`);
+    const rank = (p: string) => (/^\.github\//i.test(p) ? 0 : /^docs\//i.test(p) ? 2 : 1);
+    const hits = pyIter(get(pyOr(t, {}), 'tree', []))
+      .filter((x) => get(x, 'type') === 'blob' && search(rx, String(item(x, 'path'))) !== null)
+      .map((x) => String(item(x, 'path')))
+      .sort((a, b) => rank(a) - rank(b));
+    if (!hits.length) return null;
+    const [, body] = await http.text(
+      `https://raw.githubusercontent.com/${owner}/.github/${quote(br)}/${quote(hits[0])}`,
+    );
+    return {
+      label: `${hits[0]} in ${owner}/.github`,
+      url: `https://github.com/${owner}/.github/blob/${br}/${hits[0]}`,
+      body: body ?? '',
+    };
   };
   /** The files whose path matches: what most checks look for (a folder named security/ is not a SECURITY.md). */
   const find = (rx: RegExp) => files.filter((p) => search(rx, p) !== null);
@@ -278,7 +313,21 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       { path: sec[0], length: pyLen(body) },
     );
   } else {
-    res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
+    // GitHub shows the account's default, a SECURITY.md in its public .github repo, for any repo without its own.
+    const inherited = await accountDefault(SECURITY_MD);
+    if (inherited) {
+      const how = search(HOW_TO_REPORT, inherited.body) !== null;
+      res(
+        'disc-security-md',
+        how && pyLen(inherited.body) > 200 ? 'pass' : 'warn',
+        `${inherited.label} found, the account's default for repos without their own` +
+          (how ? '' : ' but it does not clearly say how to report privately'),
+        [{ label: inherited.label, url: inherited.url }],
+        { path: inherited.label, length: pyLen(inherited.body), account_default: true },
+      );
+    } else {
+      res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
+    }
   }
   const pvr = got.pvr[0] === 200 ? got.pvr[1] : null;
   if (isDict(pvr) && Object.hasOwn(pvr, 'enabled')) {
@@ -617,11 +666,20 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       'CodeQL ' + (codeql ? `workflow: ${codeql[0]}` : 'default setup is on'),
       codeql ? fileLink(codeql[0]) : [{ label: 'Actions', url: `https://github.com/${repo}/actions` }],
     );
+  } else if (
+    !treeTruncated &&
+    !wfPaths.length &&
+    !ecos.some((e) => CODEQL_ECOSYSTEMS.has(e)) &&
+    !files.some(codeqlSource)
+  ) {
+    res('sast-codeql', 'na', 'No code in a language CodeQL analyzes, and no workflows');
   } else {
     res('sast-codeql', 'fail', 'No CodeQL code scanning found');
   }
   if (wfs.some((w) => w.codeql_actions)) {
     res('sast-codeql-actions', 'pass', "CodeQL scans the 'actions' language (your workflows)");
+  } else if (!wfPaths.length) {
+    res('sast-codeql-actions', 'na', 'No GitHub Actions workflows');
   } else if (codeqlDefault) {
     res('sast-codeql-actions', 'unknown', 'CodeQL default setup is on; its languages need the private layer');
   } else {
@@ -683,6 +741,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     res('deps-update-automation', 'pass', `Renovate config: ${reno[0]}`, fileLink(reno[0]));
   } else if (dynDbot) {
     res('deps-update-automation', 'pass', 'Dependabot version updates are active');
+  } else if (!treeTruncated && !ecos.length && !wfPaths.length && !files.some(updatableFile)) {
+    res(
+      'deps-update-automation',
+      'na',
+      'Nothing for Dependabot or Renovate to update: no dependency files or workflows',
+    );
   } else {
     res('deps-update-automation', 'fail', 'No Dependabot or Renovate configuration');
   }

@@ -183,6 +183,14 @@ export function analyzeWorkflow(path: string, text: string): WorkflowAnalysis {
     }
   });
   if (out.tools.includes('codeql')) out.codeql_actions = search(CODEQL_ACTIONS, text) !== null;
-  if (out.workflow_run && search(UNTRUSTED_ARTIFACTS, text)) out.workflow_run_untrusted = true;
+  // A workflow_run workflow that takes in the triggering run's artifacts or code. Its if: conditions don't count: they
+  // only compare those values, and checking head_repository against github.repository is how one keeps forks out.
+  const inCondition = (ln: string, i: number) => parents[i] === 'if' || match(KEY, ln)?.[1] === 'if';
+  if (
+    out.workflow_run &&
+    lines.some((ln, i) => significant(ln) && !inCondition(ln, i) && search(UNTRUSTED_ARTIFACTS, ln) !== null)
+  ) {
+    out.workflow_run_untrusted = true;
+  }
   return out;
 }

@@ -1,8 +1,9 @@
-// Names, tiers and patterns shared by the scanner. Every regex here is copied verbatim from the Python scanner
-// (scanner/sosf_scan.py in commit a55738d), in Python syntax compiled by re() in py.ts.
+// Names, tiers and patterns shared by the scanner. Every regex here began as a verbatim copy from the Python scanner
+// (scanner/sosf_scan.py in commit a55738d) and stays in Python syntax, compiled by re() in py.ts. The ones changed
+// since say why where they're defined.
 import { re } from './py.ts';
 
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 export const SCHEMA = 'sosf-scan/1';
 export const UA = `sosf-scan/${VERSION} (+security self-check)`;
 export const API = 'https://api.github.com';
@@ -113,7 +114,8 @@ export const FUZZ_EXCLUDE = re(
 export const ECOSYSTEM_FILES: [RegExp, string][] = (
   [
     [String.raw`(^|/)package\.json$`, 'npm'],
-    [String.raw`(^|/)(pyproject\.toml|setup\.py|setup\.cfg)$`, 'pypi'],
+    // Dependabot's pip ecosystem reads all of these, so a project with only a requirements file is a Python one.
+    [String.raw`(^|/)(pyproject\.toml|setup\.py|setup\.cfg|Pipfile|requirements[^/]*\.txt)$`, 'pypi'],
     [String.raw`(^|/)go\.mod$`, 'go'],
     [String.raw`(^|/)Cargo\.toml$`, 'cargo'],
     [String.raw`(^|/)(pom\.xml|build\.gradle(\.kts)?)$`, 'maven'],
@@ -123,6 +125,52 @@ export const ECOSYSTEM_FILES: [RegExp, string][] = (
     [String.raw`(^|/)Package\.swift$`, 'swift'],
   ] as const
 ).map(([pattern, eco]): [RegExp, string] => [re(pattern), eco]);
+
+/**
+ * Package ecosystems in languages CodeQL analyzes. A manifest of one is a sign of code to scan, even when the code
+ * itself isn't in a file CODEQL_EXTENSIONS names.
+ */
+export const CODEQL_ECOSYSTEMS = new Set(['npm', 'pypi', 'go', 'cargo', 'maven', 'rubygems', 'nuget', 'swift']);
+
+/**
+ * Extensions of the source files CodeQL analyzes: C and C++, C#, Go, Java and Kotlin, JavaScript and TypeScript (with
+ * the scripts in HTML and Vue files), Python, Ruby (with ERB templates), Rust and Swift. Workflows count separately.
+ */
+export const CODEQL_EXTENSIONS = new Set(
+  ['c', 'cc', 'cpp', 'cxx', 'h', 'hh', 'hpp', 'hxx', 'cs', 'go', 'java', 'kt', 'kts', 'js', 'jsx', 'mjs', 'cjs'].concat(
+    ['ts', 'tsx', 'mts', 'cts', 'vue', 'html', 'htm', 'py', 'rb', 'erb', 'rs', 'swift'],
+  ),
+);
+
+/** Whether CodeQL would analyze this file. */
+export function codeqlSource(path: string): boolean {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  const dot = base.lastIndexOf('.');
+  return dot > 0 && CODEQL_EXTENSIONS.has(base.slice(dot + 1).toLowerCase());
+}
+
+/**
+ * Whether this is a file Dependabot (or Renovate) keeps up to date besides the package manifests in ECOSYSTEM_FILES
+ * and the workflows: container images, Compose files, dev containers, submodules, Terraform, Helm charts, the .NET
+ * SDK, and Dart, Elixir, Elm and vcpkg packages.
+ */
+export function updatableFile(path: string): boolean {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  const lower = base.toLowerCase();
+  const yaml = lower.endsWith('.yml') || lower.endsWith('.yaml');
+  return (
+    lower === 'dockerfile' ||
+    lower === 'containerfile' ||
+    lower.startsWith('dockerfile.') ||
+    lower.endsWith('.dockerfile') ||
+    (yaml && (lower.startsWith('docker-compose') || lower.startsWith('compose.'))) ||
+    lower === '.devcontainer.json' ||
+    (lower === 'devcontainer.json' && path.includes('.devcontainer/')) ||
+    lower === '.gitmodules' ||
+    lower.endsWith('.tf') ||
+    ['chart.yaml', 'global.json', 'pubspec.yaml', 'mix.exs', 'elm.json', 'vcpkg.json'].includes(lower)
+  );
+}
 
 export const LOCKFILES: Record<string, RegExp> = {
   npm: re(String.raw`(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$`),

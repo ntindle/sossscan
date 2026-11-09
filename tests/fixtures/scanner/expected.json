@@ -2053,7 +2053,7 @@
       ]
     },
     {
-      "source": "(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability",
+      "source": "(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability|[a-z0-9._%+-]+@[a-z0-9-]+(?:\\.[a-z0-9-]+)+|bug bounty|hackerone|bugcrowd|intigriti",
       "flags": "",
       "search": [
         [132, 0, 7],
@@ -2062,12 +2062,14 @@
         [135, 0, 7],
         [136, 0, 6],
         [137, 0, 21],
+        [145, 0, 14],
         [344, 0, 7],
         [345, 7, 16],
         [346, 0, 9],
         [347, 0, 7],
         [348, 0, 6],
         [349, 0, 21],
+        [357, 0, 14],
         [474, 7, 16],
         [548, 7, 16],
         [622, 7, 16],
@@ -2079,48 +2081,56 @@
         [909, 0, 7],
         [910, 0, 6],
         [911, 0, 21],
+        [919, 0, 14],
         [1051, 0, 7],
         [1052, 7, 16],
         [1053, 0, 9],
         [1054, 0, 7],
         [1055, 0, 6],
         [1056, 0, 21],
+        [1062, 0, 14],
         [1249, 0, 7],
         [1250, 7, 16],
         [1251, 0, 9],
         [1252, 0, 7],
         [1253, 0, 6],
         [1254, 0, 21],
+        [1262, 0, 14],
         [1465, 1, 8],
         [1466, 8, 17],
         [1467, 1, 10],
         [1468, 1, 8],
         [1469, 1, 7],
         [1470, 1, 22],
+        [1478, 1, 15],
         [1680, 0, 7],
         [1681, 7, 16],
         [1682, 0, 9],
         [1683, 0, 7],
         [1684, 0, 6],
         [1685, 0, 21],
+        [1693, 0, 14],
         [1895, 0, 7],
         [1896, 7, 16],
         [1897, 0, 9],
         [1898, 0, 7],
         [1899, 0, 6],
         [1900, 0, 21],
+        [1908, 0, 14],
         [2111, 0, 7],
         [2112, 7, 16],
         [2113, 0, 9],
         [2114, 0, 7],
         [2115, 0, 6],
         [2116, 0, 21],
+        [2124, 0, 14],
         [2327, 1, 8],
         [2328, 8, 17],
         [2329, 1, 10],
         [2330, 1, 8],
         [2331, 1, 7],
-        [2332, 1, 22]
+        [2332, 1, 22],
+        [2340, 1, 15]
       ]
     },
     {
@@ -2786,13 +2796,15 @@
       ]
     },
     {
-      "source": "(^|/)(pyproject\\.toml|setup\\.py|setup\\.cfg)$",
+      "source": "(^|/)(pyproject\\.toml|setup\\.py|setup\\.cfg|Pipfile|requirements[^/]*\\.txt)$",
       "flags": "",
       "search": [
         [52, 0, 14, "", "pyproject.toml"],
         [53, 0, 9, "", "setup.cfg"],
+        [66, 0, 20, "", "requirements-dev.txt"],
         [1600, 0, 14, "", "pyproject.toml"],
-        [1601, 0, 9, "", "setup.cfg"]
+        [1601, 0, 9, "", "setup.cfg"],
+        [1614, 0, 20, "", "requirements-dev.txt"]
       ]
     },
     {
@@ -10574,8 +10586,8 @@
             "layer": "public"
           },
           "sast-codeql-actions": {
-            "status": "fail",
-            "summary": "Workflows are not scanned by CodeQL",
+            "status": "na",
+            "summary": "No GitHub Actions workflows",
             "evidence": [],
             "details": {},
             "layer": "public"
@@ -10781,10 +10793,11 @@
         "errors": [],
         "scorecard": { "score": 10, "date": "", "checks": {}, "reasons": {} },
         "tier": { "id": 1, "name": "First fans" },
-        "summary": { "pass": 8, "warn": 2, "fail": 13, "info": 5, "unknown": 5, "na": 13 },
-        "api_calls": 28
+        "summary": { "pass": 8, "warn": 2, "fail": 12, "info": 5, "unknown": 5, "na": 14 },
+        "api_calls": 29
       },
       "calls": [
+        ["https://api.github.com/repos/solo/.github", "application/vnd.github+json", "Bearer app-token", "2022-11-28"],
         ["https://api.github.com/repos/solo/tool", "application/vnd.github+json", "Bearer app-token", "2022-11-28"],
         [
           "https://api.github.com/repos/solo/tool/actions/permissions",
@@ -10936,7 +10949,7 @@
       ],
       "logs": [
         "scanning solo/tool (admin token: private layer)",
-        "done: {'pass': 8, 'warn': 2, 'fail': 13, 'info': 5, 'unknown': 5, 'na': 13} (28 requests)"
+        "done: {'pass': 8, 'warn': 2, 'fail': 12, 'info': 5, 'unknown': 5, 'na': 14} (29 requests)"
       ]
     },
     "empty-repo": {
@@ -11086,15 +11099,15 @@
             "layer": "public"
           },
           "sast-codeql": {
-            "status": "fail",
-            "summary": "No CodeQL code scanning found",
+            "status": "na",
+            "summary": "No code in a language CodeQL analyzes, and no workflows",
             "evidence": [],
             "details": {},
             "layer": "public"
           },
           "sast-codeql-actions": {
-            "status": "fail",
-            "summary": "Workflows are not scanned by CodeQL",
+            "status": "na",
+            "summary": "No GitHub Actions workflows",
             "evidence": [],
             "details": {},
             "layer": "public"
@@ -11121,8 +11134,8 @@
             "layer": "public"
           },
           "deps-update-automation": {
-            "status": "fail",
-            "summary": "No Dependabot or Renovate configuration",
+            "status": "na",
+            "summary": "Nothing for Dependabot or Renovate to update: no dependency files or workflows",
             "evidence": [],
             "details": {},
             "layer": "public"
@@ -11279,10 +11292,11 @@
         "errors": [],
         "scorecard": null,
         "tier": { "id": 0, "name": "Just you" },
-        "summary": { "pass": 0, "warn": 0, "fail": 13, "info": 8, "unknown": 9, "na": 14 },
-        "api_calls": 14
+        "summary": { "pass": 0, "warn": 0, "fail": 10, "info": 8, "unknown": 9, "na": 17 },
+        "api_calls": 15
       },
       "calls": [
+        ["https://api.github.com/repos/octo/.github", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
         ["https://api.github.com/repos/octo/empty", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
         [
           "https://api.github.com/repos/octo/empty/actions/workflows?per_page=100",
@@ -11350,7 +11364,7 @@
       ],
       "logs": [
         "scanning octo/empty (public layer)",
-        "done: {'pass': 0, 'warn': 0, 'fail': 13, 'info': 8, 'unknown': 9, 'na': 14} (14 requests)"
+        "done: {'pass': 0, 'warn': 0, 'fail': 10, 'info': 8, 'unknown': 9, 'na': 17} (15 requests)"
       ]
     },
     "refused": {

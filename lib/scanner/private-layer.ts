@@ -115,17 +115,26 @@ export async function privateLayer(
     );
   }
   if (ok('cs_alerts')) {
-    const alerts = got.cs_alerts[1];
-    const hi = pyIter(alerts).filter((a) =>
+    // OpenSSF Scorecard uploads its results as code scanning alerts too. They grade settings and habits (branch
+    // protection, code review, the repo's age), not code, so they're named apart and left out of the backlog.
+    const isScorecard = (a: unknown) =>
+      String(get(pyOr(get(a, 'tool'), {}), 'name') ?? '').toLowerCase() === 'scorecard';
+    const page = pyIter(got.cs_alerts[1]);
+    const alerts = page.filter((a) => !isScorecard(a));
+    const scorecard = page.length - alerts.length;
+    const hi = alerts.filter((a) =>
       pyIn(get(pyOr(get(a, 'rule'), {}), 'security_severity_level'), ['critical', 'high']),
     ).length;
-    const count = pyLenOf(alerts);
+    const more = pyLenOf(got.cs_alerts[1]) === 100 ? '+' : '';
     res(
       'sast-fix-backlog',
-      !truthy(alerts) ? 'pass' : !hi ? 'warn' : 'fail',
-      `${count}${count === 100 ? '+' : ''} open code scanning alerts (${hi} critical/high)`,
+      !alerts.length ? 'pass' : !hi ? 'warn' : 'fail',
+      `${alerts.length}${more} open code scanning alerts (${hi} critical/high)` +
+        (scorecard
+          ? `, not counting ${scorecard}${more} OpenSSF Scorecard results, which grade settings rather than code`
+          : ''),
       [{ label: 'Code scanning', url: `https://github.com/${repo}/security/code-scanning` }],
-      null,
+      scorecard ? { scorecard_alerts: scorecard } : null,
       P,
     );
   } else {

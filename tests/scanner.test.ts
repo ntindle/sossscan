@@ -126,7 +126,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.4.1');
+    expect(VERSION).toBe('0.4.2');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([
@@ -232,6 +232,43 @@ describe('analyzeWorkflow, parentKey and stepBlock give the recorded results', (
     for (const [on, want] of triggers) {
       expect([on, analyzeWorkflow('.github/workflows/x.yml', `${on}\n`).pull_request]).toEqual([on, want]);
     }
+  });
+
+  it('reads workflow_run guards in if: conditions as safe, and a ref or artifact from the triggering run as not', () => {
+    const untrusted = (body: string[]) =>
+      analyzeWorkflow(
+        '.github/workflows/report.yml',
+        workflow(['on:', '  workflow_run:', '    workflows: [Build]', ...body]),
+      ).workflow_run_untrusted ?? false;
+    // A job-level if: over several lines, a step-level one and a comment only mention the triggering run.
+    expect(
+      untrusted([
+        'jobs:',
+        '  report:',
+        '    if: >-',
+        '      github.event.workflow_run.head_repository.full_name == github.repository &&',
+        "      github.event.workflow_run.head_branch == 'main'",
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        "      # Never actions/download-artifact here: github.event.workflow_run.head_sha may be a fork's.",
+        `      - uses: actions/checkout@${PIN}`,
+        '        with:',
+        '          ref: main',
+        "      - if: github.event.workflow_run.head_branch == 'main'",
+        '        run: echo ok',
+      ]),
+    ).toBe(false);
+    // Checking out the run's commit, or downloading its artifacts, takes in what a pull request may have changed.
+    const steps = ['jobs:', '  report:', '    runs-on: ubuntu-latest', '    steps:'];
+    expect(
+      untrusted([
+        ...steps,
+        `      - uses: actions/checkout@${PIN}`,
+        '        with:',
+        '          ref: ${{ github.event.workflow_run.head_sha }}',
+      ]),
+    ).toBe(true);
+    expect(untrusted([...steps, '      - uses: actions/download-artifact@v4'])).toBe(true);
   });
 
   it('reads a uses: line inside a run: or script: block as script text, not a step', () => {
@@ -650,6 +687,92 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
     const one = (await scanScenario('fixes', { [url]: undated })).rep.results['disc-advisories-cves'];
     expect([one.summary, one.details]).toEqual(['1 published security advisories', { count: 1, with_cve: 0 }]);
   });
+
+  it("says CodeQL and dependency updates don't apply where there's nothing to scan or update", async () => {
+    const treeUrl = 'https://api.github.com/repos/octo/empty/git/trees/main?recursive=1';
+    const statuses = async (paths: string[], truncated = false) => {
+      const tree = { json: { truncated, tree: paths.map((path) => ({ path, type: 'blob' })) } };
+      const r = (await scanScenario('empty-repo', { [treeUrl]: tree })).rep;
+      return [r.results['sast-codeql'].status, r.results['deps-update-automation'].status, `${r.meta.ecosystems}`];
+    };
+    expect(await statuses(['README.md', 'LICENSE', 'notes/plan.sh'])).toEqual(['na', 'na', '']);
+    // A requirements file or a Pipfile makes a Python project, with code to scan and packages to update.
+    expect(await statuses(['README.md', 'requirements-dev.txt'])).toEqual(['fail', 'fail', 'pypi']);
+    expect(await statuses(['Pipfile'])).toEqual(['fail', 'fail', 'pypi']);
+    // Code with no manifest has nothing to update; a container image or a dev container has no code to scan.
+    expect(await statuses(['tools/build.py'])).toEqual(['fail', 'na', '']);
+    expect(await statuses(['Dockerfile'])).toEqual(['na', 'fail', '']);
+    expect(await statuses(['.devcontainer/devcontainer.json'])).toEqual(['na', 'fail', '']);
+    // A list the API cut short proves nothing is missing.
+    expect(await statuses(['README.md'], true)).toEqual(['fail', 'fail', '']);
+  });
+
+  it("takes SECURITY.md from the account's public .github repo when the repo has none, as GitHub does", async () => {
+    const policy =
+      'Please report security vulnerabilities privately through a GitHub security advisory. ' +
+      'We aim to answer within three days, and we credit reporters in the advisory once a fix ships. '.repeat(2);
+    const policyUrl = 'https://raw.githubusercontent.com/octo/.github/trunk/.github/SECURITY.md';
+    const account = {
+      'https://api.github.com/repos/octo/.github': { json: { private: false, default_branch: 'trunk' } },
+      'https://api.github.com/repos/octo/.github/git/trees/trunk?recursive=1': {
+        json: {
+          tree: [
+            { path: 'docs/SECURITY.md', type: 'blob' },
+            { path: 'profile/README.md', type: 'blob' },
+            { path: '.github', type: 'tree' },
+            { path: '.github/SECURITY.md', type: 'blob' },
+          ],
+        },
+      },
+      // GitHub looks in the .github folder first, so that's the policy it shows.
+      [policyUrl]: { text: policy },
+    };
+    const r = (await scanScenario('fixes', account)).rep.results['disc-security-md'];
+    expect([r.status, r.summary, r.evidence]).toEqual([
+      'pass',
+      ".github/SECURITY.md in octo/.github found, the account's default for repos without their own",
+      [
+        {
+          label: '.github/SECURITY.md in octo/.github',
+          url: 'https://github.com/octo/.github/blob/trunk/.github/SECURITY.md',
+        },
+      ],
+    ]);
+    // A private .github repo provides no defaults.
+    const hidden = { json: { private: true, default_branch: 'trunk' } };
+    const none = await scanScenario('fixes', { ...account, 'https://api.github.com/repos/octo/.github': hidden });
+    expect(none.rep.results['disc-security-md'].status).toBe('fail');
+
+    // Any email address, or a bug bounty program, is a way to report privately (as Vercel's and GitHub's are).
+    const statusOf = async (text: string) =>
+      (await scanScenario('fixes', { ...account, [policyUrl]: { text } })).rep.results['disc-security-md'].status;
+    const filler = ' We investigate every report and fix confirmed problems as quickly as we can.'.repeat(3);
+    expect(await statusOf('Please send vulnerability reports to responsible.disclosure@example.com.' + filler)).toBe(
+      'pass',
+    );
+    expect(await statusOf('Submit security issues through our bug bounty program on HackerOne.' + filler)).toBe('pass');
+    expect(await statusOf('Open a GitHub issue describing the problem and how to reproduce it.' + filler)).toBe('warn');
+  });
+
+  it("leaves OpenSSF Scorecard's results out of the code scanning backlog", async () => {
+    const url = 'https://api.github.com/repos/acme/secret/code-scanning/alerts?state=open&per_page=100';
+    const alert = (tool: string, sev: string) => ({ tool: { name: tool }, rule: { security_severity_level: sev } });
+    const backlog = async (alerts: unknown[]) => {
+      const r = (await scanScenario('admin-org', { [url]: { json: alerts } })).rep.results['sast-fix-backlog'];
+      return [r.status, r.summary];
+    };
+    const notCounted = (n: number) =>
+      `, not counting ${n} OpenSSF Scorecard results, which grade settings rather than code`;
+    expect(await backlog([alert('Scorecard', 'high'), alert('Scorecard', 'high'), alert('Scorecard', 'low')])).toEqual([
+      'pass',
+      '0 open code scanning alerts (0 critical/high)' + notCounted(3),
+    ]);
+    expect(await backlog([alert('Scorecard', 'high'), alert('CodeQL', 'medium')])).toEqual([
+      'warn',
+      '1 open code scanning alerts (0 critical/high)' + notCounted(1),
+    ]);
+    expect(await backlog([alert('zizmor', 'high')])).toEqual(['fail', '1 open code scanning alerts (1 critical/high)']);
+  });
 });
 
 // ------------------------------------------------------------------------------------------ OSS Scanner
@@ -950,13 +1073,15 @@ describe('Scorecard, the Best Practices badge, OSS-Fuzz and OSS Scanner are look
     expect([rep.meta.private, rep.meta.stars]).toEqual([true, 4321]);
     expect(ossScannerEligible(rep.meta.stars, rep.meta.dependents_total)).toBe(true);
     expect(programUrls(calls)).toEqual([]);
-    // Nothing but GitHub hears about it: the repo's own API routes and its dependents page.
+    // Nothing but GitHub hears about it: the repo's own API routes, its dependents page, and the account's public
+    // .github repo (asked for the SECURITY.md GitHub shows in a repo without its own).
     const elsewhere = calls
       .map(([url]) => url)
       .filter(
         (url) =>
           !/^https:\/\/api\.github\.com\/repos\/octo\/vault([/?]|$)/.test(url) &&
-          url !== 'https://github.com/octo/vault/network/dependents',
+          url !== 'https://github.com/octo/vault/network/dependents' &&
+          url !== 'https://api.github.com/repos/octo/.github',
       );
     expect(elsewhere).toEqual([]);
     expect(pick(rep)).toEqual({
