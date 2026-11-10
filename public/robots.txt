@@ -1,0 +1,21 @@
+# sossscan.ntindle.com, in the format of RFC 9309 (https://www.rfc-editor.org/rfc/rfc9309)
+#
+# The pages, their Markdown versions, /llms.txt and the guide's data are open to every crawler.
+# Crawlers stay out of /api/ and /app/: every scan request spends the site's GitHub quota, and
+# /app/ is the GitHub App's sign-in, with nothing to read.
+# Agents that fetch pages because a person asked them to may also call the scan API, as
+# https://sossscan.ntindle.com/agents.md describes. The app's endpoints need a signed-in browser.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /app/
+
+User-agent: ChatGPT-User
+User-agent: Claude-User
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/app/
+Disallow: /app/
+
+Sitemap: https://sossscan.ntindle.com/sitemap.xml

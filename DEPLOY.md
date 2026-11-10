@@ -39,6 +39,7 @@ Two things are only per instance on Vercel, so treat them as speed bumps, not ha
    | `GITHUB_TOKEN` | Optional, and best left out: see step 3 |
    | `SOSF_SECRET` | Required for sign-in: a random string of at least 32 characters, `openssl rand -hex 32`. Without it, sign-in says the site isn't fully set up (public scans still work). Changing it later signs everyone out. |
    | `GITHUB_APP_*` | The app's seven settings: see The GitHub App, below. |
+   | `VERCEL_DEEP_CLONE` | Optional: `true`. Vercel then clones the whole Git history, not the last 10 commits, so `/sitemap.xml` can date every page. Without it, a page whose content hasn't changed in the last 10 commits is listed without a `<lastmod>`. Vercel's own docs don't list this setting; docs generators such as Zudoku tell you to set it for the same reason. |
 5. **Deploy and add the domain.**
    - Deploy: a push to `main`, or `npx vercel@65.9.0 deploy --prod` from the repo root.
    - Under Project, Settings, Domains, add the site's domain, and add the DNS records Vercel shows you.

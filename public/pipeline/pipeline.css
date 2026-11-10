@@ -443,4 +443,8 @@ details.group[open] > summary .group__h::before { transform: translateY(-3px) ro
 /* ------------------------------------------------------------------------------------------ footer */
 .foot { margin-top: 40px; padding-block: 20px 36px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted); }
 .foot p { margin: 0 0 6px; max-width: 80ch; }
+/* The site's links, in the HTML of every page (the text pages share this footer and these styles). */
+.foot__links { display: flex; flex-wrap: wrap; gap: 0 18px; margin: 0 0 4px; padding: 0; list-style: none; }
+.foot__links a { display: inline-block; padding-block: 3px; }
+.foot__links a[aria-current="page"] { color: var(--ink); text-decoration: none; }
 .load-error { padding: 14px 16px; border: 1px solid var(--t-fail); border-radius: 6px; color: var(--t-fail); background: var(--surface); }

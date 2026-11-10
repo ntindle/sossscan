@@ -1,0 +1,33 @@
+# sossscan
+
+> sossscan checks a GitHub repository for security gaps, from the accounts that can push code to the releases people install, and says which gap to close first. A public HTTP API scans public repositories with no key, and a CLI scans private ones with the user's own GitHub token. It's free, open source (MIT) and not affiliated with GitHub.
+
+When to use sossscan: when a person asks how well a GitHub repository is protected or what to fix first; whether one control is in place, such as actions pinned to commit SHAs, a read-only GITHUB_TOKEN, branch protection, a SECURITY.md, private vulnerability reporting, Dependabot, CodeQL or release provenance; whether GitHub Actions workflows pass untrusted input to run steps or use pull_request_target; or what a project of its size should add next. Most checks show what projects in GitHub's Secure Open Source Fund did about the same gap. sossscan checks how a repository is set up, not its source code, and only repositories on github.com.
+
+How to call it: `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report for a public repository as JSON, with no key. Each check's status is under `results`, keyed by the check's id, and problems with their file and line are under `findings`. Each IP address can make 6 scan requests a minute and 40 an hour, and results are cached for 6 hours. Private repositories get a 404 from the API: run the CLI on the user's machine instead, `node sosf-scan.mjs OWNER/REPO`.
+
+Every page on the site also comes as Markdown, at its address with .md added (/index.md for the home page), or at its own address for requests that send `Accept: text/markdown`.
+
+## Docs
+
+- [sossscan for AI agents](https://sossscan.ntindle.com/agents.md): when to use sossscan, how to call it, which fields of the report matter, the limits, and what it isn't for
+- [sossscan API](https://sossscan.ntindle.com/docs/api.md): the scan endpoints, the report format, errors and rate limits
+- [sossscan CLI](https://sossscan.ntindle.com/docs/cli.md): downloading and running the scanner with your own token, for private repositories and admin-only settings
+- [Home page](https://sossscan.ntindle.com/index.md): what sossscan is, the three ways to scan, and every check by stage, with its id
+- [Docs overview](https://sossscan.ntindle.com/docs.md): the API and the CLI, and when to use each
+
+## Data
+
+- [guide.json](https://sossscan.ntindle.com/data/guide.json): the whole guide as JSON, about 700 KB: each check's tier, impact, effort, steps and snippets, and what Fund projects did
+
+## About
+
+- [About sossscan](https://sossscan.ntindle.com/about.md): what it checks, where the guide comes from, and who made it
+- [Contact](https://sossscan.ntindle.com/contact.md): email, GitHub issues and private security reports
+- [Privacy](https://sossscan.ntindle.com/privacy.md): what the site does with information about the people who use it
+
+## Optional
+
+- [Source code](https://github.com/ntindle/sossscan): the site, the scanner and the guide's build, under the MIT license
+- [GitHub App](https://github.com/apps/sossscan): checks admin-only settings and applies fixes from the site, once installed on a repository
+- [Sitemap](https://sossscan.ntindle.com/sitemap.xml): every page on the site

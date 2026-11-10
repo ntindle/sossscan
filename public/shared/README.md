@@ -8,6 +8,8 @@ Those were retired and deleted.
 
 Pages are static files under `public/`. You don't need to restart the server for HTML, CSS or JS changes.
 
+The site's text pages (About, Contact, Privacy and the docs) don't use this engine. `lib/pages.ts` renders them from Markdown in `content/`, with `core.css`, `pipeline.css` and `text.css` for the look and `theme.js` for the theme, and no other script.
+
 ## How a view uses it
 - Import the module with `<script type="module">import * as sg from '/shared/core.js'; …</script>`.
 - Include `/shared/core.css` (the base styles for `sg-*` components), then override its CSS variables (`--sg-*`) so the components match the view. Set them on `body` if the view's own `:root` tokens must win.
@@ -24,7 +26,7 @@ Pages are static files under `public/`. You don't need to restart the server for
 - `categories[]`: `{id, label}`.
 - `app_fixes{}`: the one-click settings fixes the GitHub App can apply.
 - `counts`: teams, repos scanned, posts, claims.
-- `items[]`: the checklist (80 items). Each item has:
+- `items[]`: the checklist, one entry per check. Each item has:
   - `id`, `title`, `short`, `why`, `steps[]`, `snippets[] {label, lang, code}`, `pitfalls[]`, `docs[] {label, url}`. The prose fields may be empty for a few items; always handle empty arrays and strings.
   - `category`, `category_label`, `stage`, `attacks[]`, `week`, `tags[]` (`actions`, `publishes`, `npm`, `org`, `ai`, `parses_input`, `multi_maintainer`).
   - `tier` (0–7: the tier at which you should do it), `effort` (1 = minutes … 5 = weeks), `impact` (1–5), `layer` (which scan layer can check it).

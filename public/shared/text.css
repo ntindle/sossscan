@@ -1,0 +1,29 @@
+/* The text pages (About, Contact, Privacy, the docs), rendered from content/*.md by lib/pages.ts. They load core.css
+   and pipeline.css first, so they share the home page's colors, header and footer; this file only sets the prose. */
+/* One readable column, lined up with the header and footer like the home page's intro. */
+.text { padding-block: 30px 8px; }
+.text > * { max-width: 46rem; }
+@media (min-width: 720px) { .text { padding-block: 40px 12px; } }
+
+.text h1 { margin: 0 0 18px; font: 700 clamp(32px, 4.2vw, 46px)/1.05 var(--f-plate); font-stretch: semi-condensed;
+  letter-spacing: -.015em; text-wrap: balance; }
+.text h1 + p { font-size: 17px; }
+.text h2 { margin: 36px 0 8px; font: 700 24px/1.2 var(--f-plate); font-stretch: semi-condensed; text-wrap: balance; }
+.text h3 { margin: 26px 0 6px; font: 700 19px/1.25 var(--f-plate); font-stretch: semi-condensed; }
+.text :is(h2, h3) { scroll-margin-top: 16px; }
+.text p { margin: 0 0 14px; text-wrap: pretty; }
+.text :is(ul, ol) { margin: 0 0 14px; padding-left: 1.3em; }
+.text li { margin: 5px 0; }
+.text li::marker { color: var(--muted); }
+
+.text code { padding: .05em .3em; border-radius: 3px; background: var(--code-bg); font: .88em/1.4 var(--f-mono); overflow-wrap: anywhere; }
+.text .sg-code { margin: 4px 0 16px; }
+.text pre code { padding: 0; background: none; font: inherit; overflow-wrap: normal; }
+
+.text table { width: 100%; margin: 4px 0 18px; border-collapse: collapse; font-size: 15px; line-height: 1.45; }
+.text :is(th, td) { padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+.text :is(th, td):last-child { padding-right: 0; }
+.text thead th { padding-top: 0; border-bottom: 2px solid var(--ink); font: 700 15px/1.3 var(--f-plate); font-stretch: semi-condensed; }
+/* A row's name (a field, an option, a status) stays in one piece; code elsewhere may break to fit a phone. */
+.text tbody th { font-weight: 600; white-space: nowrap; }
+@media (max-width: 480px) { .text table { font-size: 14px; } }
