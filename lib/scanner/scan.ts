@@ -186,7 +186,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   log(`scanning ${repo} (${admin ? 'admin token: private layer' : 'public layer'})`);
 
   // ---- file tree (it lists folders as well as files)
-  const [, tree] = await http.json(`/repos/${repo}/git/trees/${quote(branch)}?recursive=1`);
+  const [treeStatus, tree] = await http.json(`/repos/${repo}/git/trees/${quote(branch)}?recursive=1`);
+  // Without the list, every check that looks for a file finds it missing. A 409 is GitHub's answer for an empty
+  // repository, which has no files to list.
+  if (treeStatus !== 200 && treeStatus !== 409) {
+    rep.errors.push(`Could not read the repository's files (HTTP ${treeStatus}), so the file checks may be wrong`);
+  }
   const entry = (t: any, prefix = '') => ({ path: prefix + item(t, 'path'), file: get(t, 'type') === 'blob' });
   let entries = pyIter(get(pyOr(tree, {}), 'tree', [])).map((t) => entry(t));
   // A truncated tree lists only some files, so no check may conclude from it that a kind of file is absent.

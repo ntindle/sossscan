@@ -1474,6 +1474,20 @@ describe('API failures', () => {
     expect(failing.rep.errors).toEqual([]);
   });
 
+  it("says, in errors, when it couldn't list the repository's files, but not for an empty repository", async () => {
+    const tree = `${FIXES}/git/trees/main?recursive=1`;
+    const errors = async (route: Route) => (await scanScenario('fixes', { [tree]: route })).rep.errors;
+    const note = (status: number) =>
+      `Could not read the repository's files (HTTP ${status}), so the file checks may be wrong`;
+    expect(await errors(SERVER_ERROR)).toEqual([note(500)]);
+    expect(await errors(OFFLINE)).toEqual([note(0)]);
+    expect(await errors(RATE_LIMITED)).toEqual([note(403), NOTICE]);
+    // GitHub answers 409 for a repository with no commits yet (the empty-repo scenario), which has no files to miss.
+    const empty = { status: 409, json: { message: 'Git Repository is empty.' } };
+    expect(await errors(empty)).toEqual([]);
+    expect((await scanScenario('empty-repo')).rep.errors).toEqual([]);
+  });
+
   it('tells a rate limit from other refusals, without changing any answer', async () => {
     const url = `${FIXES}/rulesets?includes_parents=true`;
     const rateLimited = async (route: Route, at = url) => {
