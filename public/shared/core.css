@@ -118,6 +118,26 @@ pre.sg-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sg-dialog__file { margin: 10px 0; }
 .sg-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--sg-border); }
 @media (max-width: 480px) { .sg-dialog__actions .sg-btn { flex: 1 1 100%; justify-content: center; min-height: 44px; } }
+/* "Prompt to fix": the heading, count and presets stay put while the checklist scrolls. */
+.sg-picker { width: min(36rem, calc(100vw - 32px)); max-height: min(calc(100dvh - 32px), 46rem); }
+.sg-picker__sub { margin: 0; padding: 0 20px; color: var(--sg-muted); font-size: 14px; }
+.sg-picker__presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 12px; border-bottom: 1px solid var(--sg-border); }
+.sg-picker__presets .sg-btn { min-height: 30px; }
+.sg-picker .sg-dialog__body { padding-top: 2px; }
+.sg-picker__group { min-width: 0; margin: 12px 0 0; padding: 0; border: 0; }
+.sg-picker__group > legend { padding: 0; font-weight: 600; font-size: 14px; color: var(--sg-muted); }
+.sg-picker__group > ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.sg-picker__row { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; margin: 0 -8px; padding: 7px 8px; border-radius: 4px; cursor: pointer; }
+.sg-picker__row:hover { background: color-mix(in srgb, var(--sg-accent) 7%, transparent); }
+.sg-picker__row > input { grid-row: 1 / span 2; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--sg-accent); cursor: pointer; }
+.sg-picker__title { font-weight: 600; line-height: 1.35; }
+.sg-picker__meta { font-size: 13px; line-height: 1.4; color: var(--sg-muted); }
+.sg-picker__note, .sg-picker__about { margin: 4px 0 0; font-size: 13.5px; color: var(--sg-muted); }
+.sg-picker__about { margin-top: 16px; }
+.sg-picker__see { margin: 8px 0 4px; }
+.sg-picker .sg-btn[disabled] { cursor: not-allowed; }
+/* On phones the two actions share a row: the list needs the height more than the buttons need the width. */
+@media (max-width: 480px) { .sg-picker .sg-dialog__actions .sg-btn { flex: 1 1 0; } .sg-picker__presets .sg-btn { min-height: 36px; } }
 
 .sg-placeholder { visibility: hidden; }
 
