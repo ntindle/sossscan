@@ -705,6 +705,11 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
     expect(await statuses(['tools/build.py'])).toEqual(['fail', 'na', '']);
     expect(await statuses(['Dockerfile'])).toEqual(['na', 'fail', '']);
     expect(await statuses(['.devcontainer/devcontainer.json'])).toEqual(['na', 'fail', '']);
+    // Nor do HTML pages: CodeQL default setup finds no language in them (ntindle/arctic-blower has just these two).
+    expect(await statuses(['README.md', 'index.html'])).toEqual(['na', 'na', '']);
+    expect(await statuses(['docs/about.htm', 'index.html'])).toEqual(['na', 'na', '']);
+    // Beside JavaScript, their scripts are analyzed with it.
+    expect(await statuses(['index.html', 'app.js'])).toEqual(['fail', 'na', '']);
     // A list the API cut short proves nothing is missing.
     expect(await statuses(['README.md'], true)).toEqual(['fail', 'fail', '']);
   });

@@ -134,11 +134,15 @@ export const CODEQL_ECOSYSTEMS = new Set(['npm', 'pypi', 'go', 'cargo', 'maven',
 
 /**
  * Extensions of the source files CodeQL analyzes: C and C++, C#, Go, Java and Kotlin, JavaScript and TypeScript (with
- * the scripts in HTML and Vue files), Python, Ruby (with ERB templates), Rust and Swift. Workflows count separately.
+ * the scripts in Vue files), Python, Ruby (with ERB templates), Rust and Swift. Workflows count separately.
+ *
+ * Not HTML. The guide's fix is CodeQL default setup, which takes its languages from GitHub's language detection, and
+ * that counts HTML as markup: in a repository of only HTML pages, default setup turns on with no language to analyze.
+ * The scripts in HTML pages are analyzed only when the repository has JavaScript files, which count on their own.
  */
 export const CODEQL_EXTENSIONS = new Set(
   ['c', 'cc', 'cpp', 'cxx', 'h', 'hh', 'hpp', 'hxx', 'cs', 'go', 'java', 'kt', 'kts', 'js', 'jsx', 'mjs', 'cjs'].concat(
-    ['ts', 'tsx', 'mts', 'cts', 'vue', 'html', 'htm', 'py', 'rb', 'erb', 'rs', 'swift'],
+    ['ts', 'tsx', 'mts', 'cts', 'vue', 'py', 'rb', 'erb', 'rs', 'swift'],
   ),
 );
 
