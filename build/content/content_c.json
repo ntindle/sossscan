@@ -111,7 +111,7 @@
   },
   "sast-fix-backlog": {
     "short": "Work through open code scanning alerts: fix real bugs, dismiss noise with a reason.",
-    "why": "A long list of unread alerts hides the few that matter and teaches everyone to ignore new ones. Teams found real bugs this way: SciPy fixed vulnerabilities its first scans turned up, JUnit fixed its first wave of CodeQL findings, and Keycloak cleaned up existing findings before enabling more queries.",
+    "why": "A long list of unread alerts hides the few that matter and teaches everyone to ignore new ones. The backlog holds real bugs: SciPy fixed vulnerabilities its first scans turned up.",
     "steps": [
       "Open the Security and quality tab → Code scanning and filter to open alerts. Start with critical and high, and with code that handles untrusted input.",
       "For each alert, fix it or click Dismiss alert with the right reason and a short comment. The reason can affect future analysis; the comment explains it later.",
@@ -392,7 +392,7 @@
   },
   "fuzz-continuous": {
     "short": "Fuzz around the clock: join OSS-Fuzz if you qualify, otherwise run ClusterFuzzLite.",
-    "why": "A short CI run catches regressions, but deep bugs take hours or days of fuzzing to reach. aiohttp's parsers have been fuzzed continuously by OSS-Fuzz since 2022, OSS-Fuzz was already catching crashes in Matplotlib's C extensions, and quic-go turned on ClusterFuzzLite batch fuzzing during its sprint.",
+    "why": "A short CI run catches regressions, but deep bugs take hours or days of fuzzing to reach. aiohttp's parsers have been fuzzed continuously by OSS-Fuzz since 2022, and quic-go turned on ClusterFuzzLite batch fuzzing during its sprint.",
     "steps": [
       "Write fuzz targets first (see the harness item), then check OSS-Fuzz. It's free and accepts projects with a significant user base or that are critical to global IT infrastructure.",
       "To apply, open a pull request to google/oss-fuzz adding projects/<name>/project.yaml (below). After it's accepted, add a Dockerfile and build.sh following the new project guide.",
@@ -821,7 +821,7 @@
   },
   "deps-prune": {
     "short": "Remove dependencies you don't need; every one is code you're trusting.",
-    "why": "Every package brings code, maintainers and install-time hooks you trust on your users' behalf. DocsGPT cut dormant dependencies it hadn't touched in ages, OpenClaw moved features into plugins for a shorter dependency tree and a smaller attack surface, and Ollama pruned unused dependencies after threat modeling.",
+    "why": "Every package brings code, maintainers and install-time hooks you trust on your users' behalf. OpenClaw moved features into plugins for a shorter dependency tree and a smaller attack surface.",
     "steps": [
       "List what you ship, direct and transitive (npm ls --all, uv tree, cargo tree, go mod graph), and note which are runtime and which are dev-only.",
       "Find unused ones with a tool: knip (JavaScript/TypeScript), deptry (Python), cargo-machete (Rust), go mod tidy (Go).",

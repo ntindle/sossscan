@@ -561,7 +561,7 @@
  },
  "disc-triage-sla": {
   "short": "Publish realistic response targets and a clear scope for vulnerability reports.",
-  "why": "Reporters go public when they hear nothing, and maintainers burn out on out-of-scope reports. Teams set targets they could keep: DocsGPT acknowledges within 48 hours, actix-web treats its times as targets because volunteers run it, Vapor stopped issuing advisories for its dependencies' vulnerabilities, and Yii may rule a report out of scope when it depends on ignoring several documented practices.",
+  "why": "Reporters go public when they hear nothing, and maintainers burn out on out-of-scope reports. Teams set targets they could keep: DocsGPT acknowledges within 48 hours, and actix-web treats its times as targets because volunteers run it. Some also narrowed their scope: Vapor stopped issuing advisories for its dependencies' vulnerabilities, and Yii may rule a report out of scope when it depends on ignoring several documented practices.",
   "steps": [
    "Pick targets you can meet in a bad month, such as acknowledging in 3 business days and assessing in 10; the OpenSSF guide suggests acknowledging within 1 to 2 days.",
    "Stay inside the Best Practices badge bar: a first response within 14 days, and no medium or higher issue left unpatched 60 days after it becomes public.",
@@ -594,7 +594,7 @@
  },
  "disc-advisories-cves": {
   "short": "Publish a GitHub security advisory for every fixed vulnerability and request a CVE.",
-  "why": "A silent fix leaves downstream users exposed, because Dependabot, audit tools and scanners only flag vulnerable versions once an advisory exists. GitHub is a CVE Numbering Authority and usually reviews CVE requests within 72 hours; Mockoon requested its first CVE during the program, Termux learned to score CVSS and request CVEs from GitHub, and virtualenv published 21 advisories in five weeks.",
+  "why": "A silent fix leaves downstream users exposed, because Dependabot, audit tools and scanners only flag vulnerable versions once an advisory exists. GitHub is a CVE Numbering Authority and usually reviews CVE requests within 72 hours.",
   "steps": [
    "Open the Security tab → Advisories → New draft security advisory, or accept a private report as a draft.",
    "Fill in affected and patched versions, severity (the CVSS calculator helps) and CWE, and credit the reporter unless they decline.",
@@ -632,7 +632,7 @@
  },
  "disc-coordinated-disclosure": {
   "short": "Agree a disclosure date with the reporter and give key downstream users time to patch.",
-  "why": "Some fixes need other people: a distribution, a hosted service or an upstream library. aiohttp's decompression-bomb fix (CVE-2025-69223) had to wait for Google to ship brotli 1.2, Node.js ships coordinated security releases across its supported lines, and Nasiko wants embargoes to be \"a process rather than an improvisation.\"",
+  "why": "Some fixes need other people: a distribution, a hosted service or an upstream library. aiohttp's decompression-bomb fix (CVE-2025-69223) had to wait for Google to ship brotli 1.2, and Node.js ships coordinated security releases across its supported lines.",
   "steps": [
    "Agree a public date with the reporter early. 90 days is the longest common default; release Monday to Wednesday and avoid holidays.",
    "If an upstream library needs the fix, report it privately upstream and add its maintainers as collaborators on your draft advisory.",
@@ -737,7 +737,7 @@
  },
  "people-contributor-guidance": {
   "short": "Add a short security section to CONTRIBUTING.md and back each rule with a check.",
-  "why": "Contributors can't follow rules they've never seen, and new maintainers inherit habits rather than documents. Sniffnet rewrote its contributing guide as 10 rules to observe before opening a PR, NetBird wrote clearer security guidelines for new contributors, and Bootstrap wants practices that are \"easily actionable by maintainers remotely and autonomously\".",
+  "why": "Contributors can't follow rules they've never seen, and new maintainers inherit habits rather than documents. Sniffnet rewrote its contributing guide as 10 rules to observe before opening a PR.",
   "steps": [
    "Add a security section to CONTRIBUTING.md (snippet below). GitHub links the file whenever someone opens an issue or PR.",
    "Cover the basics: report vulnerabilities privately, never commit secrets, discuss new dependencies first, and expect extra review on workflow changes.",
@@ -770,7 +770,7 @@
  },
  "people-user-security-docs": {
   "short": "Tell users which APIs and settings are risky, and how to use your project safely.",
-  "why": "Many security bugs come from developers misunderstanding a library's API, not from direct attacks on it. Two.js chose to document that its SVG interpreter renders markup through innerHTML rather than restrict the API (\"If something carries risk, that risk should be visible and documented.\"), Hummingbird added a guide to securing apps built on it, and aiohttp's threat model marks which mitigations are the application's job.",
+  "why": "Many security bugs come from developers misunderstanding a library's API, not from direct attacks on it. Two.js chose to document that its SVG interpreter renders markup through innerHTML rather than restrict the API (\"If something carries risk, that risk should be visible and documented.\"), and aiohttp's threat model marks which mitigations are the application's job.",
   "steps": [
    "Add a security considerations page (snippet below): what you trust, what you don't, and what users must handle themselves.",
    "Flag dangerous functions and options in the reference docs, where people actually read them, and point to a safe alternative.",
@@ -797,7 +797,7 @@
  },
  "people-security-training": {
   "short": "Spend a few hours a year on structured security training, and apply to the Fund.",
-  "why": "Most of this checklist is cheap once you know it exists; the hard part is not knowing what you don't know. Log4j's maintainer, looking back at Log4Shell, put it as \"Ignorance is the biggest security hole\", and Mautic, evcc, Bootstrap, scikit-learn and Hummingbird all urge other maintainers to apply to the Fund.",
+  "why": "Most of this checklist is cheap once you know it exists; the hard part is not knowing what you don't know. Log4j's maintainer, looking back at Log4Shell, put it as \"Ignorance is the biggest security hole\".",
   "steps": [
    "Take OpenSSF's free, self-paced course LFD121, Developing Secure Software: about 14 to 18 hours, with a free certificate.",
    "Play GitHub's Secure Code Game in a Codespace. Its seasons cover secure coding in C and Python, and protecting CI/CD pipelines and GitHub Actions.",
@@ -948,7 +948,7 @@
  },
  "plan-irp-exercise": {
   "short": "Run a one-hour drill of your incident plan every year, using a fake report.",
-  "why": "The first real run of a plan always finds gaps: a contact who left, missing registry rights, nobody who has requested a CVE before. Nasiko wants its first run to be \"a drill rather than a real report\", CAMEL-AI rehearsed its plan during the sprint, and FS2 reviewed past Typelevel incidents to bring new Security Team members up to speed.",
+  "why": "The first real run of a plan always finds gaps: a contact who left, missing registry rights, nobody who has requested a CVE before. FS2 reviewed past Typelevel incidents to bring new Security Team members up to speed.",
   "steps": [
    "Book an hour with everyone named in the plan, once a year and whenever a maintainer joins.",
    "Pick a scenario: a fake private report, a leaked publish token, or a malicious release on your registry.",

@@ -271,7 +271,7 @@
  },
  "ci-runner-hardening": {
   "short": "Limit the hosts CI jobs can reach, and keep public PRs off self-hosted runners.",
-  "why": "When a compromised dependency or action runs in your job, its next move is usually to send your token or secrets to a server it controls. virtualenv's maintainer lists restricting the hosts a build can reach as baseline hardening, and Node.js, Caddy and external-secrets run StepSecurity's harden-runner in CI.",
+  "why": "When a compromised dependency or action runs in your job, its next move is usually to send your token or secrets to a server it controls. virtualenv's maintainer lists restricting the hosts a build can reach as baseline hardening.",
   "steps": [
    "Add harden-runner as the first step of jobs that hold secrets or publish, with egress-policy: audit.",
    "After a few runs, open the insights link in the job summary and note the endpoints each job really calls.",
@@ -431,7 +431,7 @@
  },
  "ci-untrusted-artifacts-caches": {
   "short": "Don't restore caches in release jobs, and treat downloaded artifacts as untrusted.",
-  "why": "GitHub doesn't sign or verify cache contents, and an artifact from a pull request run holds whatever the PR author wanted, so restoring either in a release job lets lower-trust code into the job that holds your publishing credentials. virtualenv's maintainer lists \"don't restore shared caches in the release job\" as baseline hardening, Node.js says never to trust artifacts blindly, and fabric.js stopped its privileged workflow_run job from reading the PR number out of an uploaded artifact.",
+  "why": "GitHub doesn't sign or verify cache contents, and an artifact from a pull request run holds whatever the PR author wanted, so restoring either in a release job lets lower-trust code into the job that holds your publishing credentials. virtualenv's maintainer lists \"don't restore shared caches in the release job\" as baseline hardening, and fabric.js stopped its privileged workflow_run job from reading the PR number out of an uploaded artifact.",
   "steps": [
    "Set cache-mode: none on release and publish jobs, or on the whole release workflow, so they neither restore nor save Actions caches.",
    "Turn off caching built into setup actions there too, for example package-manager-cache: false on setup-node or enable-cache: false on setup-uv.",
@@ -506,7 +506,7 @@
  },
  "rel-provenance": {
   "short": "Publish signed build provenance for every release artifact.",
-  "why": "Provenance records which repository, commit and workflow built a file, so users and investigators can tell your builds from impostors. In the Ultralytics attack, the later malicious uploads had no attestations, which told investigators they came through an old API token rather than the project's CI. Cobra, Viper and Polly now attest their build artifacts with GitHub Attestations.",
+  "why": "Provenance records which repository, commit and workflow built a file, so users and investigators can tell your builds from impostors. In the Ultralytics attack, the later malicious uploads had no attestations, which told investigators they came through an old API token rather than the project's CI.",
   "steps": [
    "Check what trusted publishing already gives you: PyPI's publish action uploads attestations by default, and npm adds provenance for public packages published from public repositories.",
    "For release files and container images, add actions/attest after the build step, with id-token: write and attestations: write on that job only.",
@@ -548,7 +548,7 @@
  },
  "rel-signing": {
   "short": "Sign release artifacts with Sigstore and tell users how to verify them.",
-  "why": "A signature lets users and tools detect a swapped or tampered download, and keyless Sigstore signing ties it to your release workflow's identity, so there's no long-lived signing key to steal. aiohttp signs its releases with Sigstore, GoReleaser has signed releases for a long time, and Byte Buddy began signing its Maven deployments with Sigstore.",
+  "why": "A signature lets users and tools detect a swapped or tampered download, and keyless Sigstore signing ties it to your release workflow's identity, so there's no long-lived signing key to steal. Byte Buddy began signing its Maven deployments with Sigstore.",
   "steps": [
    "Use what your registry already does: PyPI attestations and npm provenance are Sigstore-signed automatically with trusted publishing. Sign the rest (release files, binaries, images) yourself.",
    "In the release job, install cosign and run cosign sign-blob --yes --bundle for each file. The job needs id-token: write.",
@@ -686,7 +686,7 @@
  },
  "rel-security-support": {
   "short": "State in SECURITY.md which versions get security fixes, and for how long.",
-  "why": "Users on older versions need to know whether a fix is coming, and you need a limit on how many branches you patch. actix-web and oapi-codegen now list supported versions in their security policies, fabric.js backported its program fixes to 6.x, and Mautic started paid extended support for Mautic 4, which about a quarter of installs still run.",
+  "why": "Users on older versions need to know whether a fix is coming, and you need a limit on how many branches you patch. fabric.js backported its program fixes to 6.x, and Mautic started paid extended support for Mautic 4, which about a quarter of installs still run.",
   "steps": [
    "Pick a policy you can keep. For most solo projects, \"latest release only\" is honest and fine; add older lines only if you can really patch them.",
    "Add a supported-versions table to SECURITY.md that says when each line stops getting security fixes.",
