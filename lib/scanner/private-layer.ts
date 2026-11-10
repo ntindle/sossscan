@@ -21,10 +21,14 @@ export type AddFinding = (
   path?: string | null,
   line?: number | null,
   hint?: string | null,
-) => void;
+) => Finding;
 
 const P = 'private';
 
+/**
+ * noBlock: the findings for workflows without a permissions block. Their token gets the repository's default, which
+ * the public layer could only guess at; they're reworded here once the default is read.
+ */
 export async function privateLayer(
   http: Http,
   rep: Report,
@@ -34,6 +38,7 @@ export async function privateLayer(
   meta: any,
   res: AddResult,
   finding: AddFinding,
+  noBlock: Finding[],
 ): Promise<void> {
   const calls: [string, string][] = [
     ['vuln_alerts', `/repos/${repo}/vulnerability-alerts`],
@@ -173,10 +178,12 @@ export async function privateLayer(
   if (ok('wf_perms')) {
     const wp = got.wf_perms[1];
     if (!isDict(wp)) throw new TypeError("'**' argument must be a mapping");
-    const good =
-      get(wp, 'default_workflow_permissions') === 'read' && !truthy(get(wp, 'can_approve_pull_request_reviews'));
+    const dflt = get(wp, 'default_workflow_permissions');
+    const canApprove = truthy(get(wp, 'can_approve_pull_request_reviews'));
+    const good = dflt === 'read' && !canApprove;
     const prev = get(R, 'ci-token-permissions', {});
     const prevStatus = get(prev, 'status');
+    const access = dflt === 'read' ? 'read-only' : dflt === 'write' ? 'read and write' : pyStr(dflt ?? 'unknown');
     res(
       'ci-token-permissions',
       good && (prevStatus === 'pass' || prevStatus === null || prevStatus === 'na')
@@ -184,13 +191,25 @@ export async function privateLayer(
         : good || prevStatus === 'pass'
           ? 'warn'
           : 'fail',
-      `Default GITHUB_TOKEN: ${pyStr(get(wp, 'default_workflow_permissions'))}; ` +
-        `Actions can approve PRs: ${pyStr(get(wp, 'can_approve_pull_request_reviews'))}. ` +
+      `Default GITHUB_TOKEN: ${access}; Actions ${canApprove ? 'can' : "can't"} approve pull requests. ` +
         get(prev, 'summary', ''),
       null,
       { ...get(prev, 'details', {}), ...wp },
       P,
     );
+    // Letting Actions approve pull requests doesn't widen a read-only token: approving takes pull-requests: write, which
+    // the read-only default doesn't give. So the default alone decides what these workflows' token can do.
+    for (const f of noBlock) {
+      if (dflt === 'read') {
+        f.severity = 'low';
+        f.title =
+          'No permissions block: the token is read-only today through the repository default, and declaring ' +
+          'permissions keeps it that way if the default changes';
+      } else if (dflt === 'write') {
+        f.severity = 'high';
+        f.title = "No permissions block, so this workflow's token gets the repository's read-and-write default";
+      }
+    }
   }
   if (ok('actions')) {
     const ap = got.actions[1];

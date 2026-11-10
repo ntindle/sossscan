@@ -123,27 +123,36 @@ export function recallReports(repo) {
 }
 
 const LAYER_RANK = { public: 1, private: 2, app: 3 };
-// Merge reports for one repo: deeper layers win per item; findings and meta are combined.
+// Merge reports for one repo: deeper layers win per item, and meta is combined. An item's findings come from the report
+// its result came from, so the two agree: a deeper scan reads settings a public one can only guess at (such as the token
+// default a workflow without a permissions block gets), and the guess shouldn't stay next to the answer.
 export function mergeReports(...reports) {
   const reps = reports.flat().filter(Boolean).sort((a, b) => (LAYER_RANK[a.layer] || 0) - (LAYER_RANK[b.layer] || 0));
   if (!reps.length) return null;
   const out = { ...reps[0], results: {}, findings: [], layers: [], meta: {} };
-  const seen = new Set();
+  const from = new Map();
   for (const r of reps) {
     out.layers.push(r.layer);
     Object.assign(out.meta, r.meta || {});
     for (const [id, res] of Object.entries(r.results || {})) {
       const prev = out.results[id];
-      if (!prev || !(res.status === 'unknown' && prev.status !== 'unknown')) out.results[id] = { ...res, layer: res.layer === 'private' ? r.layer : res.layer };
-    }
-    for (const f of r.findings || []) {
-      const key = `${f.item_id}|${f.path}|${f.line}|${f.title}`;
-      if (!seen.has(key)) { seen.add(key); out.findings.push(f); }
+      if (!prev || !(res.status === 'unknown' && prev.status !== 'unknown')) {
+        out.results[id] = { ...res, layer: res.layer === 'private' ? r.layer : res.layer };
+        from.set(id, r);
+      }
     }
     out.tier = r.tier || out.tier;
     out.scorecard = r.scorecard || out.scorecard;
     out.layer = r.layer;
     out.scanned_at = r.scanned_at;
+  }
+  const seen = new Set();
+  for (const r of reps) {
+    for (const f of r.findings || []) {
+      if (from.has(f.item_id) && from.get(f.item_id) !== r) continue;
+      const key = `${f.item_id}|${f.path}|${f.line}|${f.title}`;
+      if (!seen.has(key)) { seen.add(key); out.findings.push(f); }
+    }
   }
   return out;
 }

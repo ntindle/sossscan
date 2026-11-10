@@ -46,7 +46,7 @@ import {
   search,
   truthy,
 } from './py.ts';
-import type { Evidence, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
+import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
 
 const STATUSES: Status[] = ['pass', 'warn', 'fail', 'info', 'unknown', 'na'];
@@ -143,7 +143,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   };
   const finding: AddFinding = (itemId, severity, title, path = null, line = null, hint = null) => {
     const url = path ? `https://github.com/${repo}/blob/${branch}/${path}` + (line ? `#L${line}` : '') : null;
-    rep.findings.push({ item_id: itemId, severity, title, path, line, url, hint });
+    const f: Finding = { item_id: itemId, severity, title, path, line, url, hint };
+    rep.findings.push(f);
+    return f;
   };
 
   const [st, meta] = await http.json(`/repos/${repo}`);
@@ -290,6 +292,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     archived: get(meta, 'archived'),
     private: privateRepo,
     owner_type: item(item(meta, 'owner'), 'type'),
+    created_at: get(meta, 'created_at'),
     description: get(meta, 'description'),
     ecosystems: ecos,
     workflow_count: wfs.length,
@@ -439,27 +442,35 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   // ---- GitHub Actions
   const n = wfs.length;
+  // The findings for workflows without a permissions block. Their token gets the repository's default, which only an
+  // admin can read, so here they say what a repository like this one gets; the private layer rewrites them with the
+  // real default.
+  const noBlock: Finding[] = [];
   if (n === 0) {
     for (const it of NO_WORKFLOW_ITEMS) res(it, 'na', 'No GitHub Actions workflows');
   } else {
     const declares = (w: WorkflowAnalysis) => w.top_permissions || truthy(w.job_permissions_all);
     const declared = wfs.filter(declares);
     const missing = wfs.filter((w) => !declares(w));
+    const assumed = tokenDefault(rep.meta.owner_type, rep.meta.created_at);
     res(
       'ci-token-permissions',
-      !missing.length ? 'pass' : declared.length >= n / 2 ? 'warn' : 'fail',
-      `${declared.length}/${n} workflows declare permissions`,
+      // Where the default is read-only, that's all a missing block gives away, however many workflows lack one.
+      !missing.length ? 'pass' : assumed.readOnly || declared.length >= n / 2 ? 'warn' : 'fail',
+      tokenSummary(missing.length, n),
       missing.slice(0, 5).map((w) => ({ label: w.path, url: blob(w.path) })),
       { missing: missing.map((w) => w.path) },
     );
     for (const w of missing) {
-      finding(
-        'ci-token-permissions',
-        'medium',
-        'Workflow has no permissions block (inherits the repo default)',
-        w.path,
-        1,
-        'Add "permissions: {}" at the top and grant per job, e.g. contents: read',
+      noBlock.push(
+        finding(
+          'ci-token-permissions',
+          assumed.severity,
+          assumed.title,
+          w.path,
+          1,
+          'Add "permissions: {}" at the top and grant per job, e.g. contents: read',
+        ),
       );
     }
     for (const w of wfs) {
@@ -470,7 +481,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
           'permissions: write-all',
           w.path,
           null,
-          'Grant only the scopes each job needs',
+          'Replace write-all with the scopes each job needs, e.g. contents: read',
         );
       }
     }
@@ -932,7 +943,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   // ---- private layer (admin-only settings)
   if (admin) {
-    await privateLayer(http, rep, repo, owner, branch, meta, res, finding);
+    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock);
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private layer (admin token) or the GitHub App`);
@@ -944,6 +955,56 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   rep.api_calls = http.calls;
   log(`done: ${pyRepr(rep.summary)} (${http.calls} requests)`);
   return rep;
+}
+
+/** From this day GitHub gave new personal repositories (and new organizations) a read-only GITHUB_TOKEN by default. */
+const READ_ONLY_DEFAULT_SINCE = '2023-02-02';
+
+/**
+ * What the token of a workflow without a permissions block can do, as far as a public scan can tell. It gets the
+ * repository's default, a setting only an admin can read. A personal repository created since GitHub made that
+ * read-only starts read-only, an older one kept read and write, and an organization's repository starts with what the
+ * organization sets. Any of them may have been changed since.
+ */
+function tokenDefault(
+  ownerType: unknown,
+  createdAt: unknown,
+): { severity: Finding['severity']; title: string; readOnly: boolean } {
+  const gets = 'No permissions block, so the token gets the repository default';
+  const created = typeof createdAt === 'string' && /^\d{4}-\d\d-\d\d/.test(createdAt) ? createdAt.slice(0, 10) : null;
+  if (ownerType === 'User' && created && created >= READ_ONLY_DEFAULT_SINCE) {
+    return {
+      severity: 'low',
+      title: `${gets}: read-only for this repository unless that setting was changed`,
+      readOnly: true,
+    };
+  }
+  if (ownerType === 'User' && created) {
+    return {
+      severity: 'medium',
+      title: `${gets}: read and write for repositories created before February 2023, unless that setting was changed`,
+      readOnly: false,
+    };
+  }
+  if (ownerType === 'Organization') {
+    return {
+      severity: 'medium',
+      title: `${gets}: whatever the organization sets, which can allow write access`,
+      readOnly: false,
+    };
+  }
+  // Without the owner's type or the creation date, all that's sure is that the default can allow write access.
+  return { severity: 'medium', title: `${gets}, which can allow write access`, readOnly: false };
+}
+
+/** How many of the n workflows have no permissions block and what that means, or that they all have one. */
+function tokenSummary(missing: number, n: number): string {
+  if (!missing) {
+    if (n === 1) return 'The only workflow declares permissions';
+    return n === 2 ? 'Both workflows declare permissions' : `All ${n} workflows declare permissions`;
+  }
+  const lack = n === 1 ? 'The only workflow has' : `${missing} of ${n} workflows ${missing === 1 ? 'has' : 'have'}`;
+  return `${lack} no permissions block, so ${missing === 1 ? 'it gets' : 'they get'} the repository's default token access`;
 }
 
 /** Check likely OSS-Fuzz project names; confirm via main_repo in project.yaml. */

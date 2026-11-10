@@ -32,6 +32,8 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+// The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
+import * as sg from '../public/shared/core.js';
 
 const FIXTURES = new URL('./fixtures/scanner/', import.meta.url);
 const fixtureText = (rel: string) => readFileSync(new URL(rel, FIXTURES), 'utf8');
@@ -772,6 +774,207 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
       '1 open code scanning alerts (0 critical/high)' + notCounted(1),
     ]);
     expect(await backlog([alert('zizmor', 'high')])).toEqual(['fail', '1 open code scanning alerts (1 critical/high)']);
+  });
+});
+
+// ---------------------------------------------------------------------------- GITHUB_TOKEN permissions
+describe('GITHUB_TOKEN permissions', () => {
+  const REPO = 'https://api.github.com/repos/octo/fixes';
+  const wf = (name: string) => `https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/${name}.yml`;
+  // No permissions block anywhere, so the job gets the repository's default token.
+  const noBlock = {
+    text: workflow([
+      'on: [push]',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]),
+  };
+  // octo/fixes declares permissions in all six of its workflows; four of them lose their block here.
+  const fourWithout = Object.fromEntries(['go', 'pr', 'push', 'python'].map((w) => [wf(w), noBlock]));
+  /** octo/fixes, owned by this type of account and created then (GitHub always says when; the fixture doesn't). */
+  const ownedBy = (type: string, createdAt: string) => {
+    const route = structuredClone(routesFor('fixes')[REPO]) as Route;
+    Object.assign(route.json as object, { owner: { login: 'octo', type }, created_at: createdAt });
+    return { [REPO]: route };
+  };
+  /** The check's status and summary, with its findings as [severity, title, path]. */
+  const tokenCheck = async (scenario: string, replace: Record<string, Route | Route[]> = {}) => {
+    const { rep } = await scanScenario(scenario, replace);
+    const r = rep.results['ci-token-permissions'];
+    const findings = rep.findings
+      .filter((f) => f.item_id === 'ci-token-permissions')
+      .map((f) => [f.severity, f.title, f.path]);
+    return { status: r.status, summary: r.summary, findings };
+  };
+  const READ_ONLY =
+    'No permissions block, so the token gets the repository default: read-only for this repository unless that ' +
+    'setting was changed';
+  const PERMS = 'https://api.github.com/repos/acme/secret/actions/permissions/workflow';
+  const defaults = (dflt: string, canApprove: boolean) => ({
+    [PERMS]: { json: { default_workflow_permissions: dflt, can_approve_pull_request_reviews: canApprove } },
+  });
+
+  it('calls a missing block low in a personal repository created since February 2023: its default is read-only', async () => {
+    expect(await tokenCheck('fixes', { ...ownedBy('User', '2023-02-02T00:00:00Z'), [wf('go')]: noBlock })).toEqual({
+      status: 'warn',
+      summary: "1 of 6 workflows has no permissions block, so it gets the repository's default token access",
+      findings: [['low', READ_ONLY, '.github/workflows/go.yml']],
+    });
+    // However many workflows lack a block, a read-only token is all they get: partly done, not missing.
+    const most = await tokenCheck('fixes', { ...ownedBy('User', '2025-06-01T12:00:00Z'), ...fourWithout });
+    expect([most.status, most.summary, most.findings.length]).toEqual([
+      'warn',
+      "4 of 6 workflows have no permissions block, so they get the repository's default token access",
+      4,
+    ]);
+  });
+
+  it('calls it medium in an older personal repository, which kept read and write', async () => {
+    const old = await tokenCheck('fixes', { ...ownedBy('User', '2023-02-01T23:59:59Z'), [wf('go')]: noBlock });
+    expect([old.status, old.findings]).toEqual([
+      'warn',
+      [
+        [
+          'medium',
+          'No permissions block, so the token gets the repository default: read and write for repositories created ' +
+            'before February 2023, unless that setting was changed',
+          '.github/workflows/go.yml',
+        ],
+      ],
+    ]);
+    // With most workflows lacking a block, the check is missing, as before.
+    expect((await tokenCheck('fixes', { ...ownedBy('User', '2019-05-01T12:00:00Z'), ...fourWithout })).status).toBe(
+      'fail',
+    );
+  });
+
+  it("calls it medium in an organization's repository, whose default the organization sets", async () => {
+    const org = await tokenCheck('fixes', { ...ownedBy('Organization', '2025-06-01T12:00:00Z'), [wf('go')]: noBlock });
+    expect([org.status, org.findings]).toEqual([
+      'warn',
+      [
+        [
+          'medium',
+          'No permissions block, so the token gets the repository default: whatever the organization sets, which can ' +
+            'allow write access',
+          '.github/workflows/go.yml',
+        ],
+      ],
+    ]);
+    // Without a creation date, all it can say is that the default can allow write access.
+    expect((await tokenCheck('fixes', { [wf('go')]: noBlock })).findings).toEqual([
+      [
+        'medium',
+        'No permissions block, so the token gets the repository default, which can allow write access',
+        '.github/workflows/go.yml',
+      ],
+    ]);
+  });
+
+  it('keeps permissions: write-all a high finding, next to the job that has no block', async () => {
+    const mixed = workflow([
+      'on: [push]',
+      'jobs:',
+      '  release:',
+      '    runs-on: ubuntu-latest',
+      '    permissions: write-all',
+      '    steps:',
+      '      - run: make release',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]);
+    const { rep } = await scanScenario('fixes', {
+      ...ownedBy('User', '2025-06-01T12:00:00Z'),
+      [wf('go')]: { text: mixed },
+    });
+    expect(
+      rep.findings.filter((f) => f.item_id === 'ci-token-permissions').map((f) => [f.severity, f.title, f.hint]),
+    ).toEqual([
+      ['low', READ_ONLY, 'Add "permissions: {}" at the top and grant per job, e.g. contents: read'],
+      ['high', 'permissions: write-all', 'Replace write-all with the scopes each job needs, e.g. contents: read'],
+    ]);
+  });
+
+  it('passes when every workflow declares permissions', async () => {
+    expect(await tokenCheck('fixes', ownedBy('User', '2019-05-01T12:00:00Z'))).toEqual({
+      status: 'pass',
+      summary: 'All 6 workflows declare permissions',
+      findings: [],
+    });
+    const ci = 'https://api.github.com/repos/acme/secret/contents/.github/workflows/ci.yml?ref=release/2.x';
+    const declared = workflow([
+      'on: [push]',
+      'permissions:',
+      '  contents: read',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]);
+    expect(await tokenCheck('admin-org', { [ci]: { text: declared } })).toEqual({
+      status: 'pass',
+      summary:
+        "Default GITHUB_TOKEN: read-only; Actions can't approve pull requests. Both workflows declare permissions",
+      findings: [],
+    });
+  });
+
+  it('with an admin token, calls it low when the real default is read-only', async () => {
+    // acme/secret belongs to an organization, so the public layer could only say its default may allow write access.
+    expect((await tokenCheck('admin-org-public-layer')).findings.map(([severity]) => severity)).toEqual(['medium']);
+    expect(await tokenCheck('admin-org')).toEqual({
+      status: 'warn',
+      summary:
+        "Default GITHUB_TOKEN: read-only; Actions can't approve pull requests. 1 of 2 workflows has no permissions " +
+        "block, so it gets the repository's default token access",
+      findings: [
+        [
+          'low',
+          'No permissions block: the token is read-only today through the repository default, and declaring ' +
+            'permissions keeps it that way if the default changes',
+          '.github/workflows/ci.yml',
+        ],
+      ],
+    });
+    // Letting Actions approve pull requests doesn't widen a read-only token, but the check still doesn't pass.
+    const approve = await tokenCheck('admin-org', defaults('read', true));
+    expect([approve.status, approve.summary, approve.findings.map(([severity]) => severity)]).toEqual([
+      'fail',
+      'Default GITHUB_TOKEN: read-only; Actions can approve pull requests. 1 of 2 workflows has no permissions ' +
+        "block, so it gets the repository's default token access",
+      ['low'],
+    ]);
+  });
+
+  it('with an admin token, calls it high when the real default is read and write', async () => {
+    expect(await tokenCheck('admin-org', defaults('write', false))).toEqual({
+      status: 'fail',
+      summary:
+        "Default GITHUB_TOKEN: read and write; Actions can't approve pull requests. 1 of 2 workflows has no " +
+        "permissions block, so it gets the repository's default token access",
+      findings: [
+        [
+          'high',
+          "No permissions block, so this workflow's token gets the repository's read-and-write default",
+          '.github/workflows/ci.yml',
+        ],
+      ],
+    });
+  });
+
+  it("shows the deeper scan's findings on the page, not the public scan's guess", async () => {
+    const pub = (await scanScenario('admin-org-public-layer')).rep;
+    const app = { ...(await scanScenario('admin-org')).rep, layer: 'app' as const };
+    const merged = sg.mergeReports([pub, app])!;
+    const severities = (r: { findings: { item_id: string; severity: string }[] }) =>
+      r.findings.filter((f) => f.item_id === 'ci-token-permissions').map((f) => f.severity);
+    expect([severities(pub), severities(app), severities(merged)]).toEqual([['medium'], ['low'], ['low']]);
   });
 });
 
