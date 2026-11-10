@@ -43,7 +43,7 @@ export function statusLabel(st) {
 }
 export const LAYER_LABEL = { public: 'Public scan', private: 'Private scan', app: 'GitHub App', manual: 'Self-check', self: 'Self-check' };
 export const EFFORT_LABEL = { 1: 'Minutes', 2: 'An hour or two', 3: 'A day', 4: 'A few days', 5: 'Weeks' };
-export const IMPACT_LABEL = { 1: 'Nice to have', 2: 'Helps', 3: 'Solid', 4: 'High', 5: 'Critical' };
+export const IMPACT_LABEL = { 1: 'Minor', 2: 'Low', 3: 'Medium', 4: 'High', 5: 'Critical' };
 
 // ------------------------------------------------------------------------------------- repo input
 export function parseRepoInput(raw) {
@@ -220,7 +220,7 @@ export function itemStatus(item, report, repo) {
   if (r) return { ...r, source: 'scan', self };
   if (item.layer === 'manual') return { status: 'manual', summary: 'No scanner can see this. Tick it off yourself.', evidence: [], layer: 'manual', source: 'none', self };
   if (!report) return { status: 'todo', summary: 'Scan your repo to check this', evidence: [], layer: item.layer, source: 'none', self };
-  return { status: 'unknown', summary: `Needs the ${LAYER_LABEL[item.layer] || 'private scan'}`, evidence: [], layer: item.layer, source: 'none', self };
+  return { status: 'unknown', summary: item.layer === 'public' ? 'Needs the public scan' : 'Needs the private scan or the GitHub App', evidence: [], layer: item.layer, source: 'none', self };
 }
 
 export function findingsFor(item, report) {
@@ -772,12 +772,12 @@ export function renderRemediation(item, opts = {}) {
 // One honest sentence about how the fund's projects handle this item.
 export function evidenceSummary(item) {
   const s = item.stats || {};
-  const wrote = s.teams_did ? `${s.teams_did} fund team${s.teams_did === 1 ? '' : 's'} wrote about doing this` : '';
+  const wrote = s.teams_did ? `${s.teams_did} Fund team${s.teams_did === 1 ? '' : 's'} wrote about doing this` : '';
   if (s.repo_risk && !s.repo_present) {
-    return `The scan flagged this risk in ${s.repo_risk} of ${s.repo_total} fund projects' repos` + (wrote ? `; ${wrote}` : '') + '.';
+    return `The scan flagged this risk in ${s.repo_risk} of ${s.repo_total} Fund projects' repos` + (wrote ? `; ${wrote}` : '') + '.';
   }
   if (!item.peer_adoption) return wrote ? `${wrote}. No scanner can see this from outside a repo.` : '';
-  return `${s.repo_present ?? 0} of ${s.repo_total ?? 0} fund projects have this in their repo` +
+  return `${s.repo_present ?? 0} of ${s.repo_total ?? 0} Fund projects have this in their repo` +
     (s.repo_added_in_window ? `, ${s.repo_added_in_window} added it during the program` : '') + (wrote ? `; ${wrote}` : '') + '.';
 }
 

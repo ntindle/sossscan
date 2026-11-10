@@ -1,8 +1,8 @@
 # sossscan
 
-A security scanner and guide for open source maintainers: **https://sossscan.ntindle.com**
+A security scanner and guide for open source maintainers, live at https://sossscan.ntindle.com.
 
-Scan a GitHub repository to see where it has security gaps, from your accounts to your releases, and which gap to fix first. Every check comes with how projects in GitHub's Secure Open Source Fund handled the same thing: what they wrote about it, the files they added and the commits that fixed it.
+Scan a GitHub repository to see where it has security gaps, from your accounts to your releases, and which one to fix first. Each check shows how projects in GitHub's Secure Open Source Fund handled it: what they wrote about it, the files they added and the commits that fixed it. You can fix a gap yourself, hand it to your AI coding agent with a ready-made prompt, or let the optional GitHub App change the setting or open a pull request.
 
 ## How a scan works
 
@@ -28,7 +28,7 @@ The page then shows:
 Each check's fix panel offers:
 
 1. **Do it yourself:** why it matters, steps and snippets, links to the right settings pages, a prefilled new file, the `gh` command and a tracking issue.
-2. **Hand it to your AI agent:** a prompt to paste into Claude Code, Codex, Copilot or Cursor. It holds the scan's findings, the steps, real fix commits from fund projects, and ground rules: a new branch, the smallest change, pinned actions, nothing weakened, ask instead of guessing, and no settings changed behind your back. Checks about accounts, people and process get no prompt, because nothing in the repo would change.
+2. **Hand it to your AI agent:** a prompt to paste into Claude Code, Codex, Copilot or Cursor. It holds the scan's findings, the steps, real fix commits from Fund projects, and ground rules: a new branch, the smallest change, pinned actions, nothing weakened, ask instead of guessing, and no settings changed behind your back. Checks about accounts, people and process get no prompt, because nothing in the repo would change.
 3. **Fix it for me**, with the GitHub App: a setting changes in one click, or the app opens a pull request that you preview first. [What the app does and never does](#the-github-app) is below.
 
 After a scan, **Prompt to fix**, at the head of the results, hands several checks to your agent at once. You pick them, starting from the five most urgent, and it copies one prompt: the scan's result with a link back to it, then each fix with its evidence, the recommended fix and the current result, then the requirements. Settings stay yours: the agent lists each one with its `gh` command or settings page and asks first.

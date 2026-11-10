@@ -164,7 +164,7 @@ function firstRun() {
   const c = S.guide.counts || {};
   // Above the site's links, which index.html has in its footer from the start.
   $('#foot').prepend(
-    el('p', {}, `Built from what ${c.teams} projects in GitHub's Secure Open Source Fund changed: ${c.posts} posts by the teams, ${c.claims} claims with quotes, and the files and commits in their ${c.repos_scanned} repos.`));
+    el('p', {}, `Built from what ${c.teams} projects in GitHub's Secure Open Source Fund changed: ${c.posts} posts by the teams, ${c.claims} quoted statements, and the files and commits in their ${c.repos_scanned} repos.`));
 }
 
 // Everything below the scan box waits for the first render (index.html starts with .is-booting), so nothing is
@@ -377,9 +377,9 @@ function drawReadout() {
 function nextSize(t, m, num) {
   const next = t ? S.guide.tiersById[t.id + 1] : null;
   if (!t) return null;
-  if (!next) return el('p', { class: 'readout__grow' }, 'This is the top size, so every check in the guide applies.');
+  if (!next) return el('p', { class: 'readout__grow' }, 'This is the top tier, so every check in the guide applies.');
   const adds = S.guide.items.filter((i) => i.tier === next.id && sg.applies(i, S.ctx)).length;
-  return el('p', { class: 'readout__grow' }, el('b', {}, 'Next size: '),
+  return el('p', { class: 'readout__grow' }, el('b', {}, 'Next tier: '),
     `${next.name}, at ${num(next.stars)} stars or ${num(next.dependents)} dependents (you have ${num(m.stars || 0)} and ${num(m.dependents_total || 0)}). It adds ${plural(adds, 'check')}, shown under “Later, as you grow” in each stage.`);
 }
 
@@ -639,7 +639,7 @@ function stepEl({ step, row }) {
       S.report || st.status === 'done' ? statusLine(row, 'p', 'rl__status') : null,
       bucket === 'later' ? el('p', { class: 'rl__status' }, `This starts at tier ${item.tier}; the repo is tier ${S.model.tierId}.`) : null,
       el('p', { class: 'rl__what' }, step.what),
-      pa && pa.overall != null ? el('p', { class: 'rl__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} fund projects have this.`) : null,
+      pa && pa.overall != null ? el('p', { class: 'rl__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects have this.`) : null,
       finds.length ? findsPreview(finds) : null));
 }
 
@@ -731,7 +731,7 @@ function readerExtra(item) {
   if (pa && pa.overall != null) {
     const t = starsTier();
     const near = t && pa.by_tier && pa.by_tier[t.id] != null ? pa.by_tier[t.id] : null;
-    bits.push(el('p', { class: 'reader__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} fund projects have this.`
+    bits.push(el('p', { class: 'reader__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects have this.`
       + (near != null ? ` Among those in this repo's star range (tier ${t.id}, ${t.name}): ${near}%.` : '')));
   }
   const attacks = (item.attacks || []).map((id) => S.guide.attacksById[id]).filter(Boolean);
