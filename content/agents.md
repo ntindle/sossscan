@@ -31,7 +31,7 @@ The answer is the report as JSON. A new scan takes about 5 to 30 seconds. These 
 | `errors` | What the scan couldn't read, usually nothing |
 | `scanned_at`, `cached` | When the scan ran, and whether the server answered from its cache |
 
-A result is `unknown` when the scan couldn't settle it. When its summary says it needs the private layer, it's a setting only the repository's admins can see, so don't report it as missing. Self-checks, such as security training, aren't in the report at all.
+A result is `unknown` when the scan couldn't settle it. When its summary says it needs the private scan, it's a setting only the repository's admins can see, so don't report it as missing. Self-checks, such as security training, aren't in the report at all.
 
 To choose what to fix first, do what the web page does. Take the checks that are `fail` or `warn` and whose tier is at or below the repository's. A check with a `high` finding comes first, then one with a `medium` finding, then the one that loses the most impact (all of its `impact` for `fail`, half for `warn`), then the one with the least `effort`. Each check's `impact`, `effort`, `tier`, steps and snippets are in [guide.json](/data/guide.json), about 700 KB, under `items`.
 

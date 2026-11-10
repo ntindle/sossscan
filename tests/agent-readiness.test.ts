@@ -749,7 +749,8 @@ describe('the facts for agents', () => {
     );
     expect(agents).toContain('(`pass`, `warn`, `fail`, `info`, `unknown` or `na`)');
     expect(agents).toContain('`high`, `medium` or `low`');
-    expect(read('lib/scanner/scan.ts')).toContain('needs the private layer');
+    expect(read('lib/scanner/scan.ts')).toContain('needs the private scan');
+    expect(agents).toContain('needs the private scan');
   });
 
   it('ranks what to fix first as the page does', () => {

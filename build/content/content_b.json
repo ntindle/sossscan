@@ -38,7 +38,7 @@
  },
  "ci-pin-actions": {
   "short": "Pin every action to a full commit SHA and let Dependabot keep the pins current.",
-  "why": "A tag like @v4 can be moved to different code by the action's owner, or by whoever compromises them. In March 2025 attackers repointed the tags of tj-actions/changed-files, used by more than 20,000 repositories, so workflows dumped their CI secrets into build logs; repositories pinned to a commit SHA largely ran the code they had reviewed. Nasiko pinned its actions after that incident, and Fastify pinned GitHub's own actions and its shared workflows as well.",
+  "why": "A tag like @v4 can be moved to different code by the action's owner, or by whoever compromises them. In March 2025 attackers repointed the tags of tj-actions/changed-files, used by more than 20,000 repositories, so workflows dumped their CI secrets into build logs. Repositories pinned to a commit SHA largely ran the code they had reviewed.",
   "steps": [
    "Pin existing workflows with a tool: pinact run, or frizbee actions .github/workflows/. Both keep the version as a comment Dependabot understands; ratchet works too, with its own update command.",
    "Pin GitHub's own actions and reusable workflows from other repositories too, as Fastify did for actions/* and its fastify/workflows repository.",
@@ -84,11 +84,11 @@
   "why": "GitHub pastes ${{ }} expressions into the script before the shell runs it, so a PR title, branch name or comment can turn into a command. It hurts most in workflows triggered by issues, comments, pull_request_target or workflow_run, which run with your secrets and token. In April 2026 a PR comment was substituted into an Elementary workflow script, and the attacker used the workflow token to ship a malicious release that stayed on PyPI for 11.5 hours.",
   "steps": [
    "Search workflows and composite actions for ${{ inside run: blocks, especially titles, bodies, comments, head_ref and inputs. zizmor's template-injection audit lists them.",
-   "Move each value into the step's env: block and use \"$VAR\" in the script. actix-web, Gleam and JUnit fixed their workflows this way; zizmor --fix can rewrite some for you.",
+   "Move each value into the step's env: block and use \"$VAR\" in the script. zizmor --fix can rewrite some of them for you.",
    "In actions/github-script, read process.env.VAR instead of pasting ${{ }} into the JavaScript, as JUnit did in its release workflow.",
    "Treat step outputs built from PR data as untrusted too. ACI.dev's CodeQL code-injection alert came from a PR title passed through a step output.",
    "Don't write unvalidated input to $GITHUB_ENV or $GITHUB_OUTPUT; a newline in the value can define extra variables or outputs.",
-   "Keep zizmor or CodeQL in CI so new injections show up in review. Log4j hardened every workflow, and Fastify fixed one in its shared reusable workflows."
+   "Keep zizmor or CodeQL in CI so new injections show up in review."
   ],
   "snippets": [
    {
@@ -120,10 +120,10 @@
  },
  "ci-dangerous-triggers": {
   "short": "Use pull_request instead of pull_request_target, or split off the privileged steps.",
-  "why": "pull_request_target and workflow_run run with your repository's token and secrets, so checking out and building a pull request's code there hands both to whoever opened it. ImageMagick's maintainer found exactly this in an editor extension with millions of installs, and Fastify removed every pull_request_target workflow from its main repositories. GitHub's new default event policy blocks pull_request_target in public repositories, with enforcement starting December 2, 2026.",
+  "why": "pull_request_target and workflow_run run with your repository's token and secrets, so checking out and building a pull request's code there hands both to whoever opened it. ImageMagick's maintainer found this mistake in an editor extension with millions of installs. GitHub's new default event policy blocks pull_request_target in public repositories, with enforcement starting December 2, 2026.",
   "steps": [
    "Find workflows triggered by pull_request_target, workflow_run or issue_comment. zizmor's dangerous-triggers audit lists them; Policy insights under Settings → Actions → Policies shows runs the new default would block.",
-   "If a job only builds and tests, switch it to pull_request. ACI.dev did exactly that for its backend checks.",
+   "If a job only builds and tests, switch it to pull_request, as ACI.dev did for its backend checks.",
    "If it must write (comment, label, publish results), split it: a pull_request workflow runs the code read-only, and a workflow_run workflow posts the results without checking out PR code.",
    "In the privileged half, treat everything from the PR as data: validate artifact contents and keep them out of scripts and $GITHUB_ENV. fabric.js stopped reading the PR number from an uploaded artifact.",
    "Replace comment-triggered commands with labels that only maintainers can add, as Node.js recommends.",
@@ -159,7 +159,7 @@
  },
  "ci-persist-credentials": {
   "short": "Set persist-credentials: false on every actions/checkout step.",
-  "why": "By default actions/checkout stores the job's token on disk so later git commands work, which also lets every later step, test script and build tool read it. Gitoxide, whose tests work on the checked-out repository, turned it off so a test can't leak the token; actix-web, DocsGPT and ImageMagick did the same. Fastify made the change even where the immediate risk was nil, as defence in depth.",
+  "why": "By default actions/checkout stores the job's token on disk so later git commands work, which also lets every later step, test script and build tool read it. Gitoxide turned it off because its tests work on the checked-out repository, and a test could otherwise leak the token.",
   "steps": [
    "Add with: persist-credentials: false to every actions/checkout step. zizmor's artipacked audit lists any you missed.",
    "Where a job really pushes (a changelog commit, a tag), set persist-credentials: true explicitly in that job only, with a comment saying why.",
@@ -191,7 +191,7 @@
  },
  "ci-workflow-audit": {
   "short": "Run zizmor on your workflows, fix what it finds, and keep it running in CI.",
-  "why": "Most workflow mistakes in this guide (template injection, dangerous triggers, unpinned actions, stored credentials, broad permissions) are hard to spot by eye and easy to find statically. Nineteen Fund repositories added zizmor during the program: actix-web now analyzes workflows whenever they change, and virtualenv's maintainer notes it catches the Elementary-style template injection.",
+  "why": "Workflow mistakes such as template injection, dangerous triggers, unpinned actions, stored credentials and broad permissions are hard to spot by eye and easy to find with a static checker. virtualenv's maintainer notes that zizmor catches template injection like the one behind the April 2026 Elementary attack.",
   "steps": [
    "Run it locally first from the repository root with uvx zizmor . (or install it with pipx or Homebrew). Set GH_TOKEN to enable online audits such as impostor-commit.",
    "Fix high-severity findings first: template-injection, dangerous-triggers, excessive-permissions, artipacked and unpinned-uses. zizmor --fix applies the fixes it marks as safe.",
@@ -271,7 +271,7 @@
  },
  "ci-runner-hardening": {
   "short": "Limit the hosts CI jobs can reach, and keep public PRs off self-hosted runners.",
-  "why": "When a compromised dependency or action runs in your job, its next move is usually to send your token or secrets to a server it controls. virtualenv's maintainer lists restricting the hosts a build can reach as baseline hardening, and Node.js, Caddy and external-secrets run StepSecurity's harden-runner in CI.",
+  "why": "When a compromised dependency or action runs in your job, its next move is usually to send your token or secrets to a server it controls. virtualenv's maintainer lists restricting the hosts a build can reach as baseline hardening.",
   "steps": [
    "Add harden-runner as the first step of jobs that hold secrets or publish, with egress-policy: audit.",
    "After a few runs, open the insights link in the job summary and note the endpoints each job really calls.",
@@ -303,7 +303,7 @@
  },
  "ci-fork-pr-approval": {
   "short": "Require approval before workflows run on pull requests from new contributors.",
-  "why": "If a stranger's pull request runs automatically, their code, including any edited workflow files, executes on your runners before anyone has looked at it. On GitHub-hosted runners that mostly means abuse of your compute; on self-hosted runners it means a stranger's code running on your machine. Mockoon checked and enabled \"require approval for first-time contributors\" during the program.",
+  "why": "If a stranger's pull request runs automatically, their code, including any edited workflow files, executes on your runners before anyone has looked at it. On GitHub-hosted runners that mostly means abuse of your compute; on self-hosted runners it means a stranger's code running on your machine.",
   "steps": [
    "In the Actions settings, check \"Approval for running fork pull request workflows from contributors\" is at least \"Require approval for first-time contributors\", GitHub's current default.",
    "Choose \"Require approval for all external contributors\" if you use self-hosted runners or get many drive-by PRs from new accounts.",
@@ -328,13 +328,13 @@
  },
  "sast-codeql-actions": {
   "short": "Add GitHub Actions to your CodeQL languages so workflow bugs raise alerts.",
-  "why": "CodeQL has queries for the workflow bugs behind real attacks: code injection, checkout of untrusted code in a privileged context, artifact and cache poisoning, and missing permissions. Termux added it for its packages repository, Gitoxide runs it next to zizmor with more than the default queries, and ACI.dev fixed CodeQL code-injection alerts in its workflows.",
+  "why": "CodeQL has queries for the workflow bugs behind real attacks: code injection, checkout of untrusted code in a privileged context, artifact and cache poisoning, and missing permissions.",
   "steps": [
    "With default setup: in Settings → Advanced Security (Code security on some accounts), open the CodeQL analysis configuration, edit it, and make sure GitHub Actions is ticked under Languages.",
    "With advanced setup: add actions to the languages in your CodeQL workflow, as curl does.",
-   "Use the security-extended query suite for broader coverage; Gitoxide enables more than the default queries.",
+   "Use the security-extended query suite for broader coverage.",
    "Work through alerts in the Security tab. Copilot Autofix can draft fixes (ACI.dev merged two), but review them like any other PR.",
-   "Run zizmor as well. Gitoxide scans its workflows with both rather than relying on CodeQL alone."
+   "Run zizmor as well, rather than relying on CodeQL alone."
   ],
   "snippets": [
    {
@@ -360,7 +360,7 @@
  },
  "repo-tag-release-protection": {
   "short": "Turn on immutable releases and protect version tags with a tag ruleset.",
-  "why": "Without these, anyone who takes over a maintainer account or a write token can move a release tag to new code or swap a binary in an old release, and users pinned to that version get the attacker's build. Yii and Hummingbird turned on immutable releases during the program, and Sniffnet recommends tag rulesets so published releases can't be silently rewritten.",
+  "why": "Without these, anyone who takes over a maintainer account or a write token can move a release tag to new code or swap a binary in an old release, and users pinned to that version get the attacker's build.",
   "steps": [
    "In Settings → General → Releases, tick \"Enable release immutability\". It applies only to releases published from then on.",
    "Change your release process to: create a draft, attach every asset (binaries, checksums, SBOM, signatures), then publish.",
@@ -398,7 +398,7 @@
  },
  "ci-oidc": {
   "short": "Swap long-lived cloud and service tokens for short-lived OIDC credentials.",
-  "why": "A token stored as a secret works for anyone who gets a copy until you revoke it. With OIDC the job proves which repository, branch and environment it runs in, and gets a credential that expires with the job. 130 of the 193 Fund repositories already request id-token: write in at least one workflow, and mimetype moved its Codecov uploads to OIDC.",
+  "why": "A token stored as a secret works for anyone who gets a copy until you revoke it. With OIDC the job proves which repository, branch and environment it runs in, and gets a credential that expires with the job. It isn't only for publishing: mimetype moved its Codecov uploads to OIDC.",
   "steps": [
    "List secrets that hold keys for clouds, registries or services, and check which providers accept GitHub's OIDC tokens: package registries, AWS, Azure, Google Cloud, Vault, Codecov and others.",
    "On the provider, trust only your repository and pin the subject to a branch, tag or environment, such as repo:{owner}/{repo}:environment:release.",
@@ -431,7 +431,7 @@
  },
  "ci-untrusted-artifacts-caches": {
   "short": "Don't restore caches in release jobs, and treat downloaded artifacts as untrusted.",
-  "why": "GitHub doesn't sign or verify cache contents, and an artifact from a pull request run holds whatever the PR author wanted, so restoring either in a release job lets lower-trust code into the job that holds your publishing credentials. virtualenv's maintainer lists \"don't restore shared caches in the release job\" as baseline hardening, Node.js says never to trust artifacts blindly, and fabric.js stopped its privileged workflow_run job from reading the PR number out of an uploaded artifact.",
+  "why": "GitHub doesn't sign or verify cache contents, and an artifact from a pull request run holds whatever the PR author wanted, so restoring either in a release job lets lower-trust code into the job that holds your publishing credentials. virtualenv's maintainer lists \"don't restore shared caches in the release job\" as baseline hardening, and fabric.js stopped its privileged workflow_run job from reading the PR number out of an uploaded artifact.",
   "steps": [
    "Set cache-mode: none on release and publish jobs, or on the whole release workflow, so they neither restore nor save Actions caches.",
    "Turn off caching built into setup actions there too, for example package-manager-cache: false on setup-node or enable-cache: false on setup-uv.",
@@ -473,7 +473,7 @@
  },
  "rel-sbom": {
   "short": "Generate an SBOM for each release and attach it to the release.",
-  "why": "When an advisory lands, an SBOM answers \"are we affected?\" for you and your users, including code you bundle or vendor that a dependency listing misses. virtualenv embeds one in its wheel (PEP 770) because it bundles pip and setuptools, which vendor their own dependencies. Fifteen Fund teams reported SBOM work, Mockoon shipped its first with 9.4.0, and DocsGPT found exporting one from GitHub was \"a button, not a project\".",
+  "why": "When an advisory lands, an SBOM answers \"are we affected?\" for you and your users, including code you bundle or vendor that a dependency listing misses. virtualenv embeds one in its wheel (PEP 770) because it bundles pip and setuptools, which vendor their own dependencies. DocsGPT found exporting one from GitHub was \"a button, not a project\".",
   "steps": [
    "Start with the free export: Insights → Dependency graph → Export SBOM gives an SPDX file of your declared dependencies.",
    "For what you actually ship, generate an SBOM in the release workflow from the build output or container image, for example with Syft (GoReleaser's suggestion) through anchore/sbom-action.",
@@ -506,7 +506,7 @@
  },
  "rel-provenance": {
   "short": "Publish signed build provenance for every release artifact.",
-  "why": "Provenance records which repository, commit and workflow built a file, so users and investigators can tell your builds from impostors. In the Ultralytics attack, the later malicious uploads had no attestations, which told investigators they came through an old API token rather than the project's CI. Cobra, Viper and Polly now attest their build artifacts with GitHub Attestations.",
+  "why": "Provenance records which repository, commit and workflow built a file, so users and investigators can tell your builds from impostors. In the Ultralytics attack, the later malicious uploads had no attestations, which told investigators they came through an old API token rather than the project's CI.",
   "steps": [
    "Check what trusted publishing already gives you: PyPI's publish action uploads attestations by default, and npm adds provenance for public packages published from public repositories.",
    "For release files and container images, add actions/attest after the build step, with id-token: write and attestations: write on that job only.",
@@ -548,7 +548,7 @@
  },
  "rel-signing": {
   "short": "Sign release artifacts with Sigstore and tell users how to verify them.",
-  "why": "A signature lets users and tools detect a swapped or tampered download, and keyless Sigstore signing ties it to your release workflow's identity, so there's no long-lived signing key to steal. aiohttp signs its releases with Sigstore, GoReleaser has signed releases for a long time, and Byte Buddy began signing its Maven deployments with Sigstore.",
+  "why": "A signature lets users and tools detect a swapped or tampered download, and keyless Sigstore signing ties it to your release workflow's identity, so there's no long-lived signing key to steal. Byte Buddy began signing its Maven deployments with Sigstore.",
   "steps": [
    "Use what your registry already does: PyPI attestations and npm provenance are Sigstore-signed automatically with trusted publishing. Sign the rest (release files, binaries, images) yourself.",
    "In the release job, install cosign and run cosign sign-blob --yes --bundle for each file. The job needs id-token: write.",
@@ -591,7 +591,7 @@
  },
  "rel-trusted-publishing": {
   "short": "Publish from CI with trusted publishing (OIDC), then delete your registry tokens.",
-  "why": "A registry token in CI or on a laptop can publish as you until someone revokes it: stolen publishing tokens spread the Shai-Hulud worm, and the later malicious Ultralytics uploads came through an old API token. Trusted publishing replaces it with a token minted per run that expires in minutes (within 15 on PyPI, 30 on crates.io). aiohttp, Mockoon and GoReleaser publish this way, and more than 20 other Fund teams switched during their program window.",
+  "why": "A registry token in CI or on a laptop can publish as you until someone revokes it: stolen publishing tokens spread the Shai-Hulud worm, and in the Ultralytics attack the later malicious uploads came through an old API token. Trusted publishing replaces it with a token minted per run that expires in minutes (within 15 on PyPI, 30 on crates.io). Commits show more than 20 Fund teams switching to it during the program.",
   "steps": [
    "Register a trusted publisher (owner, repo, workflow filename, environment) on the registry: PyPI project → Publishing, npm package Settings, crates.io crate Settings → Trusted Publishing, RubyGems gem page → Trusted publishers.",
    "Build in one job without special permissions; publish in a separate job that has id-token: write and the matching environment: name.",
@@ -686,7 +686,7 @@
  },
  "rel-security-support": {
   "short": "State in SECURITY.md which versions get security fixes, and for how long.",
-  "why": "Users on older versions need to know whether a fix is coming, and you need a limit on how many branches you patch. actix-web and oapi-codegen now list supported versions in their security policies, fabric.js backported its program fixes to 6.x, and Mautic started paid extended support for Mautic 4, which about a quarter of installs still run.",
+  "why": "Users on older versions need to know whether a fix is coming, and you need a limit on how many branches you patch. fabric.js backported its program fixes to 6.x, and Mautic started paid extended support for Mautic 4, which about a quarter of installs still run.",
   "steps": [
    "Pick a policy you can keep. For most solo projects, \"latest release only\" is honest and fine; add older lines only if you can really patch them.",
    "Add a supported-versions table to SECURITY.md that says when each line stops getting security fixes.",

@@ -166,7 +166,7 @@ describe('the facts on the pages', () => {
       `${guide.items.length} checks`,
       `${guide.counts.teams} projects`,
       `${guide.counts.posts} posts`,
-      `${guide.counts.claims} claims`,
+      `${guide.counts.claims} quoted statements`,
       `covers ${layer('public')} of the checks`,
       `covers ${layer('private')} more`,
       `other ${layer('manual')} are`,

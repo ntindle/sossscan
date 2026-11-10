@@ -4,7 +4,7 @@
     "why": "CodeQL follows untrusted input to dangerous calls such as SQL queries, shell commands, deserializers and HTML output, and it's free for public repositories. shadcn/ui's first scan caught an unsafe dangerouslySetInnerHTML path, and CocoIndex says CodeQL already catches issues that manual review missed.",
     "steps": [
       "Go to Settings → Advanced Security (Code security on some accounts). In the CodeQL analysis row, choose Set up → Default. There's no workflow file to maintain.",
-      "Before enabling, click Edit: pick the Extended query suite and keep GitHub Actions in the language list. Gitoxide and Keycloak both turned on more than the default queries.",
+      "Before enabling, click Edit: pick the Extended query suite and keep GitHub Actions in the language list.",
       "Check that every language you ship is listed. SciPy scans both its Python and its C code.",
       "Default setup skips pull requests from forks, so it only sees that code after merge. If most contributions come from forks, use advanced setup (below) instead.",
       "Make findings block merges: Settings → Rulesets → New branch ruleset → Require code scanning results, with CodeQL set to High or higher."
@@ -111,7 +111,7 @@
   },
   "sast-fix-backlog": {
     "short": "Work through open code scanning alerts: fix real bugs, dismiss noise with a reason.",
-    "why": "A long list of unread alerts hides the few that matter and teaches everyone to ignore new ones. Teams found real bugs this way: SciPy fixed vulnerabilities its first scans turned up, JUnit fixed its first wave of CodeQL findings, and Keycloak cleaned up existing findings before enabling more queries.",
+    "why": "A long list of unread alerts hides the few that matter and teaches everyone to ignore new ones. The backlog holds real bugs: SciPy fixed vulnerabilities its first scans turned up.",
     "steps": [
       "Open the Security and quality tab → Code scanning and filter to open alerts. Start with critical and high, and with code that handles untrusted input.",
       "For each alert, fix it or click Dismiss alert with the right reason and a short comment. The reason can affect future analysis; the comment explains it later.",
@@ -339,7 +339,7 @@
   },
   "fuzz-harnesses": {
     "short": "Write fuzz targets for every parser of untrusted input, and run them in CI.",
-    "why": "A fuzzer throws millions of mutated inputs at one function and reports the crashes, hangs and runaway memory that example-based tests miss. Sniffnet's maintainer calls targeted testing and fuzzing the most effective way to find flaws specific to your code, and 32 of the 193 fund projects keep fuzz targets in their repos.",
+    "why": "A fuzzer throws millions of mutated inputs at one function and reports the crashes, hangs and runaway memory that example-based tests miss. Sniffnet's maintainer calls targeted testing and fuzzing the most effective way to find flaws specific to your code.",
     "steps": [
       "Pick entry points that take bytes or text from outside: file and protocol parsers, decoders, decompressors, query or template parsers. Start with the one that has had bugs.",
       "Write one small target per entry point with your language's standard fuzzer (below). Expect an hour or two for the first; shadcn/ui used Copilot to set theirs up.",
@@ -392,7 +392,7 @@
   },
   "fuzz-continuous": {
     "short": "Fuzz around the clock: join OSS-Fuzz if you qualify, otherwise run ClusterFuzzLite.",
-    "why": "A short CI run catches regressions, but deep bugs take hours or days of fuzzing to reach. aiohttp's parsers have been fuzzed continuously by OSS-Fuzz since 2022, OSS-Fuzz was already catching crashes in Matplotlib's C extensions, and quic-go turned on ClusterFuzzLite batch fuzzing during its sprint.",
+    "why": "A short CI run catches regressions, but deep bugs take hours or days of fuzzing to reach. aiohttp's parsers have been fuzzed continuously by OSS-Fuzz since 2022, and quic-go turned on ClusterFuzzLite batch fuzzing during its sprint.",
     "steps": [
       "Write fuzz targets first (see the harness item), then check OSS-Fuzz. It's free and accepts projects with a significant user base or that are critical to global IT infrastructure.",
       "To apply, open a pull request to google/oss-fuzz adding projects/<name>/project.yaml (below). After it's accepted, add a Dockerfile and build.sh following the new project guide.",
@@ -600,7 +600,7 @@
   },
   "ai-agent-instructions": {
     "short": "Tell AI coding agents your security rules in AGENTS.md, and keep CI as the backstop.",
-    "why": "Coding agents read repository instruction files before they write code or review PRs, so a few lines on secrets, workflows and untrusted input prevent repeat mistakes. 42 of the 193 fund projects already keep security guidance in AGENTS.md, CLAUDE.md or Copilot instruction files, and Mautic proposed a security section based on the fund's training.",
+    "why": "Coding agents read repository instruction files (AGENTS.md, CLAUDE.md, Copilot instructions) before they write code or review PRs, so a few lines on secrets, workflows and untrusted input prevent repeat mistakes.",
     "steps": [
       "Start from the template and add your specifics: where untrusted input enters, which modules are security-sensitive, and how to run the security tests.",
       "Point agents at SECURITY.md and your threat model. aiohttp notes a threat model lets AI tools check whether a finding is in scope.",
@@ -632,7 +632,7 @@
   },
   "deps-alerts": {
     "short": "Turn on Dependabot alerts and security updates, then act on what they find.",
-    "why": "Your project ships the code of every package it pulls in. Dependabot alerts tell you when one has a known vulnerability, and security updates open the fix PR for you; it's free for public repos and takes minutes, and SciPy's maintainer recommends it to anyone who doesn't have it on.",
+    "why": "Your project ships the code of every package it pulls in. Dependabot alerts tell you when one has a known vulnerability, and security updates open the fix PR for you. Both are free for public repos and take minutes to turn on.",
     "steps": [
       "In Settings → Advanced Security, enable Dependency graph, Dependabot alerts and Dependabot security updates.",
       "On the same page, enable Dependabot malware alerts to hear about known-malicious packages (npm, pip, Go, Rust, Maven, NuGet, RubyGems, Composer).",
@@ -664,7 +664,7 @@
   },
   "deps-update-automation": {
     "short": "Let Dependabot or Renovate open update PRs for packages and GitHub Actions.",
-    "why": "Small, regular updates are easy to review; a two-year jump in the middle of an incident is not. Dependabot understands SHA-pinned actions and bumps the SHA and version comment together, which Fastify and Nasiko rely on to keep their pins fresh.",
+    "why": "Small, regular updates are easy to review; a two-year jump in the middle of an incident is not. Dependabot understands SHA-pinned actions and bumps the SHA and version comment together, so pinned actions stay current.",
     "steps": [
       "Add one updates entry per ecosystem and directory. Even a C project can cover its Actions, as ImageMagick did.",
       "Group minor and patch updates to cut the PR count, and keep majors separate so they get a real review.",
@@ -707,7 +707,7 @@
   },
   "deps-review": {
     "short": "Check what each pull request adds to your dependencies before you merge it.",
-    "why": "A pull request can add a vulnerable or malicious package in a lockfile diff nobody reads. Dependency review lists what a PR adds or upgrades and flags known advisories, which GitHub says turns an opaque package.json diff into a two-minute review; Cobra and Viper added it to block vulnerable or maliciously licensed dependencies.",
+    "why": "A pull request can add a vulnerable or malicious package in a lockfile diff nobody reads. Dependency review lists what a PR adds or upgrades and flags known advisories; GitHub says it turns an opaque package.json diff into a two-minute review.",
     "steps": [
       "Make sure the dependency graph is on (Settings → Advanced Security). Dependency review reads it.",
       "Add the workflow from the template and make it a required status check in your branch ruleset.",
@@ -821,7 +821,7 @@
   },
   "deps-prune": {
     "short": "Remove dependencies you don't need; every one is code you're trusting.",
-    "why": "Every package brings code, maintainers and install-time hooks you trust on your users' behalf. DocsGPT cut dormant dependencies it hadn't touched in ages, OpenClaw moved features into plugins for a shorter dependency tree and a smaller attack surface, and Ollama pruned unused dependencies after threat modeling.",
+    "why": "Every package brings code, maintainers and install-time hooks you trust on your users' behalf. OpenClaw moved features into plugins for a shorter dependency tree and a smaller attack surface.",
     "steps": [
       "List what you ship, direct and transitive (npm ls --all, uv tree, cargo tree, go mod graph), and note which are runtime and which are dev-only.",
       "Find unused ones with a tool: knip (JavaScript/TypeScript), deptry (Python), cargo-machete (Rust), go mod tidy (Go).",
@@ -942,7 +942,7 @@
       "Commit the lockfile for your ecosystem: package-lock.json, pnpm-lock.yaml, yarn.lock, uv.lock or pylock.toml, Cargo.lock, go.sum.",
       "Install strictly from it in CI: npm ci, pnpm install --frozen-lockfile, uv sync --locked, cargo build --locked. Go checks downloads against go.sum.",
       "For pip, add hashes: generate them with uv pip compile --generate-hashes or pip-tools, and install with --require-hashes.",
-      "Lock your release and build tools too, not just runtime dependencies (virtualenv's advice).",
+      "Lock your release and build tools too, not just runtime dependencies.",
       "Review lockfile diffs in PRs: new packages, changed registry URLs, and hashes that change without a version bump."
     ],
     "snippets": [

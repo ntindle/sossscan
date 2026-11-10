@@ -1533,7 +1533,7 @@ describe('API failures', () => {
     const shown = await scanScenario('fixes', { [list]: { json: { workflows: dynamic.map((path) => ({ path })) } } });
     expect(pick(shown.rep, items)).toEqual({
       'sast-codeql': ['pass', 'CodeQL default setup is on'],
-      'sast-codeql-actions': ['unknown', 'CodeQL default setup is on; its languages need the private layer'],
+      'sast-codeql-actions': ['unknown', 'CodeQL default setup is on; its languages need the private scan'],
       'deps-update-automation': ['pass', 'Dependabot version updates are active'],
     });
     for (const [route, status] of [

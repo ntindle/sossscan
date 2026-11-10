@@ -1,7 +1,7 @@
 /**
  * sosf-scan: a security self-check for a GitHub repository.
  *
- * Built from what the 190+ projects in GitHub's Secure Open Source Fund actually changed.
+ * Built from what the projects in GitHub's Secure Open Source Fund changed.
  *
  * Runs entirely on your machine and is read-only: it only sends GET requests to GitHub
  * (api.github.com, raw.githubusercontent.com, github.com) and two public score services
@@ -13,11 +13,12 @@
  *
  * Token (optional, recommended): --token, $GITHUB_TOKEN, $GH_TOKEN, or `gh auth token`. --public uses none of them
  * unless you pass --token, so it sees what anyone would.
- * With a token that has admin access to the repo, the private layer also checks settings only
+ * With a token that has admin access to the repo, it also checks settings only
  * admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions,
  * fork-PR approval, rulesets, immutable releases, environments, org 2FA, open alert backlogs.
  *
- * Load the JSON report into the guide site ("Load private report"); it is parsed in your browser.
+ * Load the JSON report into the guide site with "Load the report" under Private scan; it is read
+ * in your browser and not uploaded.
  * Requires Node 20 or newer, no dependencies.
  */
 import { realpathSync, writeFileSync } from 'node:fs';
@@ -64,20 +65,22 @@ function usage(): string {
 
 function help(): string {
   return `${usage()}
-Security self-check for a GitHub repository (read-only).
+Check a GitHub repository's security settings and files, read-only, and write
+a JSON report you can load into the Secure Open Source guide.
 
 positional arguments:
   repo           OWNER/REPO or a GitHub URL
 
 options:
   -h, --help     show this help message and exit
-  --out OUT      write the JSON report here (default: sosf-report-OWNER-
-                 REPO.json)
-  --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or \`gh auth
-                 token\`)
-  --public       only run checks anyone can see, without a token unless
-                 --token is given
-  --quiet
+  --out OUT      where to write the report
+                 (default: sosf-report-OWNER-REPO.json)
+  --token TOKEN  GitHub token; with admin access to the repo it also checks
+                 the settings only admins can see
+                 (default: $GITHUB_TOKEN, $GH_TOKEN or \`gh auth token\`)
+  --public       run only the checks anyone can see, with no token unless you
+                 pass --token
+  --quiet        print nothing; only write the report
 `;
 }
 
@@ -206,10 +209,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     for (const [itemId, r] of rows) lines.push(`[${ICON[r.status]}] ${itemId.padEnd(32)} ${r.summary}`);
     const hi = rep.findings.filter((f) => f.severity === 'high');
     if (hi.length) {
-      lines.push(`\n${hi.length} high-severity finding(s):`);
+      lines.push(`\n${hi.length} high-severity finding${hi.length === 1 ? '' : 's'}:`);
       for (const f of hi.slice(0, 15)) lines.push(`  - ${f.title} (${pyStr(f.path)}:${pyStr(f.line)})`);
     }
-    lines.push(`\nReport written to ${out}. Load it into the guide site to see fixes (it stays in your browser).`);
+    lines.push(
+      `\nReport written to ${out}. To see the fixes, open the guide site and use "Load the report" under Private scan; the report stays in your browser.`,
+    );
     process.stdout.write(lines.join('\n') + '\n');
   }
   // What got in the scan's way (a rate limit, files it couldn't read), last so it isn't lost above the table: why

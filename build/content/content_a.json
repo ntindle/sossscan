@@ -1,7 +1,7 @@
 {
  "acct-2fa-required": {
   "short": "Turn on 2FA for yourself and require it for everyone with write access.",
-  "why": "A phished or reused password is the cheapest way into a project: it lets an attacker push code or cut a release as you. actix-web, Hummingbird, FS2 and Mockoon made 2FA mandatory across their GitHub orgs; actix-web says it turns protection against a leaked password \"from an individual choice into an organization-wide baseline.\"",
+  "why": "A phished or reused password is the cheapest way into a project: it lets an attacker push code or cut a release as you. Requiring 2FA for everyone with write access means a leaked password alone doesn't get anyone in.",
   "steps": [
    "Turn on 2FA for your own account: Settings → Password and authentication → Enable two-factor authentication. Use an authenticator app rather than SMS, and save the recovery codes offline.",
    "In an org, first list who lacks 2FA (snippet below) and warn them: members lose access to org resources until they enable it, and outside collaborators are removed.",
@@ -33,7 +33,7 @@
  },
  "acct-phishing-resistant-2fa": {
   "short": "Sign in with a passkey or security key so a fake login page can't steal your 2FA.",
-  "why": "App codes and SMS codes can be typed into a look-alike site. In September 2025 the maintainer of chalk and debug entered his password and 2FA code on a fake npm page, and malware shipped in 18 packages with billions of weekly downloads within hours. A passkey only works on the real domain, so that phish fails; Charset Normalizer dropped SMS for passkeys during its sprint.",
+  "why": "App codes and SMS codes can be typed into a look-alike site. In September 2025 the maintainer of chalk and debug entered his password and 2FA code on a fake npm page, and malware shipped in 18 packages with billions of weekly downloads within hours. A passkey only works on the real domain, so that phish fails.",
   "steps": [
    "On GitHub, go to Settings → Password and authentication → Passkeys → Add a passkey. If a hardware security key is already registered, choose \"Upgrade to passkey\" instead.",
    "Use an authenticator app, not SMS, as your base 2FA method; GitHub requires an app or SMS before you can register security keys.",
@@ -104,7 +104,7 @@
   "steps": [
    "Turn on 2FA with a security key or passkey on every registry account that can publish (PyPI requires 2FA; npm supports WebAuthn keys), and store recovery codes offline.",
    "On npm, if you publish by hand, set each package's Settings → Publishing access to \"Require two-factor authentication and disallow tokens\".",
-   "Publish from CI with trusted publishing instead of stored tokens, as aiohttp, Mockoon and GoReleaser do. npm will stop direct publishing with granular tokens in January 2027.",
+   "Publish from CI with trusted publishing instead of stored tokens. npm will stop direct publishing with granular tokens in January 2027.",
    "List everyone who can publish (npm owners and org teams, PyPI collaborators) and remove people who no longer maintain the package.",
    "Revoke tokens you can't account for. If you must keep one, scope it to a single package and give it an expiry date.",
    "Turn on 2FA for the email account behind each registry login, since password resets go there."
@@ -118,7 +118,7 @@
   ],
   "pitfalls": [
    "Logging in to npm with a recovery code puts a 72-hour hold on the account: no publishing and no new tokens. Don't burn one in the middle of a release.",
-   "One token that can publish every package is a single point of failure. Fastify deliberately avoids having one."
+   "One token that can publish every package is a single point of failure."
   ],
   "docs": [
    {
@@ -137,7 +137,7 @@
  },
  "repo-branch-protection": {
   "short": "Block force pushes and direct pushes to your default branch with a ruleset.",
-  "why": "Without it, a stolen token or a tired maintainer can push straight to main or rewrite its history, and CI never gets a say. GitHub Security Lab calls it the setting with the biggest impact because it makes code scanning and Dependabot findings block merges; ImageMagick and oapi-codegen moved from classic branch protection to rulesets during the program.",
+  "why": "Without it, a stolen token or a tired maintainer can push straight to main or rewrite its history, and CI never gets a say. GitHub Security Lab calls it the setting with the biggest impact because it makes code scanning and Dependabot findings block merges.",
   "steps": [
    "Go to Settings → Rulesets → New ruleset → New branch ruleset, set enforcement to Active, and add the default branch as the target.",
    "Keep \"Restrict deletions\" and \"Block force pushes\" on, and turn on \"Require a pull request before merging\".",
@@ -174,13 +174,13 @@
  },
  "repo-codeowners": {
   "short": "Make a maintainer's review mandatory for changes to workflows and release config.",
-  "why": "A PR that edits .github/workflows/ or your release scripts can change what runs with your secrets on the next push, and in a busy queue it can look like a routine fix. CODEOWNERS plus required code owner review makes sure someone who understands CI signs off; DataJourney added CODEOWNERS during the program \"to make responsibility visible\".",
+  "why": "A PR that edits .github/workflows/ or your release scripts can change what runs with your secrets on the next push, and in a busy queue it can look like a routine fix. CODEOWNERS plus required code owner review makes sure someone who understands CI signs off.",
   "steps": [
    "Create .github/CODEOWNERS covering /.github/, release and packaging config, and SECURITY.md. GitHub uses the copy on the PR's base branch, so a PR can't change who reviews it.",
    "In your default-branch ruleset, edit \"Require a pull request before merging\" and require review from Code Owners. One owner's approval is enough.",
    "Owners need write access, and teams must be visible with write permission, or GitHub assigns no owner. Open the file on GitHub to see any errors.",
    "Order matters: the last matching pattern wins, so put broad rules first and specific paths after.",
-   "Update the file when people leave. CPython, external-secrets and PyPI's Warehouse all committed CODEOWNERS cleanups during their program windows."
+   "Update the file when people leave."
   ],
   "snippets": [
    {
@@ -207,7 +207,7 @@
  },
  "repo-signed-commits": {
   "short": "Sign your commits and require verified signatures on the default branch.",
-  "why": "Git lets anyone write any name and email into a commit, so an unsigned commit that claims to be from you proves nothing. Requiring signatures ties every commit on main to a key its author controls; Electron, Next.js, Turborepo and shadcn/ui enforce it with a ruleset, though only 7 of the 193 Fund repos do.",
+  "why": "Git lets anyone write any name and email into a commit, so an unsigned commit that claims to be from you proves nothing. Requiring signatures ties every commit on main to a key its author controls. Electron, Next.js, Turborepo and shadcn/ui enforce it with a ruleset.",
   "steps": [
    "Each maintainer sets up signing. SSH signing reuses a key you already have and needs Git 2.34 or later (snippet below).",
    "Add the public key under Settings → SSH and GPG keys → New SSH key, choosing the signing key type. A login key must be uploaded again for signing.",
@@ -317,7 +317,7 @@
  },
  "secrets-scanning": {
   "short": "Turn on secret scanning so leaked keys in your code and history raise an alert.",
-  "why": "GitHub Security Lab cites 28.65 million new secrets leaked on public GitHub in 2025, with AI-assisted commits leaking them at about twice the usual rate. Secret scanning checks your entire Git history plus issues, PRs, discussions and wikis, and it's free on public repos; a dozen Fund teams list it among their changes, and Cucumber used it to drive fixes across more than 130 repositories.",
+  "why": "GitHub Security Lab cites 28.65 million new secrets leaked on public GitHub in 2025, with AI-assisted commits leaking them at about twice the usual rate. Secret scanning checks your entire Git history plus issues, PRs, discussions and wikis, and it's free on public repos. Cucumber used it to drive fixes across more than 130 repositories.",
   "steps": [
    "Settings → Advanced Security (in the \"Security and quality\" section; \"Code security\" on some accounts) → Secret Protection → Enable.",
    "Turn on push protection on the same page, so new leaks are blocked before they land.",
@@ -415,7 +415,7 @@
  },
  "posture-scorecard": {
   "short": "Run OpenSSF Scorecard on a schedule and fix its high-risk findings first.",
-  "why": "Scorecard runs 18 automated checks, such as branch protection, token permissions, pinned dependencies and dangerous workflows, and weights them by how easy they are to exploit. Bootstrap reintegrated it (\"for the second time, actually!\"), Jupyter Docker Stacks and Readest added it, and fabric.js pinned its workflow dependencies and changed its permission model specifically to raise its score.",
+  "why": "Scorecard runs 18 automated checks, such as branch protection, token permissions, pinned dependencies and dangerous workflows, and weights them by how easy they are to exploit. fabric.js pinned its workflow dependencies and changed its permission model to raise its score.",
   "steps": [
    "See where you stand: scorecard.dev's viewer has results for many popular repos, or run the CLI locally (snippet below).",
    "Add the workflow from the template; results appear in the Security tab under Code scanning.",
@@ -457,7 +457,7 @@
  },
  "posture-best-practices-badge": {
   "short": "Self-assess against the OpenSSF Best Practices criteria and display the badge.",
-  "why": "The passing level's 67 criteria catch gaps that are easy to miss, such as no published way to report vulnerabilities or no reply to reports within 14 days. Gleam's maintainers note that a company with this kind of evidence \"is much more likely to trust a technology\"; 66 Fund repos show a badge, and curl and Caracal have reached gold.",
+  "why": "The passing level's 67 criteria catch gaps that are easy to miss, such as no published way to report vulnerabilities or no reply to reports within 14 days. Gleam's maintainers note that a company with this kind of evidence \"is much more likely to trust a technology\". curl and Caracal have reached gold.",
   "steps": [
    "Sign in at bestpractices.dev and add your repo; automated analysis fills in many answers for you.",
    "Work through the passing criteria. Most map to items in this guide: SECURITY.md, a 14-day first response, static analysis, secure delivery, no leaked credentials.",
@@ -490,7 +490,7 @@
  },
  "disc-security-md": {
   "short": "Publish a SECURITY.md that says how to report privately and what happens next.",
-  "why": "Without one, a well-meaning reporter's options are a public issue, which is now a public exploit, or your personal email if they can find it. It was one of the most common Fund changes: Two.js had no policy before the program, ImageMagick put one SECURITY.md in its .github repo so every repo shows it, and SciPy's now says what not to report to cut false reports.",
+  "why": "Without one, a well-meaning reporter's options are a public issue, which is now a public exploit, or your personal email if they can find it. A policy can also say what not to report; SciPy's does, to cut false reports.",
   "steps": [
    "Start from the template and put the file in .github/, the repo root, or docs/.",
    "Give a private channel: the private vulnerability reporting link plus an email fallback. virtualenv and n8n-MCP both added a contact email to theirs.",
@@ -528,7 +528,7 @@
  },
  "disc-private-reporting": {
   "short": "Turn on private vulnerability reporting so researchers never need a public issue.",
-  "why": "A vulnerability filed as a public issue is disclosed before a fix exists and \"starts a clock you did not choose\", as Nasiko put it. With private reporting on, reports arrive on your Advisories page, where you can accept one as a draft advisory, fix it in a temporary private fork and publish when ready; 165 of the 193 Fund repos have it enabled.",
+  "why": "A vulnerability filed as a public issue is disclosed before a fix exists and \"starts a clock you did not choose\", as Nasiko put it. With private reporting on, reports arrive on your Advisories page, where you can accept one as a draft advisory, fix it in a temporary private fork and publish when ready.",
   "steps": [
    "Settings → Advanced Security → click Enable next to \"Private vulnerability reporting\" (public repos).",
    "Make sure you'll see reports: GitHub only notifies admins and security managers who watch the repo, so set Watch → Custom → Security alerts and allow email.",
@@ -561,7 +561,7 @@
  },
  "disc-triage-sla": {
   "short": "Publish realistic response targets and a clear scope for vulnerability reports.",
-  "why": "Reporters go public when they hear nothing, and maintainers burn out on out-of-scope reports. Teams set targets they could keep: DocsGPT acknowledges within 48 hours, actix-web treats its times as targets because volunteers run it, Vapor stopped issuing advisories for its dependencies' vulnerabilities, and Yii may rule a report out of scope when it depends on ignoring several documented practices.",
+  "why": "Reporters go public when they hear nothing, and maintainers burn out on out-of-scope reports. Teams set targets they could keep: DocsGPT acknowledges within 48 hours, and actix-web treats its times as targets because volunteers run it. Some also narrowed their scope: Vapor stopped issuing advisories for its dependencies' vulnerabilities, and Yii may rule a report out of scope when it depends on ignoring several documented practices.",
   "steps": [
    "Pick targets you can meet in a bad month, such as acknowledging in 3 business days and assessing in 10; the OpenSSF guide suggests acknowledging within 1 to 2 days.",
    "Stay inside the Best Practices badge bar: a first response within 14 days, and no medium or higher issue left unpatched 60 days after it becomes public.",
@@ -594,7 +594,7 @@
  },
  "disc-advisories-cves": {
   "short": "Publish a GitHub security advisory for every fixed vulnerability and request a CVE.",
-  "why": "A silent fix leaves downstream users exposed, because Dependabot, audit tools and scanners only flag vulnerable versions once an advisory exists. GitHub is a CVE Numbering Authority and usually reviews CVE requests within 72 hours; Mockoon requested its first CVE during the program, Termux learned to score CVSS and request CVEs from GitHub, and virtualenv published 21 advisories in five weeks.",
+  "why": "A silent fix leaves downstream users exposed, because Dependabot, audit tools and scanners only flag vulnerable versions once an advisory exists. GitHub is a CVE Numbering Authority and usually reviews CVE requests within 72 hours.",
   "steps": [
    "Open the Security tab → Advisories → New draft security advisory, or accept a private report as a draft.",
    "Fill in affected and patched versions, severity (the CVSS calculator helps) and CWE, and credit the reporter unless they decline.",
@@ -632,7 +632,7 @@
  },
  "disc-coordinated-disclosure": {
   "short": "Agree a disclosure date with the reporter and give key downstream users time to patch.",
-  "why": "Some fixes need other people: a distribution, a hosted service or an upstream library. aiohttp's decompression-bomb fix (CVE-2025-69223) had to wait for Google to ship brotli 1.2, Node.js ships coordinated security releases across its supported lines, and Nasiko wants embargoes to be \"a process rather than an improvisation.\"",
+  "why": "Some fixes need other people: a distribution, a hosted service or an upstream library. aiohttp's decompression-bomb fix (CVE-2025-69223) had to wait for Google to ship brotli 1.2, and Node.js ships coordinated security releases across its supported lines.",
   "steps": [
    "Agree a public date with the reporter early. 90 days is the longest common default; release Monday to Wednesday and avoid holidays.",
    "If an upstream library needs the fix, report it privately upstream and add its maintainers as collaborators on your draft advisory.",
@@ -668,7 +668,7 @@
   ]
  },
  "ai-contribution-policy": {
-  "short": "Write down how you handle AI-assisted PRs and reports, and ask for proof, not polish.",
+  "short": "Write down how you handle AI-assisted PRs and reports, and ask for evidence: tests for a PR, a proof of concept for a report.",
   "why": "AI makes plausible-looking PRs and vulnerability reports cheap to produce and costly to review. OpenClaw received 1,309 advisories in under four months and closed 746 as invalid, including 95 of the 109 rated critical, and curl ended its bug bounty in January 2026 after a flood of reports that sounded technical but contained nothing exploitable.",
   "steps": [
    "Decide your stance and put it in CONTRIBUTING.md: allowed with disclosure (Sniffnet), case by case (Cobra: \"Let AI handle the volume. Stay responsible for the judgment.\"), or not accepted (Gleam).",
@@ -737,7 +737,7 @@
  },
  "people-contributor-guidance": {
   "short": "Add a short security section to CONTRIBUTING.md and back each rule with a check.",
-  "why": "Contributors can't follow rules they've never seen, and new maintainers inherit habits rather than documents. Sniffnet rewrote its contributing guide as 10 rules to observe before opening a PR, NetBird wrote clearer security guidelines for new contributors, and Bootstrap wants practices that are \"easily actionable by maintainers remotely and autonomously\".",
+  "why": "Contributors can't follow rules they've never seen, and new maintainers inherit habits rather than documents. Sniffnet rewrote its contributing guide as 10 rules to observe before opening a PR.",
   "steps": [
    "Add a security section to CONTRIBUTING.md (snippet below). GitHub links the file whenever someone opens an issue or PR.",
    "Cover the basics: report vulnerabilities privately, never commit secrets, discuss new dependencies first, and expect extra review on workflow changes.",
@@ -770,7 +770,7 @@
  },
  "people-user-security-docs": {
   "short": "Tell users which APIs and settings are risky, and how to use your project safely.",
-  "why": "Many security bugs come from developers misunderstanding a library's API, not from direct attacks on it. Two.js chose to document that its SVG interpreter renders markup through innerHTML rather than restrict the API (\"If something carries risk, that risk should be visible and documented.\"), Hummingbird added a guide to securing apps built on it, and aiohttp's threat model marks which mitigations are the application's job.",
+  "why": "Many security bugs come from developers misunderstanding a library's API, not from direct attacks on it. Two.js chose to document that its SVG interpreter renders markup through innerHTML rather than restrict the API (\"If something carries risk, that risk should be visible and documented.\"), and aiohttp's threat model marks which mitigations are the application's job.",
   "steps": [
    "Add a security considerations page (snippet below): what you trust, what you don't, and what users must handle themselves.",
    "Flag dangerous functions and options in the reference docs, where people actually read them, and point to a safe alternative.",
@@ -797,7 +797,7 @@
  },
  "people-security-training": {
   "short": "Spend a few hours a year on structured security training, and apply to the Fund.",
-  "why": "Most of this checklist is cheap once you know it exists; the hard part is not knowing what you don't know. Log4j's maintainer, looking back at Log4Shell, put it as \"Ignorance is the biggest security hole\", and Mautic, evcc, Bootstrap, scikit-learn and Hummingbird all urge other maintainers to apply to the Fund.",
+  "why": "Most of this checklist is cheap once you know it exists; the hard part is not knowing what you don't know. Log4j's maintainer, looking back at Log4Shell, put it as \"Ignorance is the biggest security hole\".",
   "steps": [
    "Take OpenSSF's free, self-paced course LFD121, Developing Secure Software: about 14 to 18 hours, with a free certificate.",
    "Play GitHub's Secure Code Game in a Codespace. Its seasons cover secure coding in C and Python, and protecting CI/CD pipelines and GitHub Actions.",
@@ -915,7 +915,7 @@
  },
  "plan-irp": {
   "short": "Write a short incident plan: who leads, and how you triage, fix, disclose and recover.",
-  "why": "\"A plan written during a crisis inherits the crisis,\" as Nasiko put it: severity, disclosure and who to call get decided at the worst possible moment. 31 Fund teams wrote or refreshed a plan, and aiohttp's covers severity tiers, an advisory-to-release runbook, and playbooks for a compromised release pipeline, maintainer account or CI.",
+  "why": "\"A plan written during a crisis inherits the crisis,\" as Nasiko put it: severity, disclosure and who to call get decided at the worst possible moment. aiohttp's plan, for example, covers severity tiers, an advisory-to-release runbook, and playbooks for a compromised release pipeline, maintainer account or CI.",
   "steps": [
    "Start from the template. Name an incident lead and a backup, and how to reach them outside GitHub.",
    "Define severity levels and what each one triggers. actix-web separates code vulnerabilities, release integrity issues, security regressions and dependency issues.",
@@ -948,7 +948,7 @@
  },
  "plan-irp-exercise": {
   "short": "Run a one-hour drill of your incident plan every year, using a fake report.",
-  "why": "The first real run of a plan always finds gaps: a contact who left, missing registry rights, nobody who has requested a CVE before. Nasiko wants its first run to be \"a drill rather than a real report\", CAMEL-AI rehearsed its plan during the sprint, and FS2 reviewed past Typelevel incidents to bring new Security Team members up to speed.",
+  "why": "The first real run of a plan always finds gaps: a contact who left, missing registry rights, nobody who has requested a CVE before. FS2 reviewed past Typelevel incidents to bring new Security Team members up to speed.",
   "steps": [
    "Book an hour with everyone named in the plan, once a year and whenever a maintainer joins.",
    "Pick a scenario: a fake private report, a leaked publish token, or a malicious release on your registry.",
