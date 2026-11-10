@@ -5,6 +5,8 @@ import { pyStrip } from './py.ts';
 
 /** The only hosts that ever see the token. */
 const TOKEN_HOSTS = new Set(['api.github.com', 'raw.githubusercontent.com']);
+/** GitHub's hosts, whose refusals can mean GitHub rate-limited the scan (the dependents page is on github.com). */
+const GITHUB_HOSTS = new Set([...TOKEN_HOSTS, 'github.com']);
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
 interface Fetched {
@@ -26,6 +28,18 @@ function parseJson(body: Uint8Array): any {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether GitHub refused a request for going over a rate limit: a 429 (too many requests, whatever else it says), or a
+ * 403 that leaves no requests, asks to retry later or says so in its message. Other 403s refuse the request itself.
+ */
+function isRateLimit({ status, body, headers }: Fetched): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  if (headers['x-ratelimit-remaining'] === '0' || 'retry-after' in headers) return true;
+  const parsed = parseJson(body);
+  return typeof parsed?.message === 'string' && /rate limit/i.test(parsed.message);
 }
 
 async function readBody(res: Response, touch: () => void): Promise<Uint8Array> {
@@ -54,6 +68,8 @@ export class Http {
   /** Seconds a request may sit idle (connecting, or between chunks of the body), like a Python socket timeout. */
   timeout: number;
   calls = 0;
+  /** Set once GitHub refuses a request for going over a rate limit, so the scan can say its answers may be wrong. */
+  rateLimited = false;
 
   constructor(token: string | null = null, timeout = 30) {
     this.token = token;
@@ -83,6 +99,7 @@ export class Http {
         return [0, new TextEncoder().encode(String(e)), {}];
       }
       if (got.status >= 500 && attempt === 0) continue;
+      if (GITHUB_HOSTS.has(host) && isRateLimit(got)) this.rateLimited = true;
       return [got.status, got.body, got.headers];
     }
     return [0, new Uint8Array(), {}];

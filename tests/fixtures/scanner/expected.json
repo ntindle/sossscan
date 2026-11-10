@@ -8879,7 +8879,7 @@
             "hint": "Add a \"package-ecosystem: github-actions\" entry"
           }
         ],
-        "errors": [],
+        "errors": ["Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it"],
         "scorecard": {
           "score": 7.3,
           "date": "2026-11-01",

@@ -101,8 +101,20 @@ const AGENT_FILES = re(
   String.raw`(?i)^(AGENTS\.md|CLAUDE\.md|\.github/copilot-instructions\.md|\.github/instructions/[^/]+\.md)$`,
 );
 const SECURITY_RULES = re(String.raw`(?i)secur|secret|vulnerab`);
+/** What a scan says when GitHub refused some of its requests for going over a rate limit. */
+const RATE_LIMITED = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
 
 type Got = Record<string, [number, any, Record<string, string>]>;
+
+/**
+ * GitHub's refusal of a feature the account's plan doesn't include, such as rulesets in a private repository on GitHub
+ * Free. It's an answer (there are none), not a failure to read.
+ */
+function notInPlan(status: number, body: unknown): boolean {
+  return (
+    status === 403 && isDict(body) && typeof body.message === 'string' && /\bupgrade to github\b/i.test(body.message)
+  );
+}
 
 /**
  * Scan OWNER/REPO. layer 'public' skips admin-only checks even if the token could see them. assumeAdmin runs the
@@ -151,6 +163,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const [st, meta] = await http.json(`/repos/${repo}`);
   if (st !== 200 || !truthy(meta)) {
     rep.errors.push(`repo lookup failed: HTTP ${st}` + (st === 404 ? ' (private repo? pass a token)' : ''));
+    if (http.rateLimited) rep.errors.push(RATE_LIMITED);
     return rep;
   }
   [owner, name, repo] = [item(item(meta, 'owner'), 'login'), item(meta, 'name'), item(meta, 'full_name')];
@@ -191,40 +204,62 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const paths = entries.map((e) => e.path);
   const files = entries.filter((e) => e.file).map((e) => e.path);
 
-  const read = async (p: string): Promise<string | null> => {
+  /** A file on the default branch: the HTTP status, and the text unless the status isn't 200. */
+  const fetchFile = async (p: string): Promise<[number, string | null]> => {
     if (privateRepo) {
       const [s, body] = await http.req(
         `${API}/repos/${repo}/contents/${quote(p)}?ref=${quote(branch)}`,
         'application/vnd.github.raw',
       );
-      return s === 200 ? decodeReplace(body) : null;
+      return [s, s === 200 ? decodeReplace(body) : null];
     }
-    return (await http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`))[1];
+    return http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`);
   };
+  /**
+   * The files that couldn't be read, with the HTTP status. The tree lists each one, so a check must say it couldn't
+   * read the file, never that the file is missing or empty.
+   */
+  const unread = new Map<string, number>();
+  const read = async (p: string): Promise<string | null> => {
+    const [s, text] = await fetchFile(p);
+    if (text === null) unread.set(p, s);
+    return text;
+  };
+  const couldNotRead = (p: string) => `Could not read ${p} (HTTP ${unread.get(p)})`;
   /**
    * A community health file the account provides for every repo without its own: GitHub takes it from the account's
    * .github repo, which must be public, looking in its .github/ folder, then its root, then docs/. Costs two API calls
-   * and a read when there is one; null when there isn't (or this is that repo).
+   * and a read when there is one; null when there isn't (or this is that repo). A lookup GitHub didn't answer gives
+   * its status instead, and a file that couldn't be read comes with a null body.
    */
-  const accountDefault = async (rx: RegExp): Promise<{ label: string; url: string; body: string } | null> => {
+  const accountDefault = async (
+    rx: RegExp,
+  ): Promise<{ label: string; url: string; body: string | null; status: number } | { failed: number } | null> => {
     if (name.toLowerCase() === '.github') return null;
     const [s, defaults] = await http.json(`/repos/${owner}/.github`);
-    if (s !== 200 || !isDict(defaults) || truthy(get(defaults, 'private'))) return null;
+    // 404: the account has no .github repo, so it has no defaults.
+    if (s === 404) return null;
+    if (s !== 200) return { failed: s };
+    if (!isDict(defaults) || truthy(get(defaults, 'private'))) return null;
     const br = String(get(defaults, 'default_branch') || 'main');
-    const [, t] = await http.json(`/repos/${owner}/.github/git/trees/${quote(br)}?recursive=1`);
+    const [ts, t] = await http.json(`/repos/${owner}/.github/git/trees/${quote(br)}?recursive=1`);
+    // An empty .github repo (409) has no files to provide.
+    if (ts === 404 || ts === 409) return null;
+    if (ts !== 200) return { failed: ts };
     const rank = (p: string) => (/^\.github\//i.test(p) ? 0 : /^docs\//i.test(p) ? 2 : 1);
     const hits = pyIter(get(pyOr(t, {}), 'tree', []))
       .filter((x) => get(x, 'type') === 'blob' && search(rx, String(item(x, 'path'))) !== null)
       .map((x) => String(item(x, 'path')))
       .sort((a, b) => rank(a) - rank(b));
     if (!hits.length) return null;
-    const [, body] = await http.text(
+    const [bs, body] = await http.text(
       `https://raw.githubusercontent.com/${owner}/.github/${quote(br)}/${quote(hits[0])}`,
     );
     return {
       label: `${hits[0]} in ${owner}/.github`,
       url: `https://github.com/${owner}/.github/blob/${br}/${hits[0]}`,
-      body: body ?? '',
+      body,
+      status: bs,
     };
   };
   /** The files whose path matches: what most checks look for (a folder named security/ is not a SECURITY.md). */
@@ -239,6 +274,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const wfText = new Map<string, string | null>();
   wfPaths.forEach((p, i) => wfText.set(p, texts[i]));
   const wfs: WorkflowAnalysis[] = [...wfText].filter(([, t]) => t).map(([p, t]) => analyzeWorkflow(p, t!));
+  // A workflow that couldn't be read is left out of every check, like an empty one, though it may hold what they look
+  // for: say so.
+  const wfUnread = [...wfText.keys()].filter((p) => unread.has(p));
+  if (wfUnread.length) {
+    const one = wfUnread.length === 1;
+    rep.errors.push(
+      `Could not read ${one ? wfUnread[0] : `${wfUnread.length} workflow files, such as ${wfUnread[0]}`} ` +
+        `(HTTP ${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
+    );
+  }
   const tools = new Map<string, string[]>();
   for (const w of wfs) {
     for (const t of w.tools) {
@@ -267,6 +312,15 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const answers = await mapLimit(lookups, 8, ([, path]) => http.json(path));
   const got: Got = Object.fromEntries(lookups.map(([key], i) => [key, answers[i]]));
+  /**
+   * The HTTP status of a lookup GitHub didn't answer, or null when it did. A 404 answers that there's nothing there (no
+   * such branch, no releases), and so does a feature the plan doesn't include. Anything else (a refusal, a rate limit,
+   * a 5xx, or 0 for a network failure) leaves the checks that rely on the lookup unknown.
+   */
+  const failed = (key: string): number | null => {
+    const [s, body] = got[key];
+    return s === 200 || s === 404 || notInPlan(s, body) ? null : s;
+  };
   const [, depPage] = await http.text(`https://github.com/${repo}/network/dependents`, { auth: false });
 
   let deps: { repositories: number; packages: number } | null = null;
@@ -306,19 +360,38 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   // ---- disclosure
   const sec = find(SECURITY_MD);
   if (sec.length) {
-    const body = (await read(sec[0])) || '';
-    const how = search(HOW_TO_REPORT, body) !== null;
-    res(
-      'disc-security-md',
-      how && pyLen(body) > 200 ? 'pass' : 'warn',
-      `${sec[0]} found` + (how ? '' : ' but it does not clearly say how to report privately'),
-      fileLink(sec[0]),
-      { path: sec[0], length: pyLen(body) },
-    );
+    const body = await read(sec[0]);
+    if (body === null) {
+      res('disc-security-md', 'unknown', couldNotRead(sec[0]), fileLink(sec[0]));
+    } else {
+      const how = search(HOW_TO_REPORT, body) !== null;
+      res(
+        'disc-security-md',
+        how && pyLen(body) > 200 ? 'pass' : 'warn',
+        `${sec[0]} found` + (how ? '' : ' but it does not clearly say how to report privately'),
+        fileLink(sec[0]),
+        { path: sec[0], length: pyLen(body) },
+      );
+    }
   } else {
     // GitHub shows the account's default, a SECURITY.md in its public .github repo, for any repo without its own.
     const inherited = await accountDefault(SECURITY_MD);
-    if (inherited) {
+    if (inherited === null) {
+      res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
+    } else if ('failed' in inherited) {
+      res(
+        'disc-security-md',
+        'unknown',
+        `No SECURITY.md in this repository, and the account's default couldn't be checked (HTTP ${inherited.failed})`,
+      );
+    } else if (inherited.body === null) {
+      res(
+        'disc-security-md',
+        'unknown',
+        `Could not read the account's default, ${inherited.label} (HTTP ${inherited.status})`,
+        [{ label: inherited.label, url: inherited.url }],
+      );
+    } else {
       const how = search(HOW_TO_REPORT, inherited.body) !== null;
       res(
         'disc-security-md',
@@ -328,8 +401,6 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         [{ label: inherited.label, url: inherited.url }],
         { path: inherited.label, length: pyLen(inherited.body), account_default: true },
       );
-    } else {
-      res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
     }
   }
   const pvr = got.pvr[0] === 200 ? got.pvr[1] : null;
@@ -345,13 +416,24 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   // An advisory with no publication date (missing or null) still counts; it just can't be the newest.
   const published = advs.map((a) => get(a, 'published_at')).filter((d): d is string => typeof d === 'string' && !!d);
   const newest = published.length ? published.reduce((a, b) => (b > a ? b : a)) : null;
-  res(
-    'disc-advisories-cves',
-    'info',
-    `${advs.length} published security advisories` + (newest ? `, newest ${pySlice(newest, 0, 10)}` : ''),
-    [{ label: 'Advisories', url: `https://github.com/${repo}/security/advisories` }],
-    { count: advs.length, with_cve: advs.filter((a) => truthy(get(a, 'cve_id'))).length },
-  );
+  const advisoriesLink = [{ label: 'Advisories', url: `https://github.com/${repo}/security/advisories` }];
+  const advisoriesFailed = failed('advisories');
+  if (advisoriesFailed !== null) {
+    res(
+      'disc-advisories-cves',
+      'unknown',
+      `Could not read the published security advisories (HTTP ${advisoriesFailed})`,
+      advisoriesLink,
+    );
+  } else {
+    res(
+      'disc-advisories-cves',
+      'info',
+      `${advs.length} published security advisories` + (newest ? `, newest ${pySlice(newest, 0, 10)}` : ''),
+      advisoriesLink,
+      { count: advs.length, with_cve: advs.filter((a) => truthy(get(a, 'cve_id'))).length },
+    );
+  }
 
   // ---- planning docs. A threat-model/ or incident-response/ folder counts: it holds the documents, and a truncated
   // tree may list the folder without its files.
@@ -373,23 +455,27 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   // ---- repository settings visible publicly
   const co = find(CODEOWNERS);
   if (co.length) {
-    const body = (await read(co[0])) || '';
-    const covers = search(COVERS_WORKFLOWS, body) !== null;
-    res(
-      'repo-codeowners',
-      covers ? 'pass' : 'warn',
-      `${co[0]} found` + (covers ? '' : ', but it does not cover .github/workflows'),
-      fileLink(co[0]),
-    );
-    if (!covers) {
-      finding(
+    const body = await read(co[0]);
+    if (body === null) {
+      res('repo-codeowners', 'unknown', couldNotRead(co[0]), fileLink(co[0]));
+    } else {
+      const covers = search(COVERS_WORKFLOWS, body) !== null;
+      res(
         'repo-codeowners',
-        'low',
-        'CODEOWNERS does not cover .github/workflows',
-        co[0],
-        null,
-        'Add a line such as "/.github/ @your-team"',
+        covers ? 'pass' : 'warn',
+        `${co[0]} found` + (covers ? '' : ', but it does not cover .github/workflows'),
+        fileLink(co[0]),
       );
+      if (!covers) {
+        finding(
+          'repo-codeowners',
+          'low',
+          'CODEOWNERS does not cover .github/workflows',
+          co[0],
+          null,
+          'Add a line such as "/.github/ @your-team"',
+        );
+      }
     }
   } else {
     res('repo-codeowners', 'fail', 'No CODEOWNERS file');
@@ -399,28 +485,50 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const protectedBranch = got.branch[0] === 200 ? truthy(get(pyOr(got.branch[1], {}), 'protected')) : null;
   const ruleSet = new Set(rules);
   const strong = ruleSet.has('pull_request') && ruleSet.has('non_fast_forward');
+  const rulesFailed = failed('rules');
+  // The branch's protected flag counts rulesets as well as classic protection, so a branch GitHub says is unprotected
+  // is. Without the flag, an empty list of ruleset rules leaves classic protection unknown.
+  const protectionFailed = got.branch[0] === 200 ? null : (failed('branch') ?? rulesFailed);
   if (protectedBranch || rules.length) {
     res(
       'repo-branch-protection',
       strong || protectedBranch ? 'pass' : 'warn',
       'Default branch is protected' +
-        (rules.length ? `; ruleset rules: ${pyJoin(', ', pySorted([...ruleSet]))}` : ' (classic protection)'),
+        (rules.length
+          ? `; ruleset rules: ${pyJoin(', ', pySorted([...ruleSet]))}`
+          : rulesFailed === null
+            ? ' (classic protection)'
+            : ''),
       [{ label: 'Rulesets', url: `https://github.com/${repo}/rules` }],
       { rules: pySorted([...ruleSet]), protected: protectedBranch },
+    );
+  } else if (protectionFailed !== null) {
+    res(
+      'repo-branch-protection',
+      'unknown',
+      `Could not read whether the default branch (${pyStr(branch)}) is protected (HTTP ${protectionFailed})`,
     );
   } else {
     res('repo-branch-protection', 'fail', `The default branch (${pyStr(branch)}) is not protected`);
   }
   const signed = rules.includes('required_signatures');
-  res(
-    'repo-signed-commits',
-    signed ? 'pass' : 'info',
-    signed ? 'Signed commits are required' : 'Signed commits are not required (optional)',
-  );
+  if (!signed && rulesFailed !== null) {
+    res('repo-signed-commits', 'unknown', `Could not read whether signed commits are required (HTTP ${rulesFailed})`);
+  } else {
+    res(
+      'repo-signed-commits',
+      signed ? 'pass' : 'info',
+      signed ? 'Signed commits are required' : 'Signed commits are not required (optional)',
+    );
+  }
   const rulesets: any[] = got.rulesets[0] === 200 && Array.isArray(got.rulesets[1]) ? got.rulesets[1] : [];
   const tagRs = rulesets.filter((r) => get(r, 'target') === 'tag');
   const rel = got.release[0] === 200 ? got.release[1] : null;
   const immutable = truthy(get(pyOr(rel, {}), 'immutable'));
+  // A 404 for the latest release means there are none. A release or ruleset list GitHub didn't send could have shown
+  // the protection.
+  const releaseFailed = failed('release');
+  const rulesetsFailed = failed('rulesets');
   if (tagRs.length || immutable) {
     res(
       'repo-tag-release-protection',
@@ -429,6 +537,15 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         (immutable && tagRs.length ? ' / ' : '') +
         (tagRs.length ? `${tagRs.length} tag ruleset(s)` : ''),
       [{ label: 'Rulesets', url: `https://github.com/${repo}/rules` }],
+    );
+  } else if (releaseFailed !== null) {
+    res('repo-tag-release-protection', 'unknown', `Could not read the latest release (HTTP ${releaseFailed})`);
+  } else if (truthy(rel) && rulesetsFailed !== null) {
+    res(
+      'repo-tag-release-protection',
+      'unknown',
+      `Latest release ${pyStr(get(rel, 'tag_name'))} is not immutable, and the tag rulesets couldn't be checked ` +
+        `(HTTP ${rulesetsFailed})`,
     );
   } else if (truthy(rel)) {
     res(
@@ -668,6 +785,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       item(w, 'path'),
     ),
   );
+  // The list shows CodeQL default setup and Dependabot's update runs, so without it neither can be ruled out.
+  const dynFailed = failed('workflows');
   const codeqlDefault = dyn.has('dynamic/github-code-scanning/codeql');
   const codeql = tools.get('codeql');
   if (codeql || codeqlDefault) {
@@ -684,6 +803,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     !files.some(codeqlSource)
   ) {
     res('sast-codeql', 'na', 'No code in a language CodeQL analyzes, and no workflows');
+  } else if (dynFailed !== null) {
+    res(
+      'sast-codeql',
+      'unknown',
+      `No CodeQL workflow, and CodeQL default setup couldn't be checked (HTTP ${dynFailed})`,
+    );
   } else {
     res('sast-codeql', 'fail', 'No CodeQL code scanning found');
   }
@@ -693,6 +818,13 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     res('sast-codeql-actions', 'na', 'No GitHub Actions workflows');
   } else if (codeqlDefault) {
     res('sast-codeql-actions', 'unknown', 'CodeQL default setup is on; its languages need the private layer');
+  } else if (dynFailed !== null) {
+    res(
+      'sast-codeql-actions',
+      'unknown',
+      `No CodeQL workflow scans the 'actions' language, and CodeQL default setup couldn't be checked ` +
+        `(HTTP ${dynFailed})`,
+    );
   } else {
     res('sast-codeql-actions', 'fail', 'Workflows are not scanned by CodeQL');
   }
@@ -725,26 +857,30 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const dynDbot = dyn.has('dynamic/dependabot/dependabot-updates');
   let cooldown = false;
   if (dbot.length) {
-    const body = (await read(dbot[0])) || '';
-    const ecosCfg = pySorted([...new Set(findall(PACKAGE_ECOSYSTEM, body))]);
-    cooldown = search(DEPENDABOT_COOLDOWN, body) !== null;
-    const gha = ecosCfg.includes('github-actions');
-    res(
-      'deps-update-automation',
-      gha || n === 0 ? 'pass' : 'warn',
-      `Dependabot updates: ${ecosCfg.join(', ') || '?'}` + (gha || n === 0 ? '' : ' (github-actions missing)'),
-      fileLink(dbot[0]),
-      { ecosystems: ecosCfg },
-    );
-    if (!gha && n) {
-      finding(
+    const body = await read(dbot[0]);
+    if (body === null) {
+      res('deps-update-automation', 'unknown', couldNotRead(dbot[0]), fileLink(dbot[0]));
+    } else {
+      const ecosCfg = pySorted([...new Set(findall(PACKAGE_ECOSYSTEM, body))]);
+      cooldown = search(DEPENDABOT_COOLDOWN, body) !== null;
+      const gha = ecosCfg.includes('github-actions');
+      res(
         'deps-update-automation',
-        'low',
-        'Dependabot does not update GitHub Actions (pinned SHAs will go stale)',
-        dbot[0],
-        null,
-        'Add a "package-ecosystem: github-actions" entry',
+        gha || n === 0 ? 'pass' : 'warn',
+        `Dependabot updates: ${ecosCfg.join(', ') || '?'}` + (gha || n === 0 ? '' : ' (github-actions missing)'),
+        fileLink(dbot[0]),
+        { ecosystems: ecosCfg },
       );
+      if (!gha && n) {
+        finding(
+          'deps-update-automation',
+          'low',
+          'Dependabot does not update GitHub Actions (pinned SHAs will go stale)',
+          dbot[0],
+          null,
+          'Add a "package-ecosystem: github-actions" entry',
+        );
+      }
     }
   } else if (reno.length) {
     const body = (await read(reno[0])) || '';
@@ -758,18 +894,32 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       'na',
       'Nothing for Dependabot or Renovate to update: no dependency files or workflows',
     );
+  } else if (dynFailed !== null) {
+    res(
+      'deps-update-automation',
+      'unknown',
+      `No Dependabot or Renovate configuration, and active Dependabot updates couldn't be checked (HTTP ${dynFailed})`,
+    );
   } else {
     res('deps-update-automation', 'fail', 'No Dependabot or Renovate configuration');
   }
   const npmrc = files.includes('.npmrc') ? await read('.npmrc') : '';
   const pyproj = files.includes('pyproject.toml') && ecos.includes('pypi') ? await read('pyproject.toml') : '';
   cooldown = cooldown || search(NPM_COOLDOWN, npmrc || '') !== null || search(UV_COOLDOWN, pyproj || '') !== null;
-  res(
-    'deps-cooldown',
-    cooldown ? 'pass' : dbot.length || reno.length ? 'fail' : 'info',
-    cooldown ? 'A dependency cooldown is configured' : 'No cooldown: new releases are adopted immediately',
-  );
-  if (ecos.includes('npm')) {
+  // Any of the files read for a cooldown could have set one.
+  const cooldownUnread = [dbot[0], reno[0], '.npmrc', 'pyproject.toml'].find((p) => unread.has(p));
+  if (!cooldown && cooldownUnread) {
+    res('deps-cooldown', 'unknown', couldNotRead(cooldownUnread), fileLink(cooldownUnread));
+  } else {
+    res(
+      'deps-cooldown',
+      cooldown ? 'pass' : dbot.length || reno.length ? 'fail' : 'info',
+      cooldown ? 'A dependency cooldown is configured' : 'No cooldown: new releases are adopted immediately',
+    );
+  }
+  if (ecos.includes('npm') && unread.has('.npmrc')) {
+    res('deps-no-install-scripts', 'unknown', couldNotRead('.npmrc'), fileLink('.npmrc'));
+  } else if (ecos.includes('npm')) {
     const ign = search(IGNORE_SCRIPTS, npmrc || '') !== null;
     res(
       'deps-no-install-scripts',
@@ -812,11 +962,17 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const grBody = gr.length ? await read(gr[0]) : '';
   const grSbom = search(GORELEASER_SBOMS, grBody || '') !== null;
   const grSign = search(GORELEASER_SIGNS, grBody || '') !== null;
+  // A GoReleaser config that couldn't be read may set up the SBOMs and signing.
+  const grUnread = gr.find((p) => unread.has(p));
   if (!publishes && !gr.length) {
     for (const it of NO_RELEASE_ITEMS) res(it, 'na', 'No release/publish workflow detected');
   } else {
     const sbom = tools.has('sbom') || grSbom;
-    res('rel-sbom', sbom ? 'pass' : 'fail', sbom ? 'SBOMs generated for releases' : 'No SBOM generation found');
+    if (!sbom && grUnread) {
+      res('rel-sbom', 'unknown', couldNotRead(grUnread), fileLink(grUnread));
+    } else {
+      res('rel-sbom', sbom ? 'pass' : 'fail', sbom ? 'SBOMs generated for releases' : 'No SBOM generation found');
+    }
     const attest = tools.has('attest');
     res(
       'rel-provenance',
@@ -824,11 +980,15 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       attest ? 'Build provenance attestations' : 'No provenance attestations',
     );
     const signs = tools.has('signing') || grSign;
-    res(
-      'rel-signing',
-      signs ? 'pass' : 'info',
-      signs ? 'Releases are signed' : 'No signing step found (attestations may cover this)',
-    );
+    if (!signs && grUnread) {
+      res('rel-signing', 'unknown', couldNotRead(grUnread), fileLink(grUnread));
+    } else {
+      res(
+        'rel-signing',
+        signs ? 'pass' : 'info',
+        signs ? 'Releases are signed' : 'No signing step found (attestations may cover this)',
+      );
+    }
     const tp = wfs.filter((w) => w.id_token_write && TRUSTED_TOOLS.some((t) => w.tools.includes(t))).map((w) => w.path);
     const reg = REGISTRY_TOOLS.some((t) => tools.has(t));
     res(
@@ -931,24 +1091,31 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         break;
       }
     }
-    res(
-      'ai-agent-instructions',
-      secOk ? 'pass' : 'warn',
-      `${agents[0]}` + (secOk ? ' includes security rules' : ' has no security rules'),
-      fileLink(agents[0]),
-    );
+    // Any file that couldn't be read may hold the rules.
+    const agentUnread = secOk ? undefined : agents.slice(0, 4).find((p) => unread.has(p));
+    if (agentUnread) {
+      res('ai-agent-instructions', 'unknown', couldNotRead(agentUnread), fileLink(agentUnread));
+    } else {
+      res(
+        'ai-agent-instructions',
+        secOk ? 'pass' : 'warn',
+        `${agents[0]}` + (secOk ? ' includes security rules' : ' has no security rules'),
+        fileLink(agents[0]),
+      );
+    }
   } else {
     res('ai-agent-instructions', 'na', 'No AI agent instruction files');
   }
 
   // ---- private layer (admin-only settings)
   if (admin) {
-    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock);
+    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed);
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private layer (admin token) or the GitHub App`);
     }
   }
+  if (http.rateLimited) rep.errors.push(RATE_LIMITED);
   rep.summary = Object.fromEntries(
     STATUSES.map((s) => [s, Object.values(R).filter((r) => r.status === s).length]),
   ) as Record<Status, number>;

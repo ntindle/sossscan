@@ -27,7 +27,8 @@ const P = 'private';
 
 /**
  * noBlock: the findings for workflows without a permissions block. Their token gets the repository's default, which
- * the public layer could only guess at; they're reworded here once the default is read.
+ * the public layer could only guess at; they're reworded here once the default is read. rulesetsFailed: the HTTP status
+ * of the public layer's rulesets lookup if GitHub didn't answer it, which leaves unknown whether a tag ruleset exists.
  */
 export async function privateLayer(
   http: Http,
@@ -39,6 +40,7 @@ export async function privateLayer(
   res: AddResult,
   finding: AddFinding,
   noBlock: Finding[],
+  rulesetsFailed: number | null,
 ): Promise<void> {
   const calls: [string, string][] = [
     ['vuln_alerts', `/repos/${repo}/vulnerability-alerts`],
@@ -255,7 +257,16 @@ export async function privateLayer(
     res('repo-tag-release-protection', 'pass', 'Immutable releases are enabled', null, null, P);
   } else if (ok('immutable')) {
     const prev = get(R, 'repo-tag-release-protection', {});
-    if (get(prev, 'status') !== 'pass') {
+    if (get(prev, 'status') !== 'pass' && rulesetsFailed !== null) {
+      res(
+        'repo-tag-release-protection',
+        'unknown',
+        `Immutable releases are off, and the tag rulesets couldn't be checked (HTTP ${rulesetsFailed})`,
+        null,
+        null,
+        P,
+      );
+    } else if (get(prev, 'status') !== 'pass') {
       res(
         'repo-tag-release-protection',
         'fail',
