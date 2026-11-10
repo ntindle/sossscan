@@ -7953,6 +7953,7 @@
           "archived": false,
           "private": false,
           "owner_type": "User",
+          "created_at": null,
           "description": "A demo repo",
           "ecosystems": ["go", "npm", "pypi"],
           "workflow_count": 8,
@@ -8036,7 +8037,7 @@
           },
           "ci-token-permissions": {
             "status": "warn",
-            "summary": "5/8 workflows declare permissions",
+            "summary": "3 of 8 workflows have no permissions block, so they get the repository's default token access",
             "evidence": [
               {
                 "label": ".github/workflows/checkout.yml",
@@ -8358,7 +8359,7 @@
           {
             "item_id": "ci-token-permissions",
             "severity": "medium",
-            "title": "Workflow has no permissions block (inherits the repo default)",
+            "title": "No permissions block, so the token gets the repository default, which can allow write access",
             "path": ".github/workflows/checkout.yml",
             "line": 1,
             "url": "https://github.com/octo/demo/blob/main/.github/workflows/checkout.yml#L1",
@@ -8367,7 +8368,7 @@
           {
             "item_id": "ci-token-permissions",
             "severity": "medium",
-            "title": "Workflow has no permissions block (inherits the repo default)",
+            "title": "No permissions block, so the token gets the repository default, which can allow write access",
             "path": ".github/workflows/jobs_some.yml",
             "line": 1,
             "url": "https://github.com/octo/demo/blob/main/.github/workflows/jobs_some.yml#L1",
@@ -8376,7 +8377,7 @@
           {
             "item_id": "ci-token-permissions",
             "severity": "medium",
-            "title": "Workflow has no permissions block (inherits the repo default)",
+            "title": "No permissions block, so the token gets the repository default, which can allow write access",
             "path": ".github/workflows/workflow_run.yml",
             "line": 1,
             "url": "https://github.com/octo/demo/blob/main/.github/workflows/workflow_run.yml#L1",
@@ -8389,7 +8390,7 @@
             "path": ".github/workflows/prt.yml",
             "line": null,
             "url": "https://github.com/octo/demo/blob/main/.github/workflows/prt.yml",
-            "hint": "Grant only the scopes each job needs"
+            "hint": "Replace write-all with the scopes each job needs, e.g. contents: read"
           },
           {
             "item_id": "ci-pin-actions",
@@ -8878,7 +8879,7 @@
             "hint": "Add a \"package-ecosystem: github-actions\" entry"
           }
         ],
-        "errors": [],
+        "errors": ["Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it"],
         "scorecard": {
           "score": 7.3,
           "date": "2026-11-01",
@@ -9162,6 +9163,7 @@
           "archived": false,
           "private": true,
           "owner_type": "Organization",
+          "created_at": null,
           "description": null,
           "ecosystems": ["cargo", "npm"],
           "workflow_count": 2,
@@ -9248,7 +9250,7 @@
           },
           "ci-token-permissions": {
             "status": "warn",
-            "summary": "Default GITHUB_TOKEN: read; Actions can approve PRs: False. 1/2 workflows declare permissions",
+            "summary": "Default GITHUB_TOKEN: read-only; Actions can't approve pull requests. 1 of 2 workflows has no permissions block, so it gets the repository's default token access",
             "evidence": [],
             "details": {
               "missing": [".github/workflows/ci.yml"],
@@ -9525,8 +9527,8 @@
         "findings": [
           {
             "item_id": "ci-token-permissions",
-            "severity": "medium",
-            "title": "Workflow has no permissions block (inherits the repo default)",
+            "severity": "low",
+            "title": "No permissions block: the token is read-only today through the repository default, and declaring permissions keeps it that way if the default changes",
             "path": ".github/workflows/ci.yml",
             "line": 1,
             "url": "https://github.com/acme/secret/blob/release/2.x/.github/workflows/ci.yml#L1",
@@ -9864,6 +9866,7 @@
           "archived": false,
           "private": true,
           "owner_type": "Organization",
+          "created_at": null,
           "description": null,
           "ecosystems": ["cargo", "npm"],
           "workflow_count": 2,
@@ -9948,7 +9951,7 @@
           },
           "ci-token-permissions": {
             "status": "warn",
-            "summary": "1/2 workflows declare permissions",
+            "summary": "1 of 2 workflows has no permissions block, so it gets the repository's default token access",
             "evidence": [
               {
                 "label": ".github/workflows/ci.yml",
@@ -10211,7 +10214,7 @@
           {
             "item_id": "ci-token-permissions",
             "severity": "medium",
-            "title": "Workflow has no permissions block (inherits the repo default)",
+            "title": "No permissions block, so the token gets the repository default: whatever the organization sets, which can allow write access",
             "path": ".github/workflows/ci.yml",
             "line": 1,
             "url": "https://github.com/acme/secret/blob/release/2.x/.github/workflows/ci.yml#L1",
@@ -10449,6 +10452,7 @@
           "archived": true,
           "private": false,
           "owner_type": "User",
+          "created_at": null,
           "description": "A tool",
           "ecosystems": ["cargo"],
           "workflow_count": 0,
@@ -10524,7 +10528,7 @@
           },
           "ci-token-permissions": {
             "status": "fail",
-            "summary": "Default GITHUB_TOKEN: write; Actions can approve PRs: True. No GitHub Actions workflows",
+            "summary": "Default GITHUB_TOKEN: read and write; Actions can approve pull requests. No GitHub Actions workflows",
             "evidence": [],
             "details": { "default_workflow_permissions": "write", "can_approve_pull_request_reviews": true },
             "layer": "private"
@@ -10970,6 +10974,7 @@
           "archived": null,
           "private": false,
           "owner_type": "User",
+          "created_at": null,
           "description": null,
           "ecosystems": [],
           "workflow_count": 0,
@@ -11441,8 +11446,8 @@
       "table": {
         "argv": ["Octo/Demo"],
         "code": 0,
-        "stdout": "[FAIL] ci-pin-actions                   4/32 action references pinned to a full commit SHA\n[FAIL] ci-dangerous-triggers            2 privileged workflow(s) handle untrusted PR code or artifacts\n[FAIL] ci-script-injection              12 untrusted ${{ }} expression(s) inside run steps\n[WARN] repo-codeowners                  .github/CODEOWNERS found, but it does not cover .github/workflows\n[WARN] ci-token-permissions             5/8 workflows declare permissions\n[WARN] ci-persist-credentials           6/14 checkout steps set persist-credentials: false\n[WARN] deps-update-automation           Dependabot updates: npm, pip (github-actions missing)\n[WARN] deps-lockfiles                   Lockfiles: go no, npm yes, pypi yes\n[WARN] posture-best-practices-badge     OpenSSF Best Practices badge: in_progress\n[ ?? ] secrets-push-protection          Push protection status needs the private layer\n[ ?? ] deps-alerts                      Dependabot alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] ci-fork-pr-approval              Fork PR approval policy: needs the private layer (admin token) or the GitHub App\n[ ?? ] acct-2fa-required                Org 2FA requirement: needs the private layer (admin token) or the GitHub App\n[ ?? ] sast-fix-backlog                 Open code scanning alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] secrets-rotate-leaked            Open secret scanning alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] rel-gated-release                Environment protection rules: needs the private layer (admin token) or the GitHub App\n[PASS] disc-security-md                 SECURITY.md found\n[PASS] disc-private-reporting           Private vulnerability reporting is on\n[PASS] plan-threat-model                docs/threat-model.md found\n[PASS] plan-irp                         docs/INCIDENT_RESPONSE.md found\n[PASS] repo-branch-protection           Default branch is protected; ruleset rules: non_fast_forward, pull_request, required_signatures\n[PASS] repo-signed-commits              Signed commits are required\n[PASS] repo-tag-release-protection      1 tag ruleset(s)\n[PASS] ci-workflow-audit                Workflows are linted in CI (zizmor)\n[PASS] ci-runner-hardening              harden-runner restricts runner egress\n[PASS] sast-codeql                      CodeQL workflow: .github/workflows/codeql.yml\n[PASS] sast-codeql-actions              CodeQL scans the 'actions' language (your workflows)\n[PASS] secrets-scanning                 gitleaks/trufflehog runs in CI\n[PASS] deps-cooldown                    A dependency cooldown is configured\n[PASS] deps-no-install-scripts          .npmrc sets ignore-scripts=true\n[PASS] deps-review                      Dependency review runs on PRs\n[PASS] deps-audit-tools                 Dependency audit in CI\n[PASS] rel-sbom                         SBOMs generated for releases\n[PASS] rel-provenance                   Build provenance attestations\n[PASS] rel-signing                      Releases are signed\n[PASS] rel-trusted-publishing           Registry publishing uses OIDC (trusted publishing)\n[PASS] fuzz-harnesses                   Fuzz targets in repo (e.g. fuzz)\n[PASS] fuzz-continuous                  OSS-Fuzz: demo; ClusterFuzzLite; fuzzing in CI\n[PASS] sast-oss-scanner                 Enrolled in Anthropic's OSS Scanner (projects/demo-core)\n[PASS] posture-scorecard                OpenSSF Scorecard runs in CI (score 7.3)\n[PASS] ai-agent-instructions            AGENTS.md includes security rules\n[info] disc-advisories-cves             2 published security advisories, newest 2026-10-01\n[info] ci-oidc                          Workflows use OIDC (id-token: write)\n[info] sast-other-tools                 Other SAST in CI: Semgrep\n\n16 high-severity finding(s):\n  - permissions: write-all (.github/workflows/prt.yml:None)\n  - allow-unsafe-pr-checkout: true in a privileged workflow (.github/workflows/prt.yml:None)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:10)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:17)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:17)\n  - Script injection risk: ${{ github.event.issue.body }} in a run step (.github/workflows/injection.yml:21)\n  - Script injection risk: ${{github.event.comment.body}} in a run step (.github/workflows/injection.yml:23)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:33)\n  - Script injection risk: ${{ github.event.pull_request.head.ref }} in a run step (.github/workflows/injection.yml:34)\n  - Script injection risk: ${{ github.event.commits[0].message }} in a run step (.github/workflows/injection.yml:38)\n  - Script injection risk: ${{ github.event.head_commit.author.email }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.workflow_run.head_branch }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.discussion.title}} in a run step (.github/workflows/injection.yml:40)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:8)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:11)\n\nReport written to <OUT>. Load it into the guide site to see fixes (it stays in your browser).\n",
-        "stderr": "scanning octo/demo (public layer)\ndone: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 3, 'unknown': 7, 'na': 0} (37 requests)\n",
+        "stdout": "[FAIL] ci-pin-actions                   4/32 action references pinned to a full commit SHA\n[FAIL] ci-dangerous-triggers            2 privileged workflow(s) handle untrusted PR code or artifacts\n[FAIL] ci-script-injection              12 untrusted ${{ }} expression(s) inside run steps\n[WARN] repo-codeowners                  .github/CODEOWNERS found, but it does not cover .github/workflows\n[WARN] ci-token-permissions             3 of 8 workflows have no permissions block, so they get the repository's default token access\n[WARN] ci-persist-credentials           6/14 checkout steps set persist-credentials: false\n[WARN] deps-update-automation           Dependabot updates: npm, pip (github-actions missing)\n[WARN] deps-lockfiles                   Lockfiles: go no, npm yes, pypi yes\n[WARN] posture-best-practices-badge     OpenSSF Best Practices badge: in_progress\n[ ?? ] secrets-push-protection          Push protection status needs the private layer\n[ ?? ] deps-alerts                      Dependabot alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] ci-fork-pr-approval              Fork PR approval policy: needs the private layer (admin token) or the GitHub App\n[ ?? ] acct-2fa-required                Org 2FA requirement: needs the private layer (admin token) or the GitHub App\n[ ?? ] sast-fix-backlog                 Open code scanning alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] secrets-rotate-leaked            Open secret scanning alerts: needs the private layer (admin token) or the GitHub App\n[ ?? ] rel-gated-release                Environment protection rules: needs the private layer (admin token) or the GitHub App\n[PASS] disc-security-md                 SECURITY.md found\n[PASS] disc-private-reporting           Private vulnerability reporting is on\n[PASS] plan-threat-model                docs/threat-model.md found\n[PASS] plan-irp                         docs/INCIDENT_RESPONSE.md found\n[PASS] repo-branch-protection           Default branch is protected; ruleset rules: non_fast_forward, pull_request, required_signatures\n[PASS] repo-signed-commits              Signed commits are required\n[PASS] repo-tag-release-protection      1 tag ruleset(s)\n[PASS] ci-workflow-audit                Workflows are linted in CI (zizmor)\n[PASS] ci-runner-hardening              harden-runner restricts runner egress\n[PASS] sast-codeql                      CodeQL workflow: .github/workflows/codeql.yml\n[PASS] sast-codeql-actions              CodeQL scans the 'actions' language (your workflows)\n[PASS] secrets-scanning                 gitleaks/trufflehog runs in CI\n[PASS] deps-cooldown                    A dependency cooldown is configured\n[PASS] deps-no-install-scripts          .npmrc sets ignore-scripts=true\n[PASS] deps-review                      Dependency review runs on PRs\n[PASS] deps-audit-tools                 Dependency audit in CI\n[PASS] rel-sbom                         SBOMs generated for releases\n[PASS] rel-provenance                   Build provenance attestations\n[PASS] rel-signing                      Releases are signed\n[PASS] rel-trusted-publishing           Registry publishing uses OIDC (trusted publishing)\n[PASS] fuzz-harnesses                   Fuzz targets in repo (e.g. fuzz)\n[PASS] fuzz-continuous                  OSS-Fuzz: demo; ClusterFuzzLite; fuzzing in CI\n[PASS] sast-oss-scanner                 Enrolled in Anthropic's OSS Scanner (projects/demo-core)\n[PASS] posture-scorecard                OpenSSF Scorecard runs in CI (score 7.3)\n[PASS] ai-agent-instructions            AGENTS.md includes security rules\n[info] disc-advisories-cves             2 published security advisories, newest 2026-10-01\n[info] ci-oidc                          Workflows use OIDC (id-token: write)\n[info] sast-other-tools                 Other SAST in CI: Semgrep\n\n16 high-severity finding(s):\n  - permissions: write-all (.github/workflows/prt.yml:None)\n  - allow-unsafe-pr-checkout: true in a privileged workflow (.github/workflows/prt.yml:None)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:10)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:17)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:17)\n  - Script injection risk: ${{ github.event.issue.body }} in a run step (.github/workflows/injection.yml:21)\n  - Script injection risk: ${{github.event.comment.body}} in a run step (.github/workflows/injection.yml:23)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:33)\n  - Script injection risk: ${{ github.event.pull_request.head.ref }} in a run step (.github/workflows/injection.yml:34)\n  - Script injection risk: ${{ github.event.commits[0].message }} in a run step (.github/workflows/injection.yml:38)\n  - Script injection risk: ${{ github.event.head_commit.author.email }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.workflow_run.head_branch }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.discussion.title}} in a run step (.github/workflows/injection.yml:40)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:8)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:11)\n\nReport written to <OUT>. Load it into the guide site to see fixes (it stays in your browser).\n",
+        "stderr": "scanning octo/demo (public layer)\ndone: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 3, 'unknown': 7, 'na': 0} (37 requests)\nwarning: Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it\n",
         "calls": 37,
         "report_same_as": "public"
       },
@@ -11458,7 +11463,7 @@
         "argv": ["ghost/none"],
         "code": 1,
         "stdout": "\nReport written to <OUT>. Load it into the guide site to see fixes (it stays in your browser).\n",
-        "stderr": "",
+        "stderr": "error: repo lookup failed: HTTP 404 (private repo? pass a token)\n",
         "calls": 1,
         "report_same_as": "not-found"
       }
@@ -11467,7 +11472,7 @@
       "help": {
         "argv": ["-h"],
         "code": 0,
-        "stdout": "usage: <PROG> [-h] [--out OUT] [--token TOKEN] [--public] [--quiet] repo\n\nSecurity self-check for a GitHub repository (read-only).\n\npositional arguments:\n  repo           OWNER/REPO or a GitHub URL\n\noptions:\n  -h, --help     show this help message and exit\n  --out OUT      write the JSON report here (default: sosf-report-OWNER-\n                 REPO.json)\n  --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or `gh auth\n                 token`)\n  --public       only run checks anyone can see\n  --quiet\n",
+        "stdout": "usage: <PROG> [-h] [--out OUT] [--token TOKEN] [--public] [--quiet] repo\n\nSecurity self-check for a GitHub repository (read-only).\n\npositional arguments:\n  repo           OWNER/REPO or a GitHub URL\n\noptions:\n  -h, --help     show this help message and exit\n  --out OUT      write the JSON report here (default: sosf-report-OWNER-\n                 REPO.json)\n  --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or `gh auth\n                 token`)\n  --public       only run checks anyone can see, without a token unless\n                 --token is given\n  --quiet\n",
         "stderr": "",
         "calls": 0
       },

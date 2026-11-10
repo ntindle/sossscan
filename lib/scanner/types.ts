@@ -38,6 +38,8 @@ export interface RepoMeta {
   archived: boolean | null;
   private: boolean;
   owner_type: string;
+  /** When GitHub says the repository was created (ISO 8601). It decides the token default a public scan assumes. */
+  created_at: string | null;
   description: string | null;
   ecosystems: string[];
   workflow_count: number;

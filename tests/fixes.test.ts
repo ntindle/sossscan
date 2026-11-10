@@ -1,5 +1,6 @@
 /** Click-to-fix pull requests (lib/fixes.ts), against a fake GitHub. No network. */
 import { describe, expect, it } from 'vitest';
+import YAML from 'yaml';
 import {
   apply,
   clearRefCache,
@@ -54,6 +55,10 @@ describe('fill', () => {
         ecosystems: ['pypi', 'unknown'],
       },
       {},
+      // A scan that counted the workflows: none leaves GitHub Actions out of dependabot.yml.
+      { owner: 'octo', repo: 'site', full: 'octo/site', ecosystems: ['cargo'], workflowCount: 0 },
+      { ecosystems: ['npm'], workflowCount: 3 },
+      { workflowCount: 0 },
     ];
     expect(templates.length).toBeGreaterThan(10);
     for (const t of templates) for (const c of ctxs) expect(fill(t, c)).toBe(core.fill(t, c));
@@ -195,11 +200,31 @@ describe('plan', () => {
   });
 
   it('points dependabot at the repo folders', async () => {
-    const gh = new FakeGitHub(repoRoutes({ tree: ['go.mod', 'site/package.json'] }));
+    const gh = new FakeGitHub(repoRoutes({ tree: ['go.mod', 'site/package.json', '.github/workflows/ci.yml'] }));
     const { content } = (await planFor(gh, 'deps-update-automation')).files[0];
     expect(content).toContain('package-ecosystem: github-actions');
     expect(content).toContain('package-ecosystem: gomod\n    directory: /');
     expect(content).toContain('- "/site"');
+  });
+
+  it('updates GitHub Actions only in a repo with workflows, since Dependabot calls the entry an error without', async () => {
+    const updates = async (opts: { tree: string[]; truncated?: boolean }) => {
+      const { content } = (await planFor(new FakeGitHub(repoRoutes(opts)), 'deps-update-automation')).files[0];
+      return YAML.parse(content).updates.map((u: Record<string, unknown>) => u['package-ecosystem']);
+    };
+    expect(await updates({ tree: ['go.mod', '.github/workflows/ci.yaml'] })).toEqual(['github-actions', 'gomod']);
+    // A workflow is a .yml or .yaml file right in .github/workflows, not in a folder under it.
+    expect(await updates({ tree: ['go.mod', '.github/workflows/scripts/x.yml'] })).toEqual(['gomod']);
+    // A list GitHub cut short may have left the workflows out, so the entry stays.
+    expect(await updates({ tree: ['go.mod'], truncated: true })).toEqual(['github-actions', 'gomod']);
+    // With neither, the file would update nothing, so no pull request is offered.
+    const gh = new FakeGitHub(repoRoutes({ tree: ['Dockerfile', 'README.md'] }));
+    const err = await refusal(plan(gh.call, 'octo/demo', 'deps-update-automation', 'octo'));
+    expect([err.status, err.message]).toEqual([
+      409,
+      'octo/demo has no workflows and no package manifests the template covers, so its dependabot.yml would update ' +
+        'nothing. Write one by hand for what the repository uses, such as Docker images.',
+    ]);
   });
 
   it('handles public-only, archived, existing and unknown fixes', async () => {

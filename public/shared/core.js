@@ -32,6 +32,15 @@ export const STATUS = {
   done: { label: 'Marked done', tone: 'pass', rank: 5 },
   todo: { label: 'Not scanned', tone: 'unknown', rank: 3 },
 };
+// A result is unknown, but not for want of a deeper scan, when the scan couldn't read what it needed: "Could not read …",
+// "… couldn't be checked" (lib/scanner). The public checks fail that way when GitHub errs or limits requests, and another
+// try helps. The private layer's also fail that way for want of a permission, which another try doesn't fix.
+const UNREAD = /\bcould(?: not|n[’']t) (?:read|be checked)\b/i;
+// The label for a status from itemStatus(): STATUS[status].label, except for a check the scan couldn't read.
+export function statusLabel(st) {
+  if (st && st.status === 'unknown' && UNREAD.test(st.summary || '')) return st.layer === 'public' ? 'Couldn’t check, try again' : 'Couldn’t check';
+  return (STATUS[st && st.status] || STATUS.unknown).label;
+}
 export const LAYER_LABEL = { public: 'Public scan', private: 'Private scan', app: 'GitHub App', manual: 'Self-check', self: 'Self-check' };
 export const EFFORT_LABEL = { 1: 'Minutes', 2: 'An hour or two', 3: 'A day', 4: 'A few days', 5: 'Weeks' };
 export const IMPACT_LABEL = { 1: 'Nice to have', 2: 'Helps', 3: 'Solid', 4: 'High', 5: 'Critical' };
@@ -98,8 +107,11 @@ export async function readReportFile(file) {
 export function scanTrouble(repo, err, where = '') {
   const msg = String((err && err.message) || err || '');
   if (/private repositor/i.test(msg)) return [`${repo} is private, so the public scan can’t read it.`, `Use the private scan${where}. It runs on your machine with your own token, and its report stays in your browser.`];
+  // Before "no such repository": a repo lookup GitHub refused for its rate limit also says "lookup failed", followed by
+  // the scanner's note, "GitHub rate-limited this scan, … Try again in a few minutes." (lib/scanner/scan.ts).
+  if (/rate[- ]limit/i.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a few minutes.'];
   if (/\b404\b|not found|lookup failed/i.test(msg)) return [`GitHub has no public repository called ${repo}.`, `Check the spelling of the owner and the name. If the repository is private, use the private scan${where}.`];
-  if (/\b(403|429)\b|rate limit/i.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a minute.'];
+  if (/\b(403|429)\b/.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a minute.'];
   if (/\b503\b|busy/i.test(msg)) return ['The scanner is busy with other scans.', 'Try again in a minute.'];
   if (/failed to fetch|network|load failed/i.test(msg)) return ['The scanner didn’t answer.', 'Check your connection, then press Scan again.'];
   return [`Couldn’t scan ${repo}.`, msg ? `The scanner said: ${msg}` : 'Press Scan to try again.'];
@@ -123,27 +135,36 @@ export function recallReports(repo) {
 }
 
 const LAYER_RANK = { public: 1, private: 2, app: 3 };
-// Merge reports for one repo: deeper layers win per item; findings and meta are combined.
+// Merge reports for one repo: deeper layers win per item, and meta is combined. An item's findings come from the report
+// its result came from, so the two agree: a deeper scan reads settings a public one can only guess at (such as the token
+// default a workflow without a permissions block gets), and the guess shouldn't stay next to the answer.
 export function mergeReports(...reports) {
   const reps = reports.flat().filter(Boolean).sort((a, b) => (LAYER_RANK[a.layer] || 0) - (LAYER_RANK[b.layer] || 0));
   if (!reps.length) return null;
   const out = { ...reps[0], results: {}, findings: [], layers: [], meta: {} };
-  const seen = new Set();
+  const from = new Map();
   for (const r of reps) {
     out.layers.push(r.layer);
     Object.assign(out.meta, r.meta || {});
     for (const [id, res] of Object.entries(r.results || {})) {
       const prev = out.results[id];
-      if (!prev || !(res.status === 'unknown' && prev.status !== 'unknown')) out.results[id] = { ...res, layer: res.layer === 'private' ? r.layer : res.layer };
-    }
-    for (const f of r.findings || []) {
-      const key = `${f.item_id}|${f.path}|${f.line}|${f.title}`;
-      if (!seen.has(key)) { seen.add(key); out.findings.push(f); }
+      if (!prev || !(res.status === 'unknown' && prev.status !== 'unknown')) {
+        out.results[id] = { ...res, layer: res.layer === 'private' ? r.layer : res.layer };
+        from.set(id, r);
+      }
     }
     out.tier = r.tier || out.tier;
     out.scorecard = r.scorecard || out.scorecard;
     out.layer = r.layer;
     out.scanned_at = r.scanned_at;
+  }
+  const seen = new Set();
+  for (const r of reps) {
+    for (const f of r.findings || []) {
+      if (from.has(f.item_id) && from.get(f.item_id) !== r) continue;
+      const key = `${f.item_id}|${f.path}|${f.line}|${f.title}`;
+      if (!seen.has(key)) { seen.add(key); out.findings.push(f); }
+    }
   }
   return out;
 }
@@ -159,6 +180,8 @@ export function ctxFromReport(rep, repo) {
     owner, repo: name, full, branch: m.default_branch || 'main', ecosystems: m.ecosystems || [], ownerType: m.owner_type ?? null,
     stars: m.stars ?? null, dependents: m.dependents_total ?? null, tier: rep && rep.tier ? rep.tier.id : null,
     publishes: known ? !!m.publishes_from_ci : null, hasActions: known ? (m.workflow_count || 0) > 0 : null, language: m.language ?? null,
+    // Only a count the scan made: fill() drops the dependabot.yml template's github-actions entry when it's 0.
+    workflowCount: typeof m.workflow_count === 'number' ? m.workflow_count : null,
   };
 }
 
@@ -170,13 +193,18 @@ export function tierFor(stars, dependents, tiers) {
 }
 
 const DEPENDABOT_ECO = { npm: 'npm', pypi: 'pip', go: 'gomod', cargo: 'cargo', maven: 'maven', rubygems: 'bundler', composer: 'composer', nuget: 'nuget', swift: 'swift' };
+// The github-actions entry in the dependabot.yml template: its list item and the lines indented under it. Dependabot calls
+// it an error in a repository with no workflows, so the template that takes {ecosystem_blocks} leaves it out when a scan
+// counted none. Other templates keep theirs (the ci-pin-actions snippet has one). lib/fixes.ts does the same.
+const ACTIONS_ENTRY = /^( *)- package-ecosystem: *["']?github-actions["']? *\n(?:\1 {2,}\S.*\n)*/m;
 export function fill(template, ctx = {}) {
   if (!template) return template;
   const ecoBlocks = (ctx.ecosystems || []).filter((e) => DEPENDABOT_ECO[e]).map((e) =>
     `  - package-ecosystem: ${DEPENDABOT_ECO[e]}\n    directory: /\n    schedule:\n      interval: weekly\n    cooldown:\n      default-days: 7\n`).join('');
   // An organization's handle isn't a person, and CODEOWNERS needs a team there: {maintainer} and {person} cover both cases.
   const org = ctx.ownerType === 'Organization';
-  return template
+  const noActions = ctx.workflowCount === 0 && template.includes('{ecosystem_blocks}');
+  return (noActions ? template.replace(ACTIONS_ENTRY, '') : template)
     .replaceAll('{maintainer}', org ? `@${ctx.owner}/maintainers` : `@${ctx.owner || 'OWNER'}`)
     .replaceAll('{person}', org || !ctx.owner ? '(name a maintainer)' : `@${ctx.owner}`)
     .replaceAll('{owner}', ctx.owner || 'OWNER').replaceAll('{repo}', ctx.repo || 'REPO')
@@ -259,7 +287,7 @@ export function newIssueUrl(ctx, { title, body, labels = ['security'] }) {
 
 export function issueForItem(item, ctx, report) {
   const st = itemStatus(item, report, ctx.full);
-  const lines = [`**${item.title}**`, '', item.why || item.short || '', '', `Current status: ${STATUS[st.status].label}. ${st.summary || ''}`];
+  const lines = [`**${item.title}**`, '', item.why || item.short || '', '', `Current status: ${statusLabel(st)}. ${st.summary || ''}`];
   if ((item.steps || []).length) lines.push('', '### Steps', ...item.steps.map((s, i) => `${i + 1}. ${s}`));
   const links = settingsLinks(item, ctx);
   if (links.length) lines.push('', '### Links', ...links.map((l) => `- [${l.label}](${l.url})`));
@@ -346,7 +374,7 @@ function promptSections(item, report, ctx, level) {
   const st = report ? itemStatus(item, report, ctx.full) : null;
   if (st && st.source === 'scan') {
     const finds = findingsFor(item, report);
-    const lines = [`Status from a scan of the repository: ${STATUS[st.status].label.toLowerCase()}.${st.summary ? ` ${st.summary}` : ''}`];
+    const lines = [`Status from a scan of the repository: ${statusLabel(st).toLowerCase()}.${st.summary ? ` ${st.summary}` : ''}`];
     for (const f of finds.slice(0, 15)) {
       lines.push(`- ${f.severity} severity: ${f.title}${f.path ? ` in \`${f.path}\`${f.line ? ` line ${f.line}` : ''}` : ''}${f.hint ? `. Hint: ${f.hint}` : ''}`);
     }
@@ -523,9 +551,9 @@ export function copyButton(text, label = 'Copy', cls = 'sg-btn sg-btn--small') {
   return b;
 }
 
-export function statusBadge(status) {
+export function statusBadge(status, label = (STATUS[status] || STATUS.unknown).label) {
   const s = STATUS[status] || STATUS.unknown;
-  return el('span', { class: `sg-badge sg-badge--${s.tone}` }, s.label);
+  return el('span', { class: `sg-badge sg-badge--${s.tone}` }, label);
 }
 
 export function codeBlock(code, lang = '') {
@@ -545,7 +573,7 @@ export function renderRemediation(item, opts = {}) {
   const tier = guide && guide.tiersById ? guide.tiersById[item.tier] : null;
 
   root.append(el('header', { class: 'sg-remedy__head' },
-    el('div', { class: 'sg-remedy__title' }, el('h3', {}, item.title), statusBadge(st.status)),
+    el('div', { class: 'sg-remedy__title' }, el('h3', {}, item.title), statusBadge(st.status, statusLabel(st))),
     el('div', { class: 'sg-chips' },
       tier ? el('span', { class: 'sg-chip', title: tier.blurb }, `From tier ${tier.id}: ${tier.name}`) : null,
       el('span', { class: 'sg-chip' }, `Effort: ${EFFORT_LABEL[item.effort]}`),

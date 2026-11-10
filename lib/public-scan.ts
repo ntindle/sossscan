@@ -1,7 +1,7 @@
 /**
  * Public scans for anyone, with the server's own token (lib/scan-token.ts): public repositories only, and cached for
  * 6 hours (in memory and on disk here, and by the CDN in front of GET /api/scan/OWNER/REPO), so repeat visits don't
- * spend GitHub quota.
+ * spend GitHub quota. A scan GitHub rate-limited isn't cached anywhere: some of its answers may be wrong.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { cacheDir } from './env.ts';
 import { HttpError } from './http.ts';
 import { ossFuzzIndex, ossFuzzLookup } from './ossfuzz.ts';
 import { forgetScanToken, publicScanToken } from './scan-token.ts';
-import { scan, type Report } from './scanner/index.ts';
+import { RATE_LIMITED, scan, type Report } from './scanner/index.ts';
 
 export const SCAN_TTL = 6 * 3600;
 /** The scanner's words for a repo GitHub doesn't show the token: what every hidden repo gets (public/shared/core.js). */
@@ -62,6 +62,14 @@ function release(): void {
   waiting.shift()?.();
 }
 
+/**
+ * Whether a cache may keep this scan: one with results, unless GitHub rate-limited it (its errors say so), since some
+ * of those results may be wrong. The CDN goes by the same rule (app/api/scan/[owner]/[name]/route.ts).
+ */
+export function cacheable(rep: { results?: Record<string, unknown>; errors?: string[] }): boolean {
+  return Object.keys(rep.results ?? {}).length > 0 && !(rep.errors ?? []).includes(RATE_LIMITED);
+}
+
 export async function runPublicScan(repo: string, refresh = false): Promise<Report & { cached: boolean }> {
   const key = repo.toLowerCase();
   const disk = path.join(cacheDir(), 'scans', `${key.replaceAll('/', '__')}.json`);
@@ -100,7 +108,7 @@ export async function runPublicScan(repo: string, refresh = false): Promise<Repo
   if (rep.errors.some((e) => e.startsWith(PRIVATE_REFUSAL))) {
     return { ...rep, repo, meta: {}, results: {}, findings: [], errors: [NOT_FOUND], cached: false };
   }
-  if (rep.results && Object.keys(rep.results).length) {
+  if (cacheable(rep)) {
     mem.set(key, { at: now, rep });
     try {
       fs.mkdirSync(path.dirname(disk), { recursive: true });

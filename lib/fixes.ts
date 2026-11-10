@@ -25,6 +25,8 @@ import { ECOSYSTEM_FILES, parentKeys, splitLines } from './scanner/index.ts';
 
 const SHA = /^[0-9a-f]{40}$/;
 const RAW = 'application/vnd.github.raw';
+/** A workflow GitHub Actions runs: a .yml or .yaml file right in .github/workflows. */
+const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
 /** Why a fix can't go ahead, in words for the person who asked. `status` is the HTTP status to answer with. */
 export class FixError extends Error {
@@ -142,11 +144,20 @@ export type FillContext = {
   branch?: string;
   ownerType?: string;
   ecosystems?: string[];
+  /** How many workflows the repo has, or null when that isn't known. */
+  workflowCount?: number | null;
   maintainer?: string;
 };
 
 /**
- * Fill a guide template. ctx keys match core.js: owner, repo, full, branch, ownerType, ecosystems.
+ * The github-actions entry in the dependabot.yml template: its list item and the lines indented under it. Dependabot
+ * calls the entry an error in a repository with no workflows, so fill() leaves it out of the template that takes
+ * {ecosystem_blocks} when ctx.workflowCount is 0. Other templates keep theirs (the ci-pin-actions snippet has one).
+ */
+const ACTIONS_ENTRY = /^( *)- package-ecosystem: *["']?github-actions["']? *\n(?:\1 {2,}\S.*\n)*/m;
+
+/**
+ * Fill a guide template. ctx keys match core.js: owner, repo, full, branch, ownerType, ecosystems, workflowCount.
  * The server may pass a better `maintainer` and its own ecosystem blocks; core.js has neither.
  */
 export function fill(template: string, ctx: FillContext, ecoBlocks?: string | null): string {
@@ -161,7 +172,8 @@ export function fill(template: string, ctx: FillContext, ecoBlocks?: string | nu
   const owner = ctx.owner;
   const maintainer = ctx.maintainer || (org ? `@${owner}/maintainers` : `@${owner || 'OWNER'}`);
   const person = org || !owner ? '(name a maintainer)' : `@${owner}`;
-  return template
+  const noActions = ctx.workflowCount === 0 && template.includes('{ecosystem_blocks}');
+  return (noActions ? template.replace(ACTIONS_ENTRY, '') : template)
     .replaceAll('{maintainer}', maintainer)
     .replaceAll('{person}', person)
     .replaceAll('{owner}', owner || 'OWNER')
@@ -419,7 +431,19 @@ async function filePlan(
       );
     }
   }
-  if (itemId === 'deps-update-automation') ecoBlocks = dependabotBlocks(Object.keys(entries));
+  if (itemId === 'deps-update-automation') {
+    const paths = Object.keys(entries);
+    ecoBlocks = dependabotBlocks(paths);
+    // Only a whole list of files shows there are no workflows: GitHub may have left them out of one it cut short.
+    const workflows = paths.filter((p) => WORKFLOW_FILE.test(p)).length;
+    fillCtx = { ...fillCtx, workflowCount: truncated && !workflows ? null : workflows };
+    if (fillCtx.workflowCount === 0 && !ecoBlocks) {
+      throw new FixError(
+        `${full} has no workflows and no package manifests the template covers, so its dependabot.yml would update ` +
+          'nothing. Write one by hand for what the repository uses, such as Docker images.',
+      );
+    }
+  }
   if (itemId === 'disc-security-md') {
     const { status, data } = await gh('GET', `/repos/${full}/private-vulnerability-reporting`);
     if (status === 200 && data && typeof data === 'object' && !data.enabled) {
@@ -448,7 +472,7 @@ async function readWorkflows(
   truncated: boolean,
 ): Promise<Record<string, string | null>> {
   let paths = Object.keys(entries)
-    .filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p))
+    .filter((p) => WORKFLOW_FILE.test(p))
     .sort(byCodePoint);
   if (truncated && !paths.length) {
     const { status, data } = await gh('GET', `/repos/${full}/contents/.github/workflows?ref=${baseSha}`);

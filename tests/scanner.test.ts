@@ -32,6 +32,8 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+// The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
+import * as sg from '../public/shared/core.js';
 
 const FIXTURES = new URL('./fixtures/scanner/', import.meta.url);
 const fixtureText = (rel: string) => readFileSync(new URL(rel, FIXTURES), 'utf8');
@@ -126,7 +128,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.4.2');
+    expect(VERSION).toBe('0.4.3');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([
@@ -703,6 +705,11 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
     expect(await statuses(['tools/build.py'])).toEqual(['fail', 'na', '']);
     expect(await statuses(['Dockerfile'])).toEqual(['na', 'fail', '']);
     expect(await statuses(['.devcontainer/devcontainer.json'])).toEqual(['na', 'fail', '']);
+    // Nor do HTML pages: CodeQL default setup finds no language in them (ntindle/arctic-blower has just these two).
+    expect(await statuses(['README.md', 'index.html'])).toEqual(['na', 'na', '']);
+    expect(await statuses(['docs/about.htm', 'index.html'])).toEqual(['na', 'na', '']);
+    // Beside JavaScript, their scripts are analyzed with it.
+    expect(await statuses(['index.html', 'app.js'])).toEqual(['fail', 'na', '']);
     // A list the API cut short proves nothing is missing.
     expect(await statuses(['README.md'], true)).toEqual(['fail', 'fail', '']);
   });
@@ -772,6 +779,207 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
       '1 open code scanning alerts (0 critical/high)' + notCounted(1),
     ]);
     expect(await backlog([alert('zizmor', 'high')])).toEqual(['fail', '1 open code scanning alerts (1 critical/high)']);
+  });
+});
+
+// ---------------------------------------------------------------------------- GITHUB_TOKEN permissions
+describe('GITHUB_TOKEN permissions', () => {
+  const REPO = 'https://api.github.com/repos/octo/fixes';
+  const wf = (name: string) => `https://raw.githubusercontent.com/octo/fixes/main/.github/workflows/${name}.yml`;
+  // No permissions block anywhere, so the job gets the repository's default token.
+  const noBlock = {
+    text: workflow([
+      'on: [push]',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]),
+  };
+  // octo/fixes declares permissions in all six of its workflows; four of them lose their block here.
+  const fourWithout = Object.fromEntries(['go', 'pr', 'push', 'python'].map((w) => [wf(w), noBlock]));
+  /** octo/fixes, owned by this type of account and created then (GitHub always says when; the fixture doesn't). */
+  const ownedBy = (type: string, createdAt: string) => {
+    const route = structuredClone(routesFor('fixes')[REPO]) as Route;
+    Object.assign(route.json as object, { owner: { login: 'octo', type }, created_at: createdAt });
+    return { [REPO]: route };
+  };
+  /** The check's status and summary, with its findings as [severity, title, path]. */
+  const tokenCheck = async (scenario: string, replace: Record<string, Route | Route[]> = {}) => {
+    const { rep } = await scanScenario(scenario, replace);
+    const r = rep.results['ci-token-permissions'];
+    const findings = rep.findings
+      .filter((f) => f.item_id === 'ci-token-permissions')
+      .map((f) => [f.severity, f.title, f.path]);
+    return { status: r.status, summary: r.summary, findings };
+  };
+  const READ_ONLY =
+    'No permissions block, so the token gets the repository default: read-only for this repository unless that ' +
+    'setting was changed';
+  const PERMS = 'https://api.github.com/repos/acme/secret/actions/permissions/workflow';
+  const defaults = (dflt: string, canApprove: boolean) => ({
+    [PERMS]: { json: { default_workflow_permissions: dflt, can_approve_pull_request_reviews: canApprove } },
+  });
+
+  it('calls a missing block low in a personal repository created since February 2023: its default is read-only', async () => {
+    expect(await tokenCheck('fixes', { ...ownedBy('User', '2023-02-02T00:00:00Z'), [wf('go')]: noBlock })).toEqual({
+      status: 'warn',
+      summary: "1 of 6 workflows has no permissions block, so it gets the repository's default token access",
+      findings: [['low', READ_ONLY, '.github/workflows/go.yml']],
+    });
+    // However many workflows lack a block, a read-only token is all they get: partly done, not missing.
+    const most = await tokenCheck('fixes', { ...ownedBy('User', '2025-06-01T12:00:00Z'), ...fourWithout });
+    expect([most.status, most.summary, most.findings.length]).toEqual([
+      'warn',
+      "4 of 6 workflows have no permissions block, so they get the repository's default token access",
+      4,
+    ]);
+  });
+
+  it('calls it medium in an older personal repository, which kept read and write', async () => {
+    const old = await tokenCheck('fixes', { ...ownedBy('User', '2023-02-01T23:59:59Z'), [wf('go')]: noBlock });
+    expect([old.status, old.findings]).toEqual([
+      'warn',
+      [
+        [
+          'medium',
+          'No permissions block, so the token gets the repository default: read and write for repositories created ' +
+            'before February 2023, unless that setting was changed',
+          '.github/workflows/go.yml',
+        ],
+      ],
+    ]);
+    // With most workflows lacking a block, the check is missing, as before.
+    expect((await tokenCheck('fixes', { ...ownedBy('User', '2019-05-01T12:00:00Z'), ...fourWithout })).status).toBe(
+      'fail',
+    );
+  });
+
+  it("calls it medium in an organization's repository, whose default the organization sets", async () => {
+    const org = await tokenCheck('fixes', { ...ownedBy('Organization', '2025-06-01T12:00:00Z'), [wf('go')]: noBlock });
+    expect([org.status, org.findings]).toEqual([
+      'warn',
+      [
+        [
+          'medium',
+          'No permissions block, so the token gets the repository default: whatever the organization sets, which can ' +
+            'allow write access',
+          '.github/workflows/go.yml',
+        ],
+      ],
+    ]);
+    // Without a creation date, all it can say is that the default can allow write access.
+    expect((await tokenCheck('fixes', { [wf('go')]: noBlock })).findings).toEqual([
+      [
+        'medium',
+        'No permissions block, so the token gets the repository default, which can allow write access',
+        '.github/workflows/go.yml',
+      ],
+    ]);
+  });
+
+  it('keeps permissions: write-all a high finding, next to the job that has no block', async () => {
+    const mixed = workflow([
+      'on: [push]',
+      'jobs:',
+      '  release:',
+      '    runs-on: ubuntu-latest',
+      '    permissions: write-all',
+      '    steps:',
+      '      - run: make release',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]);
+    const { rep } = await scanScenario('fixes', {
+      ...ownedBy('User', '2025-06-01T12:00:00Z'),
+      [wf('go')]: { text: mixed },
+    });
+    expect(
+      rep.findings.filter((f) => f.item_id === 'ci-token-permissions').map((f) => [f.severity, f.title, f.hint]),
+    ).toEqual([
+      ['low', READ_ONLY, 'Add "permissions: {}" at the top and grant per job, e.g. contents: read'],
+      ['high', 'permissions: write-all', 'Replace write-all with the scopes each job needs, e.g. contents: read'],
+    ]);
+  });
+
+  it('passes when every workflow declares permissions', async () => {
+    expect(await tokenCheck('fixes', ownedBy('User', '2019-05-01T12:00:00Z'))).toEqual({
+      status: 'pass',
+      summary: 'All 6 workflows declare permissions',
+      findings: [],
+    });
+    const ci = 'https://api.github.com/repos/acme/secret/contents/.github/workflows/ci.yml?ref=release/2.x';
+    const declared = workflow([
+      'on: [push]',
+      'permissions:',
+      '  contents: read',
+      'jobs:',
+      '  test:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: make test',
+    ]);
+    expect(await tokenCheck('admin-org', { [ci]: { text: declared } })).toEqual({
+      status: 'pass',
+      summary:
+        "Default GITHUB_TOKEN: read-only; Actions can't approve pull requests. Both workflows declare permissions",
+      findings: [],
+    });
+  });
+
+  it('with an admin token, calls it low when the real default is read-only', async () => {
+    // acme/secret belongs to an organization, so the public layer could only say its default may allow write access.
+    expect((await tokenCheck('admin-org-public-layer')).findings.map(([severity]) => severity)).toEqual(['medium']);
+    expect(await tokenCheck('admin-org')).toEqual({
+      status: 'warn',
+      summary:
+        "Default GITHUB_TOKEN: read-only; Actions can't approve pull requests. 1 of 2 workflows has no permissions " +
+        "block, so it gets the repository's default token access",
+      findings: [
+        [
+          'low',
+          'No permissions block: the token is read-only today through the repository default, and declaring ' +
+            'permissions keeps it that way if the default changes',
+          '.github/workflows/ci.yml',
+        ],
+      ],
+    });
+    // Letting Actions approve pull requests doesn't widen a read-only token, but the check still doesn't pass.
+    const approve = await tokenCheck('admin-org', defaults('read', true));
+    expect([approve.status, approve.summary, approve.findings.map(([severity]) => severity)]).toEqual([
+      'fail',
+      'Default GITHUB_TOKEN: read-only; Actions can approve pull requests. 1 of 2 workflows has no permissions ' +
+        "block, so it gets the repository's default token access",
+      ['low'],
+    ]);
+  });
+
+  it('with an admin token, calls it high when the real default is read and write', async () => {
+    expect(await tokenCheck('admin-org', defaults('write', false))).toEqual({
+      status: 'fail',
+      summary:
+        "Default GITHUB_TOKEN: read and write; Actions can't approve pull requests. 1 of 2 workflows has no " +
+        "permissions block, so it gets the repository's default token access",
+      findings: [
+        [
+          'high',
+          "No permissions block, so this workflow's token gets the repository's read-and-write default",
+          '.github/workflows/ci.yml',
+        ],
+      ],
+    });
+  });
+
+  it("shows the deeper scan's findings on the page, not the public scan's guess", async () => {
+    const pub = (await scanScenario('admin-org-public-layer')).rep;
+    const app = { ...(await scanScenario('admin-org')).rep, layer: 'app' as const };
+    const merged = sg.mergeReports([pub, app])!;
+    const severities = (r: { findings: { item_id: string; severity: string }[] }) =>
+      r.findings.filter((f) => f.item_id === 'ci-token-permissions').map((f) => f.severity);
+    expect([severities(pub), severities(app), severities(merged)]).toEqual([['medium'], ['low'], ['low']]);
   });
 });
 
@@ -1165,6 +1373,294 @@ describe('Scorecard, the Best Practices badge, OSS-Fuzz and OSS Scanner are look
   });
 });
 
+// ---------------------------------------------------------------------------------------- API failures
+describe('API failures', () => {
+  /** GitHub's answer once a token has used up its hourly requests. */
+  const RATE_LIMITED: Route = {
+    status: 403,
+    json: { message: 'API rate limit exceeded for user ID 1.' },
+    headers: { 'content-type': 'application/json', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1794336615' },
+  };
+  const SERVER_ERROR: Route = { status: 500, text: 'Internal Server Error' };
+  const OFFLINE: Route = { status: 0 };
+  const NOTICE = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
+  const FIXES = 'https://api.github.com/repos/octo/fixes';
+  const DEFAULTS = 'https://api.github.com/repos/octo/.github';
+  /** Each item's status and summary. */
+  const pick = (rep: Report, ids: string[]) =>
+    Object.fromEntries(ids.map((id) => [id, [rep.results[id].status, rep.results[id].summary]]));
+
+  it('says unknown, not "not protected", when the branch lookups fail', async () => {
+    const branch = `${FIXES}/branches/main`;
+    const rules = `${FIXES}/rules/branches/main`;
+    const items = ['repo-branch-protection', 'repo-signed-commits'];
+    const both = await scanScenario('fixes', { [branch]: RATE_LIMITED, [rules]: SERVER_ERROR });
+    expect(pick(both.rep, items)).toEqual({
+      'repo-branch-protection': ['unknown', 'Could not read whether the default branch (main) is protected (HTTP 403)'],
+      'repo-signed-commits': ['unknown', 'Could not read whether signed commits are required (HTTP 500)'],
+    });
+    // No ruleset rules doesn't rule out the classic protection the branch lookup would have shown.
+    const noBranch = await scanScenario('fixes', { [branch]: OFFLINE, [rules]: { json: [] } });
+    expect(pick(noBranch.rep, items)).toEqual({
+      'repo-branch-protection': ['unknown', 'Could not read whether the default branch (main) is protected (HTTP 0)'],
+      'repo-signed-commits': ['info', 'Signed commits are not required (optional)'],
+    });
+    // The branch's protected flag counts rulesets too, so it answers on its own, though not which kind of protection.
+    const unprotected = { json: { name: 'main', protected: false } };
+    const flagOnly = await scanScenario('fixes', { [branch]: unprotected, [rules]: OFFLINE });
+    expect(pick(flagOnly.rep, items)['repo-branch-protection']).toEqual([
+      'fail',
+      'The default branch (main) is not protected',
+    ]);
+    const isProtected = { json: { name: 'main', protected: true } };
+    const protectedOnly = await scanScenario('fixes', { [branch]: isProtected, [rules]: OFFLINE });
+    expect(pick(protectedOnly.rep, items)['repo-branch-protection']).toEqual(['pass', 'Default branch is protected']);
+    // A 404 is an answer: no such branch, and no rules.
+    expect(pick((await scanScenario('fixes')).rep, items)['repo-branch-protection']).toEqual([
+      'fail',
+      'The default branch (main) is not protected',
+    ]);
+  });
+
+  it("says unknown when the account's .github repo can't be read for a default SECURITY.md", async () => {
+    const tree = `${DEFAULTS}/git/trees/main?recursive=1`;
+    const security = async (replace: Record<string, Route>) => {
+      const r = (await scanScenario('fixes', replace)).rep.results['disc-security-md'];
+      return [r.status, r.summary, r.evidence];
+    };
+    const notChecked = (status: number) => [
+      'unknown',
+      `No SECURITY.md in this repository, and the account's default couldn't be checked (HTTP ${status})`,
+      [],
+    ];
+    expect(await security({ [DEFAULTS]: RATE_LIMITED })).toEqual(notChecked(403));
+    const account = { [DEFAULTS]: { json: { private: false, default_branch: 'main' } } };
+    expect(await security({ ...account, [tree]: SERVER_ERROR })).toEqual(notChecked(500));
+    // A policy its tree lists but that can't be read.
+    const listed = { ...account, [tree]: { json: { tree: [{ path: 'SECURITY.md', type: 'blob' }] } } };
+    const policy = 'https://raw.githubusercontent.com/octo/.github/main/SECURITY.md';
+    expect(await security({ ...listed, [policy]: OFFLINE })).toEqual([
+      'unknown',
+      "Could not read the account's default, SECURITY.md in octo/.github (HTTP 0)",
+      [{ label: 'SECURITY.md in octo/.github', url: 'https://github.com/octo/.github/blob/main/SECURITY.md' }],
+    ]);
+    // An empty .github repo has no files to provide.
+    const empty = { status: 409, json: { message: 'Git Repository is empty.' } };
+    expect((await security({ ...account, [tree]: empty }))[0]).toBe('fail');
+  });
+
+  it('still fails when the account has no .github repo (404)', async () => {
+    const { rep } = await scanScenario('fixes');
+    expect(pick(rep, ['disc-security-md'])).toEqual({
+      'disc-security-md': ['fail', 'No SECURITY.md in the root, .github/ or docs/'],
+    });
+    expect(rep.errors).toEqual([]);
+  });
+
+  it('says once, in errors, that GitHub rate-limited the scan', async () => {
+    const limited = await scanScenario('fixes', {
+      [DEFAULTS]: RATE_LIMITED,
+      [`${FIXES}/branches/main`]: RATE_LIMITED,
+      [`${FIXES}/rules/branches/main`]: { status: 429, text: 'Too Many Requests' },
+    });
+    expect(limited.rep.errors).toEqual([NOTICE]);
+    // A refused repo lookup ends the scan, and the notice says why.
+    expect((await scanScenario('fixes', { [FIXES]: RATE_LIMITED })).rep.errors).toEqual([
+      'repo lookup failed: HTTP 403',
+      NOTICE,
+    ]);
+    // Other failures aren't rate limits.
+    const failing = await scanScenario('fixes', { [DEFAULTS]: SERVER_ERROR, [`${FIXES}/branches/main`]: OFFLINE });
+    expect(failing.rep.errors).toEqual([]);
+  });
+
+  it("says, in errors, when it couldn't list the repository's files, but not for an empty repository", async () => {
+    const tree = `${FIXES}/git/trees/main?recursive=1`;
+    const errors = async (route: Route) => (await scanScenario('fixes', { [tree]: route })).rep.errors;
+    const note = (status: number) =>
+      `Could not read the repository's files (HTTP ${status}), so the file checks may be wrong`;
+    expect(await errors(SERVER_ERROR)).toEqual([note(500)]);
+    expect(await errors(OFFLINE)).toEqual([note(0)]);
+    expect(await errors(RATE_LIMITED)).toEqual([note(403), NOTICE]);
+    // GitHub answers 409 for a repository with no commits yet (the empty-repo scenario), which has no files to miss.
+    const empty = { status: 409, json: { message: 'Git Repository is empty.' } };
+    expect(await errors(empty)).toEqual([]);
+    expect((await scanScenario('empty-repo')).rep.errors).toEqual([]);
+  });
+
+  it('tells a rate limit from other refusals, without changing any answer', async () => {
+    const url = `${FIXES}/rulesets?includes_parents=true`;
+    const rateLimited = async (route: Route, at = url) => {
+      stubFetch({ [at]: route });
+      const http = new Http('tok');
+      const [status] = await http.json(at);
+      return [status, http.rateLimited];
+    };
+    // The hourly limit, a secondary limit (a Retry-After, or a message that says so), and any 429.
+    expect(await rateLimited(RATE_LIMITED)).toEqual([403, true]);
+    expect(
+      await rateLimited({ status: 403, json: { message: 'Forbidden' }, headers: { 'retry-after': '60' } }),
+    ).toEqual([403, true]);
+    const secondary = { message: 'You have exceeded a secondary rate limit. Please wait a few minutes.' };
+    expect(await rateLimited({ status: 403, json: secondary })).toEqual([403, true]);
+    expect(await rateLimited({ status: 429, text: 'Too Many Requests' })).toEqual([429, true]);
+    // A 403 for anything else, a 5xx, a network failure, and the last request of the hour, which still succeeds.
+    const denied = { message: 'Resource not accessible by integration' };
+    expect(await rateLimited({ status: 403, json: denied, headers: { 'x-ratelimit-remaining': '4999' } })).toEqual([
+      403,
+      false,
+    ]);
+    expect(await rateLimited({ status: 403, json: { message: 'Upgrade to GitHub Pro' } })).toEqual([403, false]);
+    expect(await rateLimited(SERVER_ERROR)).toEqual([500, false]);
+    expect(await rateLimited(OFFLINE)).toEqual([0, false]);
+    expect(await rateLimited({ json: [], headers: { 'x-ratelimit-remaining': '0' } })).toEqual([200, false]);
+    // The notice blames GitHub, so another host's limit doesn't count.
+    const scorecard = 'https://api.securityscorecards.dev/projects/github.com/octo/fixes';
+    expect(await rateLimited({ status: 429, text: 'Too Many Requests' }, scorecard)).toEqual([429, false]);
+  });
+
+  it("doesn't report CodeQL or Dependabot missing when the workflows list fails", async () => {
+    const list = `${FIXES}/actions/workflows?per_page=100`;
+    const items = ['sast-codeql', 'sast-codeql-actions', 'deps-update-automation'];
+    // octo/fixes has code and workflows, but no CodeQL workflow and no Dependabot or Renovate configuration.
+    expect(pick((await scanScenario('fixes')).rep, items)).toEqual({
+      'sast-codeql': ['fail', 'No CodeQL code scanning found'],
+      'sast-codeql-actions': ['fail', 'Workflows are not scanned by CodeQL'],
+      'deps-update-automation': ['fail', 'No Dependabot or Renovate configuration'],
+    });
+    // The list is where CodeQL default setup and Dependabot's update runs show.
+    const dynamic = ['dynamic/github-code-scanning/codeql', 'dynamic/dependabot/dependabot-updates'];
+    const shown = await scanScenario('fixes', { [list]: { json: { workflows: dynamic.map((path) => ({ path })) } } });
+    expect(pick(shown.rep, items)).toEqual({
+      'sast-codeql': ['pass', 'CodeQL default setup is on'],
+      'sast-codeql-actions': ['unknown', 'CodeQL default setup is on; its languages need the private layer'],
+      'deps-update-automation': ['pass', 'Dependabot version updates are active'],
+    });
+    for (const [route, status] of [
+      [SERVER_ERROR, 500],
+      [RATE_LIMITED, 403],
+      [OFFLINE, 0],
+    ] as const) {
+      expect(pick((await scanScenario('fixes', { [list]: route })).rep, items)).toEqual({
+        'sast-codeql': ['unknown', `No CodeQL workflow, and CodeQL default setup couldn't be checked (HTTP ${status})`],
+        'sast-codeql-actions': [
+          'unknown',
+          `No CodeQL workflow scans the 'actions' language, and CodeQL default setup couldn't be checked (HTTP ${status})`,
+        ],
+        'deps-update-automation': [
+          'unknown',
+          `No Dependabot or Renovate configuration, and active Dependabot updates couldn't be checked (HTTP ${status})`,
+        ],
+      });
+    }
+  });
+
+  it('says unknown when the release, ruleset or advisory lookups fail', async () => {
+    const tags = 'repo-tag-release-protection';
+    // octo/demo's latest release, v1.2.3, isn't immutable, and a tag ruleset is what protects it.
+    const rulesets = 'https://api.github.com/repos/octo/demo/rulesets?includes_parents=true';
+    expect(pick((await scanScenario('public', { [rulesets]: SERVER_ERROR })).rep, [tags])).toEqual({
+      [tags]: [
+        'unknown',
+        "Latest release v1.2.3 is not immutable, and the tag rulesets couldn't be checked (HTTP 500)",
+      ],
+    });
+    // octo/fixes has no releases (a 404), so without the lookup it can't say so.
+    expect(pick((await scanScenario('fixes', { [`${FIXES}/releases/latest`]: OFFLINE })).rep, [tags])).toEqual({
+      [tags]: ['unknown', 'Could not read the latest release (HTTP 0)'],
+    });
+    const advisories = `${FIXES}/security-advisories?state=published&per_page=100`;
+    expect(pick((await scanScenario('fixes', { [advisories]: RATE_LIMITED })).rep, ['disc-advisories-cves'])).toEqual({
+      'disc-advisories-cves': ['unknown', 'Could not read the published security advisories (HTTP 403)'],
+    });
+  });
+
+  it("doesn't let the admin scan say no tag ruleset exists when the rulesets lookup failed", async () => {
+    const tags = 'repo-tag-release-protection';
+    // acme/secret is private on a plan without rulesets, which GitHub says with a 403: there are none.
+    expect(pick((await scanScenario('admin-org')).rep, [tags])).toEqual({
+      [tags]: ['fail', 'Immutable releases are off and no tag ruleset protects release tags'],
+    });
+    const rulesets = 'https://api.github.com/repos/acme/secret/rulesets?includes_parents=true';
+    expect(pick((await scanScenario('admin-org', { [rulesets]: RATE_LIMITED })).rep, [tags])).toEqual({
+      [tags]: ['unknown', "Immutable releases are off, and the tag rulesets couldn't be checked (HTTP 403)"],
+    });
+  });
+
+  it("says unknown, not missing or empty, for a file the tree lists that can't be read", async () => {
+    const raw = 'https://raw.githubusercontent.com/octo/demo/main';
+    const { rep } = await scanScenario('public', {
+      [`${raw}/SECURITY.md`]: SERVER_ERROR,
+      [`${raw}/.github/CODEOWNERS`]: OFFLINE,
+      [`${raw}/.github/dependabot.yml`]: RATE_LIMITED,
+      [`${raw}/.npmrc`]: SERVER_ERROR,
+      [`${raw}/pyproject.toml`]: SERVER_ERROR,
+      [`${raw}/CLAUDE.md`]: OFFLINE,
+      [`${raw}/.github/workflows/codeql.yml`]: SERVER_ERROR,
+    });
+    const items = [
+      'disc-security-md',
+      'repo-codeowners',
+      'deps-update-automation',
+      'deps-cooldown',
+      'deps-no-install-scripts',
+      'ai-agent-instructions',
+    ];
+    expect(pick(rep, items)).toEqual({
+      'disc-security-md': ['unknown', 'Could not read SECURITY.md (HTTP 500)'],
+      'repo-codeowners': ['unknown', 'Could not read .github/CODEOWNERS (HTTP 0)'],
+      'deps-update-automation': ['unknown', 'Could not read .github/dependabot.yml (HTTP 403)'],
+      'deps-cooldown': ['unknown', 'Could not read .github/dependabot.yml (HTTP 403)'],
+      'deps-no-install-scripts': ['unknown', 'Could not read .npmrc (HTTP 500)'],
+      // AGENTS.md was read and has no security rules; CLAUDE.md, which has them, wasn't.
+      'ai-agent-instructions': ['unknown', 'Could not read CLAUDE.md (HTTP 0)'],
+    });
+    // Nothing is found in a file no one read.
+    expect(rep.findings.filter((f) => ['repo-codeowners', 'deps-update-automation'].includes(f.item_id))).toEqual([]);
+    // A workflow that couldn't be read is left out of the checks, so the errors say so (missing.yml is a 404 here).
+    expect(rep.errors).toEqual([
+      'Could not read 2 workflow files, such as .github/workflows/codeql.yml (HTTP 500), so the checks skipped them',
+      NOTICE,
+    ]);
+    // A private repo's files come from the contents API, under the same rule.
+    const policy = 'https://api.github.com/repos/acme/secret/contents/.github/SECURITY.md?ref=release/2.x';
+    expect(pick((await scanScenario('admin-org', { [policy]: SERVER_ERROR })).rep, ['disc-security-md'])).toEqual({
+      'disc-security-md': ['unknown', 'Could not read .github/SECURITY.md (HTTP 500)'],
+    });
+    // octo/fixes publishes nothing from CI, so its .goreleaser.yaml is all the release checks have to go on.
+    const treeUrl = `${FIXES}/git/trees/main?recursive=1`;
+    const tree = structuredClone(routesFor('fixes')[treeUrl]) as Route;
+    (tree.json as { tree: unknown[] }).tree.push({ path: '.goreleaser.yaml', type: 'blob' });
+    const goreleaser = 'https://raw.githubusercontent.com/octo/fixes/main/.goreleaser.yaml';
+    const gr = await scanScenario('fixes', { [treeUrl]: tree, [goreleaser]: OFFLINE });
+    expect(pick(gr.rep, ['rel-sbom', 'rel-signing'])).toEqual({
+      'rel-sbom': ['unknown', 'Could not read .goreleaser.yaml (HTTP 0)'],
+      'rel-signing': ['unknown', 'Could not read .goreleaser.yaml (HTTP 0)'],
+    });
+  });
+
+  it("labels a check it couldn't read, on the page, as one to try again rather than one for a deeper scan", async () => {
+    const shown = async (scenario: string, replace: Record<string, Route> = {}) => {
+      const merged = sg.mergeReports((await scanScenario(scenario, replace)).rep);
+      return (id: string) => sg.statusLabel(sg.itemStatus({ id }, merged, merged.repo));
+    };
+    const raw = 'https://raw.githubusercontent.com/octo/demo/main';
+    const advisories = 'https://api.github.com/repos/octo/demo/security-advisories?state=published&per_page=100';
+    const label = await shown('public', { [`${raw}/SECURITY.md`]: SERVER_ERROR, [advisories]: RATE_LIMITED });
+    expect([label('disc-security-md'), label('disc-advisories-cves')]).toEqual([
+      'Couldn’t check, try again',
+      'Couldn’t check, try again',
+    ]);
+    // An unknown that only a deeper scan settles keeps its label, and the other statuses theirs.
+    expect([label('secrets-push-protection'), label('disc-private-reporting')]).toEqual([
+      'Needs a deeper scan',
+      'Done',
+    ]);
+    // The private layer fails that way for want of a permission too, which another try doesn't fix.
+    expect((await shown('admin-denied'))('deps-alerts')).toBe('Couldn’t check');
+  });
+});
+
 // ------------------------------------------------------------------------------------------------- CLI
 describe('CLI', () => {
   let dir: string;
@@ -1230,4 +1726,55 @@ describe('CLI', () => {
     expect((await run(['git@github.com:Octo/Demo.git', '--quiet', '--out', out])).code).toBe(0);
     expect(JSON.parse(readFileSync(out, 'utf8')).repo).toBe('octo/demo');
   });
+
+  it("ends with what got in the scan's way, such as GitHub's rate limit, unless --quiet", async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'test-token');
+    const limited = { status: 403, json: { message: 'API rate limit exceeded for user ID 1.' } };
+    const routes = { ...routesFor('public'), 'https://api.github.com/repos/octo/demo/branches/main': limited };
+    stubFetch(routes);
+    const loud = await run(['Octo/Demo', '--out', join(dir, 'loud.json')]);
+    expect(loud.stderr.split('\n').slice(-3)).toEqual([
+      'warning: Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it',
+      'warning: GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.',
+      '',
+    ]);
+    stubFetch(routes);
+    expect(await run(['Octo/Demo', '--quiet', '--out', join(dir, 'quiet.json')])).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'says why it scans without a token: --public leaves it out, or none was found',
+    async () => {
+      const firstLine = async (argv: string[]) => {
+        const calls = stubFetch(routesFor('public'));
+        const { stderr } = await run([...argv, '--out', join(dir, 'report.json')]);
+        return { line: stderr.split('\n')[0], tokens: new Set(calls.map(([, , auth]) => auth)) };
+      };
+      // The machine has a token, and --public scans as anyone would without it.
+      vi.stubEnv('GITHUB_TOKEN', 'test-token');
+      vi.stubEnv('GH_TOKEN', '');
+      expect(await firstLine(['Octo/Demo', '--public'])).toEqual({
+        line:
+          '--public: scanning without a token, as anyone would see it ' +
+          '(GitHub allows 60 requests an hour; pass --token to raise that)',
+        tokens: new Set([null]),
+      });
+      // A token passed with --public is used, and there's nothing to say.
+      const passed = await firstLine(['Octo/Demo', '--public', '--token', 'tok']);
+      expect([passed.line, passed.tokens.has('Bearer tok')]).toEqual(['scanning octo/demo (public layer)', true]);
+      // Without --public, only a missing token is worth a line: no variable, no --token and no gh.
+      vi.stubEnv('GITHUB_TOKEN', '');
+      vi.stubEnv('PATH', dir);
+      expect(await firstLine(['Octo/Demo'])).toEqual({
+        line:
+          'no token found: running the public checks only, at 60 requests an hour. ' +
+          'Set GITHUB_TOKEN, pass --token, or sign in with `gh auth login`',
+        tokens: new Set([null]),
+      });
+    },
+  );
 });

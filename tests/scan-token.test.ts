@@ -1,7 +1,8 @@
 /**
  * Public scans' token: GITHUB_TOKEN or GH_TOKEN, else the site's GitHub App (a metadata-only installation token,
  * cached until shortly before it expires), else none. Never the gh CLI's. And a private repo, which the app's token
- * can see, gets exactly the answer a missing one gets. GitHub is faked (tests/helpers.ts).
+ * can see, gets exactly the answer a missing one gets, while a scan GitHub rate-limited is kept nowhere and isn't
+ * mistaken for one. GitHub is faked (tests/helpers.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpError } from '@/lib/http.ts';
 import { NOT_FOUND, runPublicScan, scanOr404 } from '@/lib/public-scan.ts';
 import { publicScanToken } from '@/lib/scan-token.ts';
+import { RATE_LIMITED } from '@/lib/scanner/index.ts';
+// The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
+import * as sg from '../public/shared/core.js';
 import { Browser, CFG, configure, useTestEnv } from './helpers.ts';
 
 // The only command anything here could run is `gh auth token` (the scanner CLI's findToken): record it, never run it.
@@ -267,4 +271,49 @@ it("scans a public repo with the app's token, and caches the report", async () =
   expect(Object.keys(first.results).length).toBeGreaterThan(0);
   expect((await scanOr404('octo/demo', false)).cached).toBe(true);
   expect(env.world().tokenRequests).toEqual([{ permissions: { metadata: 'read' } }]);
+});
+
+it('keeps no copy of a scan GitHub rate-limited, here or at the CDN: some of its answers may be wrong', async () => {
+  configure();
+  const world = env.world();
+  const branch = 'GET /repos/octo/demo/branches/main';
+  world.repo.set(branch, [403, { message: 'API rate limit exceeded for installation ID 5.' }]);
+  const c = new Browser();
+  const limited = await c.get('/api/scan/octo/demo');
+  const rep = await limited.json();
+  expect([limited.status, limited.headers.get('cache-control')]).toEqual([200, 'no-store']);
+  expect(Object.keys(rep.results).length).toBeGreaterThan(0);
+  expect(rep.errors).toContain(RATE_LIMITED);
+  expect(fs.existsSync(path.join(env.dataDir(), '.cache', 'scans'))).toBe(false);
+  // Nothing kept it, so the next scan asks GitHub again, and a scan GitHub answered in full is kept as before.
+  world.repo.routes.delete(branch);
+  const again = await c.get('/api/scan/octo/demo');
+  expect([(await again.json()).cached, again.headers.get('cache-control')]).toEqual([
+    false,
+    'public, max-age=0, s-maxage=21600, stale-while-revalidate=600',
+  ]);
+  expect((await scanOr404('octo/demo', false)).cached).toBe(true);
+});
+
+it('has the page say GitHub is limiting requests, not that the repo is missing, when the repo lookup was refused', async () => {
+  configure();
+  env.world().repo.set('GET /repos/octo/demo', [403, { message: 'API rate limit exceeded for installation ID 5.' }]);
+  const c = new Browser();
+  const r = await c.get('/api/scan/octo/demo');
+  const { detail } = await r.json();
+  expect([r.status, r.headers.get('cache-control'), detail]).toEqual([
+    404,
+    'no-store',
+    `repo lookup failed: HTTP 403; ${RATE_LIMITED}`,
+  ]);
+  // The page's words for it (scanPublic throws the detail).
+  expect(sg.scanTrouble('octo/demo', new Error(detail))).toEqual([
+    'GitHub is limiting requests right now, so octo/demo wasn’t scanned.',
+    'Try again in a few minutes.',
+  ]);
+  // A repository GitHub doesn't have is still called that.
+  const missing = await (await c.get('/api/scan/octo/missing')).json();
+  expect(sg.scanTrouble('octo/missing', new Error(missing.detail))[0]).toBe(
+    'GitHub has no public repository called octo/missing.',
+  );
 });
