@@ -168,6 +168,8 @@ export function ctxFromReport(rep, repo) {
     owner, repo: name, full, branch: m.default_branch || 'main', ecosystems: m.ecosystems || [], ownerType: m.owner_type ?? null,
     stars: m.stars ?? null, dependents: m.dependents_total ?? null, tier: rep && rep.tier ? rep.tier.id : null,
     publishes: known ? !!m.publishes_from_ci : null, hasActions: known ? (m.workflow_count || 0) > 0 : null, language: m.language ?? null,
+    // Only a count the scan made: fill() drops the dependabot.yml template's github-actions entry when it's 0.
+    workflowCount: typeof m.workflow_count === 'number' ? m.workflow_count : null,
   };
 }
 
@@ -179,13 +181,18 @@ export function tierFor(stars, dependents, tiers) {
 }
 
 const DEPENDABOT_ECO = { npm: 'npm', pypi: 'pip', go: 'gomod', cargo: 'cargo', maven: 'maven', rubygems: 'bundler', composer: 'composer', nuget: 'nuget', swift: 'swift' };
+// The github-actions entry in the dependabot.yml template: its list item and the lines indented under it. Dependabot calls
+// it an error in a repository with no workflows, so the template that takes {ecosystem_blocks} leaves it out when a scan
+// counted none. Other templates keep theirs (the ci-pin-actions snippet has one). lib/fixes.ts does the same.
+const ACTIONS_ENTRY = /^( *)- package-ecosystem: *["']?github-actions["']? *\n(?:\1 {2,}\S.*\n)*/m;
 export function fill(template, ctx = {}) {
   if (!template) return template;
   const ecoBlocks = (ctx.ecosystems || []).filter((e) => DEPENDABOT_ECO[e]).map((e) =>
     `  - package-ecosystem: ${DEPENDABOT_ECO[e]}\n    directory: /\n    schedule:\n      interval: weekly\n    cooldown:\n      default-days: 7\n`).join('');
   // An organization's handle isn't a person, and CODEOWNERS needs a team there: {maintainer} and {person} cover both cases.
   const org = ctx.ownerType === 'Organization';
-  return template
+  const noActions = ctx.workflowCount === 0 && template.includes('{ecosystem_blocks}');
+  return (noActions ? template.replace(ACTIONS_ENTRY, '') : template)
     .replaceAll('{maintainer}', org ? `@${ctx.owner}/maintainers` : `@${ctx.owner || 'OWNER'}`)
     .replaceAll('{person}', org || !ctx.owner ? '(name a maintainer)' : `@${ctx.owner}`)
     .replaceAll('{owner}', ctx.owner || 'OWNER').replaceAll('{repo}', ctx.repo || 'REPO')

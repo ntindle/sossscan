@@ -63,7 +63,7 @@ Pages are static files under `public/`. You don't need to restart the server for
 - The `sg:report` document event, with detail `{report, item?}` or a bare report, adds a report to the scan panel (the app's re-check after a one-click fix uses it). The main page listens too, and reopens `item` after it redraws.
 
 **Status and context**
-- `ctxFromReport(report, repo)` returns `{owner, repo, full, branch, ecosystems, ownerType, stars, dependents, tier, publishes, hasActions}`. `tierFor(stars, dependents, guide.tiers)`.
+- `ctxFromReport(report, repo)` returns `{owner, repo, full, branch, ecosystems, ownerType, stars, dependents, tier, publishes, hasActions, workflowCount}`. `workflowCount` is `null` unless the report counted the workflows. `tierFor(stars, dependents, guide.tiers)`.
 - `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). `STATUS[status].label` / `.tone`.
 - `findingsFor(item, report)`, `applies(item, ctx)`, `progress(items, report, repo)` (returns `{pass, warn, fail, open, total, pct}`).
 
@@ -87,6 +87,7 @@ Pages are static files under `public/`. You don't need to restart the server for
 - Links: `settingsLinks(item, ctx)`, `newFileUrl(item, ctx)`, `issueForItem(item, ctx, report)`, `newIssueUrl(ctx, {title, body, labels})`, `cliFor(item, ctx)`, `fill(template, ctx)`.
   - `fill` replaces `{owner}`, `{repo}`, `{full}` and `{branch}`.
   - It also replaces `{maintainer}` (`@user`, or `@org/maintainers` for an organization), `{person}` (`@user`, or "(name a maintainer)" for an organization) and `{ecosystem_blocks}`.
+  - When `ctx.workflowCount` is 0, the dependabot.yml template (the one with `{ecosystem_blocks}`) leaves out its github-actions entry, which Dependabot calls an error in a repository with no workflows.
   - `lib/fixes.ts` has a copy for pull requests, and a test keeps the two identical.
 - `store.get(repo, id)`, `store.set(repo, id, {done, dismissed, note, pr, …})` (localStorage). This fires a `sg:progress` event. `pr` is `{url, number}` once the app has opened a pull request for the item.
 - `app.status()` (one request per page load), `app.repo(repo)` (admin? installed? permissions?), `app.check(repo)`, `app.fix(repo, fixId)`, `app.prPreview(repo, itemId)`, `app.prCreate(plan)`, `app.loginUrl()`.

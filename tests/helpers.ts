@@ -48,6 +48,7 @@ export function repoRoutes({
   isPrivate = false,
   ownerType = 'User',
   tree = [] as string[],
+  truncated = false,
   archived = false,
 } = {}): Record<string, Answer> {
   return {
@@ -67,7 +68,7 @@ export function repoRoutes({
     [`GET /repos/octo/demo/git/commits/${SHA_A}`]: [200, { tree: { sha: SHA_B } }],
     [`GET /repos/octo/demo/git/trees/${SHA_B}`]: [
       200,
-      { tree: tree.map((p) => ({ path: p, type: 'blob', mode: '100644' })), truncated: false },
+      { tree: tree.map((p) => ({ path: p, type: 'blob', mode: '100644' })), truncated },
     ],
   };
 }

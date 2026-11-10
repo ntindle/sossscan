@@ -1,6 +1,7 @@
 /** The guide data (public/data/guide.json, built by build/build_guide.py) through the page's own core.js. No network. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import YAML from 'yaml';
 import { OSS_SCANNER_DEPENDENTS, OSS_SCANNER_STARS } from '@/lib/scanner/index.ts';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
@@ -76,6 +77,37 @@ describe("the OSS Scanner item (sast-oss-scanner, the scanner's result for it)",
   it('has its docs on https', () => {
     expect(item.docs.length).toBeGreaterThan(0);
     for (const d of item.docs) expect(d.url).toMatch(/^https:\/\//);
+  });
+});
+
+describe('the dependabot.yml template (deps-update-automation)', () => {
+  const item = guide.items.find((i: { id: string }) => i.id === 'deps-update-automation');
+  /** A report on octo/demo whose scan counted this many workflows, or didn't count them. */
+  const scanned = (workflowCount?: number) => ({
+    repo: 'octo/demo',
+    meta: { default_branch: 'main', ecosystems: ['npm'], workflow_count: workflowCount },
+  });
+  const updates = (text: string) =>
+    YAML.parse(text).updates.map((u: Record<string, unknown>) => u['package-ecosystem']);
+  const filled = (report: unknown) => sg.fill(item.new_file.template, sg.ctxFromReport(report));
+
+  it('updates GitHub Actions only where the scan found workflows: Dependabot calls the entry an error without', () => {
+    expect(updates(filled(scanned(2)))).toEqual(['github-actions', 'npm']);
+    expect(updates(filled(scanned(0)))).toEqual(['npm']);
+    // The prefilled "Create .github/dependabot.yml" link carries the same file.
+    const url = new URL(sg.newFileUrl(item, sg.ctxFromReport(scanned(0)))!);
+    expect(url.searchParams.get('value')).toBe(filled(scanned(0)));
+  });
+
+  it('keeps the entry when nothing has counted the workflows', () => {
+    expect(updates(filled(null))).toEqual(['github-actions']);
+    expect(updates(filled(scanned()))).toEqual(['github-actions', 'npm']);
+  });
+
+  it("leaves other templates' github-actions entries alone", () => {
+    const pins = guide.items.find((i: { id: string }) => i.id === 'ci-pin-actions');
+    const snippet = pins.snippets.find((s: { code: string }) => s.code.includes('github-actions'));
+    expect(sg.fill(snippet.code, sg.ctxFromReport(scanned(0)))).toBe(snippet.code);
   });
 });
 
