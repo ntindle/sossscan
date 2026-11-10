@@ -825,7 +825,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   } else if (!wfPaths.length) {
     res('sast-codeql-actions', 'na', 'No GitHub Actions workflows');
   } else if (codeqlDefault) {
-    res('sast-codeql-actions', 'unknown', 'CodeQL default setup is on; its languages need the private layer');
+    res('sast-codeql-actions', 'unknown', 'CodeQL default setup is on; its languages need the private scan');
   } else if (dynFailed !== null) {
     res(
       'sast-codeql-actions',
@@ -855,9 +855,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     tools.has('secret_scan') ? 'pass' : 'unknown',
     tools.has('secret_scan')
       ? 'gitleaks/trufflehog runs in CI'
-      : 'GitHub secret scanning status needs the private layer',
+      : 'GitHub secret scanning status needs the private scan',
   );
-  res('secrets-push-protection', 'unknown', 'Push protection status needs the private layer');
+  res('secrets-push-protection', 'unknown', 'Push protection status needs the private scan');
 
   // ---- dependencies
   const dbot = find(DEPENDABOT);
@@ -1120,7 +1120,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed);
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
-      if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private layer (admin token) or the GitHub App`);
+      if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);
     }
   }
   if (http.rateLimited) rep.errors.push(RATE_LIMITED);

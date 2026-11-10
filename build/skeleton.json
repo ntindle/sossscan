@@ -1,12 +1,12 @@
 {
  "tiers": [
-  {"id": 0, "name": "Just you", "stars": 0, "dependents": 0, "blurb": "Nobody depends on this yet. Lock the doors that cost nothing: your account, your secrets, a way to report bugs privately."},
+  {"id": 0, "name": "Just you", "stars": 0, "dependents": 0, "blurb": "Nobody depends on this yet. Start with what costs nothing: secure your account, keep secrets out of the repo, and give people a private way to report bugs."},
   {"id": 1, "name": "First fans", "stars": 1, "dependents": 1, "blurb": "Someone starred or installed it. Your CI and your releases are now someone else's supply chain."},
   {"id": 2, "name": "Getting noticed", "stars": 10, "dependents": 5, "blurb": "Strangers send PRs. Assume some of them are hostile and make CI safe to run on their code."},
   {"id": 3, "name": "Small community", "stars": 50, "dependents": 25, "blurb": "Other projects build on you. Write down how you handle a vulnerability before you need to."},
   {"id": 4, "name": "Established", "stars": 250, "dependents": 100, "blurb": "Attackers now find you worth targeting. Prove what you ship and make releases tamper-evident."},
-  {"id": 5, "name": "Widely used", "stars": 1000, "dependents": 500, "blurb": "A bug here becomes a CVE downstream. Fuzz, rehearse incidents, and share the load."},
-  {"id": 6, "name": "Load-bearing", "stars": 5000, "dependents": 2500, "blurb": "You are critical infrastructure for someone. Get outside eyes and harden every step."},
+  {"id": 5, "name": "Widely used", "stars": 1000, "dependents": 500, "blurb": "A bug here becomes a CVE downstream. Fuzz continuously and rehearse your incident plan."},
+  {"id": 6, "name": "Load-bearing", "stars": 5000, "dependents": 2500, "blurb": "Other people's systems depend on your code. Get an outside audit and make your builds reproducible."},
   {"id": 7, "name": "Critical infrastructure", "stars": 25000, "dependents": 10000, "blurb": "The ecosystem's security depends on yours. Do everything, and help your dependencies do it too."}
  ],
  "tier_note": "A repo's tier is the higher of its stars tier and its dependents tier (dependents = repositories + packages on GitHub's dependency graph). Thresholds are a starting point: dependents carry more weight than stars because they measure real blast radius.",
@@ -33,7 +33,7 @@
   {"id": "poisoned-dependency", "title": "A dependency or action is compromised", "story": "A popular action or package you use is hijacked (tj-actions, Shai-Hulud) and runs attacker code in your builds."},
   {"id": "tampered-release", "title": "A release is tampered with", "story": "An attacker publishes a malicious version under your name, or swaps an artifact after release."},
   {"id": "leaked-secret", "title": "A secret leaks", "story": "A token lands in a commit, a log or a workflow artifact and someone uses it before you notice."},
-  {"id": "code-bug", "title": "A bug in your code is exploited", "story": "Untrusted input reaches a parser or query and crashes, corrupts or executes."},
+  {"id": "code-bug", "title": "A bug in your code is exploited", "story": "Untrusted input reaches a parser or query and crashes it, corrupts data or runs attacker code."},
   {"id": "botched-disclosure", "title": "A vulnerability report goes badly", "story": "A researcher can't reach you privately, files a public issue, and users are exposed before a fix exists."},
   {"id": "ai-misuse", "title": "AI features or AI contributions are abused", "story": "Prompt injection makes an agent leak data or run tools; low-quality AI reports and PRs bury real ones."},
   {"id": "insider-social", "title": "Someone you trust goes rogue", "story": "A long-time contributor or a social-engineered co-maintainer slips in a backdoor (the xz pattern)."}
