@@ -32,7 +32,7 @@ const TRUST = ['/about', '/contact', '/privacy'];
 function visibleText(html: string): string {
   const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
   return (/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1>/g, ' ')
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&(amp|lt|gt|quot|#39);/g, (_m, name: string) => entities[name])
     .replace(/\s+/g, ' ')
@@ -124,7 +124,7 @@ describe('the text pages', () => {
   it('runs no inline script, so the CSP needs no hashes for them', () => {
     expect(CSP).toContain("script-src 'self'"); // /shared/theme.js
     for (const page of PAGES) {
-      const scripts = [...pageHtml(page.path).matchAll(/<script\b([^>]*)>/g)].map((m) => m[1].trim());
+      const scripts = [...pageHtml(page.path).matchAll(/<script\b([^>]*)>/gi)].map((m) => m[1].trim());
       expect(scripts).toEqual(['src="/shared/theme.js"', 'type="application/ld+json"']);
     }
   });
