@@ -101,8 +101,11 @@ const AGENT_FILES = re(
   String.raw`(?i)^(AGENTS\.md|CLAUDE\.md|\.github/copilot-instructions\.md|\.github/instructions/[^/]+\.md)$`,
 );
 const SECURITY_RULES = re(String.raw`(?i)secur|secret|vulnerab`);
-/** What a scan says when GitHub refused some of its requests for going over a rate limit. */
-const RATE_LIMITED = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
+/**
+ * What a scan says in its errors when GitHub refused some of its requests for going over a rate limit. The server
+ * matches it to keep such a scan out of its caches (lib/public-scan.ts).
+ */
+export const RATE_LIMITED = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
 
 type Got = Record<string, [number, any, Record<string, string>]>;
 

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpError } from '@/lib/http.ts';
 import { NOT_FOUND, runPublicScan, scanOr404 } from '@/lib/public-scan.ts';
 import { publicScanToken } from '@/lib/scan-token.ts';
+import { RATE_LIMITED } from '@/lib/scanner/index.ts';
 import { Browser, CFG, configure, useTestEnv } from './helpers.ts';
 
 // The only command anything here could run is `gh auth token` (the scanner CLI's findToken): record it, never run it.
@@ -267,4 +268,26 @@ it("scans a public repo with the app's token, and caches the report", async () =
   expect(Object.keys(first.results).length).toBeGreaterThan(0);
   expect((await scanOr404('octo/demo', false)).cached).toBe(true);
   expect(env.world().tokenRequests).toEqual([{ permissions: { metadata: 'read' } }]);
+});
+
+it('keeps no copy of a scan GitHub rate-limited, here or at the CDN: some of its answers may be wrong', async () => {
+  configure();
+  const world = env.world();
+  const branch = 'GET /repos/octo/demo/branches/main';
+  world.repo.set(branch, [403, { message: 'API rate limit exceeded for installation ID 5.' }]);
+  const c = new Browser();
+  const limited = await c.get('/api/scan/octo/demo');
+  const rep = await limited.json();
+  expect([limited.status, limited.headers.get('cache-control')]).toEqual([200, 'no-store']);
+  expect(Object.keys(rep.results).length).toBeGreaterThan(0);
+  expect(rep.errors).toContain(RATE_LIMITED);
+  expect(fs.existsSync(path.join(env.dataDir(), '.cache', 'scans'))).toBe(false);
+  // Nothing kept it, so the next scan asks GitHub again, and a scan GitHub answered in full is kept as before.
+  world.repo.routes.delete(branch);
+  const again = await c.get('/api/scan/octo/demo');
+  expect([(await again.json()).cached, again.headers.get('cache-control')]).toEqual([
+    false,
+    'public, max-age=0, s-maxage=21600, stale-while-revalidate=600',
+  ]);
+  expect((await scanOr404('octo/demo', false)).cached).toBe(true);
 });
