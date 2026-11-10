@@ -164,7 +164,8 @@ function firstRun() {
   box.querySelector('summary').addEventListener('click', () => { S.layersTouched = true; });
   watchBusy();
   const c = S.guide.counts || {};
-  $('#foot').replaceChildren(
+  // Above the site's links, which index.html has in its footer from the start.
+  $('#foot').prepend(
     el('p', {}, `Built from what ${c.teams} projects in GitHub's Secure Open Source Fund changed: ${c.posts} posts by the teams, ${c.claims} claims with quotes, and the files and commits in their ${c.repos_scanned} repos.`));
 }
 

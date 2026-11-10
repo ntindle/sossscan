@@ -13,7 +13,44 @@
 <link rel="stylesheet" href="/shared/core.css">
 <link rel="stylesheet" href="/pipeline/pipeline.css">
 <script>try { var t = localStorage.getItem('pl:theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) { /* storage blocked */ }</script>
-<noscript><style>.scan__wait { display: none; }</style></noscript>
+<noscript><style>.scan__wait { display: none; } .is-booting #foot { display: block; }</style></noscript>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "@id": "https://sossscan.ntindle.com/#app",
+      "name": "sossscan",
+      "alternateName": "Secure Open Source guide",
+      "description": "A security scanner and guide for open source maintainers: scan a GitHub repository to find its security gaps and which one to fix first, with how projects in GitHub's Secure Open Source Fund fixed the same things.",
+      "url": "https://sossscan.ntindle.com/",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": 0, "priceCurrency": "USD" },
+      "author": {
+        "@type": "Person",
+        "name": "Nick Tindle",
+        "url": "https://ntindle.com",
+        "sameAs": ["https://github.com/ntindle"]
+      },
+      "license": "https://opensource.org/licenses/MIT",
+      "sameAs": ["https://github.com/ntindle/sossscan"]
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://sossscan.ntindle.com/#organization",
+      "name": "sossscan",
+      "url": "https://sossscan.ntindle.com/",
+      "email": "sossscan@ntindle.com",
+      "contactPoint": { "@type": "ContactPoint", "email": "sossscan@ntindle.com", "contactType": "customer support" },
+      "sameAs": ["https://github.com/ntindle/sossscan"]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 <a class="skip" href="#map">Skip to the pipeline map</a>
@@ -69,7 +106,16 @@
   <p class="vh" id="announce" aria-live="polite"></p>
 </main>
 
-<footer class="foot wrap" id="foot"></footer>
+<footer class="foot wrap" id="foot">
+<nav aria-label="Site"><ul class="foot__links">
+<li><a href="/about">About</a></li>
+<li><a href="/contact">Contact</a></li>
+<li><a href="/privacy">Privacy</a></li>
+<li><a href="/docs">Docs</a></li>
+<li><a href="https://github.com/ntindle/sossscan">GitHub</a></li>
+</ul></nav>
+<p>An independent project by <a href="https://github.com/ntindle">Nick Tindle</a>, not affiliated with GitHub.</p>
+</footer>
 
 <dialog class="sheet" id="sheet" aria-label="How to fix">
   <div class="sheet__bar">

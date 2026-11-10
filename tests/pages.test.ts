@@ -1,13 +1,23 @@
 /**
- * The text pages (lib/pages.ts, content/): each is served as HTML with real text, the site's links in its footer,
- * structured data that parses, and the same security headers as the rest.
+ * The text pages (lib/pages.ts, content/) and the home page's trust signals: each page is served as HTML with real
+ * text, the site's links in its footer, structured data that parses, and the same security headers as the rest.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match.js';
 import { describe, expect, it } from 'vitest';
 import { renderInline, renderMarkdown } from '@/lib/markdown.ts';
-import { AUTHOR_URL, FOOTER_LINKS, PAGES, pageHtml, pageMarkdown, pageTitle, REPO_URL, SITE } from '@/lib/pages.ts';
+import {
+  AUTHOR_URL,
+  FOOTER_LINKS,
+  footerHtml,
+  PAGES,
+  pageHtml,
+  pageMarkdown,
+  pageTitle,
+  REPO_URL,
+  SITE,
+} from '@/lib/pages.ts';
 import config, { CSP, SECURITY_HEADERS, TEXT_PAGES } from '@/next.config.ts';
 import { Browser } from './helpers.ts';
 
@@ -34,6 +44,15 @@ function jsonLd(html: string): any[] {
 
 function footerOf(html: string): string {
   return /<footer\b[\s\S]*?<\/footer>/.exec(html)?.[0] ?? '';
+}
+
+/** Every key anywhere in a JSON value. */
+function keysOf(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(keysOf);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([k, v]) => [k, ...keysOf(v)]);
+  }
+  return [];
 }
 
 describe('the text pages', () => {
@@ -185,7 +204,7 @@ describe('the facts on the pages', () => {
 });
 
 describe('the footer', () => {
-  it('has the site links in the HTML of every page', () => {
+  it('has the site links in the HTML of every page, the home page included', () => {
     expect(FOOTER_LINKS).toEqual([
       ['About', '/about'],
       ['Contact', '/contact'],
@@ -193,16 +212,64 @@ describe('the footer', () => {
       ['Docs', '/docs'],
       ['GitHub', REPO_URL],
     ]);
-    for (const html of PATHS.map(pageHtml)) {
+    for (const html of [INDEX, ...PATHS.map(pageHtml)]) {
       const foot = footerOf(html);
       for (const [label, href] of FOOTER_LINKS) expect(foot).toMatch(new RegExp(`<a href="${href}"[^>]*>${label}</a>`));
       expect(foot).toContain(`<a href="${AUTHOR_URL}">`);
     }
   });
 
+  it('is the same on the home page as on the text pages, before any script runs', () => {
+    expect(footerOf(INDEX)).toBe(footerHtml('/'));
+    // pipeline.js adds its line above the links rather than replacing them.
+    expect(read('public/pipeline/pipeline.js')).toContain("$('#foot').prepend(");
+  });
+
   it('marks the page you are on', () => {
     expect(footerOf(pageHtml('/privacy'))).toContain('<a href="/privacy" aria-current="page">Privacy</a>');
     expect(footerOf(pageHtml('/docs/api'))).not.toContain('aria-current');
+  });
+});
+
+describe("the home page's JSON-LD", () => {
+  const blocks = jsonLd(INDEX);
+  const graph: any[] = blocks[0]?.['@graph'] ?? [];
+
+  it('is one block that parses, with the app and the organization behind it', () => {
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]['@context']).toBe('https://schema.org');
+    expect(graph.map((node) => node['@type'])).toEqual(['WebApplication', 'Organization']);
+  });
+
+  it('describes the app', () => {
+    const app = graph[0];
+    expect(app).toMatchObject({
+      name: 'sossscan',
+      alternateName: 'Secure Open Source guide',
+      url: `${SITE}/`,
+      applicationCategory: 'SecurityApplication',
+      operatingSystem: 'Web',
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+      author: { '@type': 'Person', name: 'Nick Tindle', url: 'https://ntindle.com', sameAs: [AUTHOR_URL] },
+      license: 'https://opensource.org/licenses/MIT',
+      sameAs: [REPO_URL],
+    });
+    expect(app.description.length).toBeGreaterThan(50);
+    expect(INDEX).toContain(`<title>${app.alternateName}</title>`); // the page's own name
+  });
+
+  it('gives a way to reach the organization, and no address', () => {
+    expect(graph[1]).toMatchObject({
+      name: 'sossscan',
+      url: `${SITE}/`,
+      email: 'sossscan@ntindle.com',
+      contactPoint: { '@type': 'ContactPoint', email: 'sossscan@ntindle.com', contactType: 'customer support' },
+      sameAs: [REPO_URL],
+    });
+    const keys = keysOf(blocks);
+    expect(keys).not.toContain('address');
+    expect(JSON.stringify(blocks)).not.toContain('PostalAddress');
   });
 });
 

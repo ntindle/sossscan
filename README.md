@@ -131,7 +131,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `lib/agent.ts` | AI agent fixes through any OpenAI-compatible chat API. Off until configured. |
 | `lib/ossfuzz.ts`, `lib/ossfuzz.json` | Which repos have an OSS-Fuzz project. `npm run ossfuzz` refreshes the list. |
 | `lib/limits.ts` | Rate limits per visitor address. |
-| `public/index.html`, `public/pipeline/` | The page: the pipeline map. |
+| `public/index.html`, `public/pipeline/` | The page: the pipeline map. Its footer has the same links as the text pages' (`footerHtml` in `lib/pages.ts`; a test keeps them equal). |
 | `public/shared/` | The engine the page runs on: the scan panel, the fix panel, the AI prompts and "Fix it for me". `public/shared/README.md` is its contract. Also the text pages' styles and theme script (`text.css`, `theme.js`). |
 | `public/data/guide.json` | The guide data, built by `build/build_guide.py`. |
 | `build/skeleton.json`, `build/content/*.json` | The guide's structure (tiers, stages, attacks, settings links, `gh` commands, file templates, the settings-fix allowlist) and its prose per check. |

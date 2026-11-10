@@ -1,4 +1,5 @@
 /** The public site's hardening: security headers, per-address rate limits, input checks and retired pages. */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -34,9 +35,16 @@ it('allows every inline script by its hash, and no others', () => {
     .readdirSync(PUBLIC, { recursive: true, encoding: 'utf8' })
     .filter((f) => f.endsWith('.html'))
     .map((f) => fs.readFileSync(path.join(PUBLIC, f), 'utf8'));
-  const inline = pages.reduce((n, p) => n + (p.split('<script>').length - 1), 0);
-  expect(inline).toBeGreaterThanOrEqual(1);
-  expect(CSP.split("'sha256-").length - 1).toBe(inline);
+  // Every <script> without a src, the JSON-LD data block included (a browser never runs that one, so its hash is
+  // harmless). Two that are the same need one hash.
+  const inline = new Set(
+    pages.flatMap((p) => [...p.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1])),
+  );
+  expect(inline.size).toBeGreaterThanOrEqual(2); // the theme script and the home page's JSON-LD
+  for (const body of inline) {
+    expect(CSP).toContain(`'sha256-${createHash('sha256').update(body).digest('base64')}'`);
+  }
+  expect(CSP.split("'sha256-").length - 1).toBe(inline.size);
 });
 
 it('rate-limits public scans per address', async () => {

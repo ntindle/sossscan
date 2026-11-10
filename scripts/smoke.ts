@@ -55,6 +55,10 @@ check(
 );
 check('/index.html has the same CSP', (await get('/index.html')).headers.get('content-security-policy') === csp);
 check('no X-Powered-By header', !home.headers.has('x-powered-by'));
+check(
+  '/ has the site links in its footer and JSON-LD in its head',
+  page.includes('<a href="/docs">Docs</a>') && page.includes('<script type="application/ld+json">'),
+);
 for (const path of ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli']) {
   const r = await get(path);
   const html = await r.text();
