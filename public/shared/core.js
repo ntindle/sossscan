@@ -257,6 +257,34 @@ export function progress(items, report, repo) {
   return counts;
 }
 
+// ------------------------------------------------------------------------- what needs work, in what order
+// A high or medium finding puts a check ahead of the rest; a low one ranks like none.
+export const SEV_RANK = { high: 2, medium: 1 };
+// The buckets that need work: missing and partly done, at the repo's size.
+export const NEEDS_WORK = new Set(['fail', 'warn']);
+
+// Where one check stands after a scan, for a page that sorts and groups them. bucket is done, todo (no scan yet), skip
+// (doesn't apply), later (it starts above the repo's tier), or the status: fail, warn, info or open. lost is the impact
+// lost: all of it when the check is missing, half when it's partly done. sev is its worst finding (SEV_RANK, else 0).
+// tierId is the repo's tier, if known.
+export function checkRow(item, report, ctx = {}, tierId) {
+  const st = itemStatus(item, report, ctx.full);
+  const finds = findingsFor(item, report);
+  let bucket;
+  if (st.status === 'pass' || st.status === 'done') bucket = 'done';
+  else if (!report) bucket = 'todo';
+  else if (st.status === 'na' || !applies(item, ctx)) bucket = 'skip';
+  else if (tierId != null && item.tier > tierId) bucket = 'later';
+  else bucket = ['fail', 'warn', 'info'].includes(st.status) ? st.status : 'open';
+  const lost = bucket === 'fail' ? item.impact : bucket === 'warn' ? item.impact / 2 : 0;
+  return { item, st, finds, bucket, lost, sev: Math.max(0, ...finds.map((f) => SEV_RANK[f.severity] || 0)) };
+}
+
+// Most urgent first: a high, then medium, severity finding; then the most impact lost; then the quickest fix.
+export const byUrgency = (a, b) => b.sev - a.sev || b.lost - a.lost || a.item.effort - b.item.effort || a.item.tier - b.item.tier;
+// In the order to add them: by the tier where each one starts, then the most impact, then the quickest.
+export const byTier = (a, b) => a.item.tier - b.item.tier || b.item.impact - a.item.impact || a.item.effort - b.item.effort;
+
 // --------------------------------------------------------------------------- links and commands
 // Links that need a repo ({owner}/{repo}) are dropped until we know the repo.
 export function settingsLinks(item, ctx) {
@@ -331,16 +359,20 @@ const PROMPT_CHECK = {
   'test-security-tests': 'Run the test suite. Where you can, show the new test failing without the fix and passing with it.',
   'sast-oss-scanner': 'From the repository root, build the image (`docker build -f .oss-scanner/Dockerfile -t oss-scanner-test .`), then run the tests in it with no network (`docker run --rm --network none oss-scanner-test …`; the checkout is at /src). If a test needs the network, fetch what it needs in the Dockerfile or tell me; don’t skip the test.',
 };
+// The ground rules named here are also requirements in "Prompt to fix", which can cover every kind of check at once.
+const RULE_PIN = 'Pin any GitHub Action you add or change to a full 40-character commit SHA, with the version in a comment (`uses: owner/action@<sha> # v1.2.3`). Look the SHA up; never make one up.';
+const RULE_WEAKEN = 'Never weaken an existing check, test or permission to make something pass.';
+const RULE_FACTS = 'Don’t invent facts: no made-up email addresses, response times, supported versions, names or promises. Where the repository doesn’t tell you, leave a clear TODO for me.';
 const PROMPT_RULES = {
   code: [
     'Work on a new branch. Keep the change to what this fix needs: no unrelated refactoring or reformatting.',
-    'Pin any GitHub Action you add or change to a full 40-character commit SHA, with the version in a comment (`uses: owner/action@<sha> # v1.2.3`). Look the SHA up; never make one up.',
-    'Never weaken an existing check, test or permission to make something pass.',
+    RULE_PIN,
+    RULE_WEAKEN,
     'If the repository doesn’t match what this prompt describes, stop and ask me instead of guessing.',
     'Don’t change repository settings, secrets or anything else on GitHub itself. List what I need to do there instead.',
   ],
   doc: [
-    'Don’t invent facts: no made-up email addresses, response times, supported versions, names or promises. Where the repository doesn’t tell you, leave a clear TODO for me.',
+    RULE_FACTS,
     'Keep it short and plain, and link to existing docs instead of repeating them.',
     'Work on a new branch and change only the files this needs.',
   ],
@@ -364,6 +396,32 @@ function fence(code, lang = '') {
   return `${ticks}${lang}\n${code.replace(/\n+$/, '')}\n${ticks}`;
 }
 function whereOf(ctx) { return ctx.full ? `the GitHub repository ${ctx.full} (default branch: ${ctx.branch || 'main'})` : 'my GitHub repository'; }
+// Scan text comes from the repository (paths, titles, release names): keep each piece on one line, so none of it can start
+// a line of its own in a prompt, and quote paths as code.
+const oneLine = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
+const codeSpan = (t) => (t.includes('`') ? `\`\` ${t} \`\`` : `\`${t}\``);
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+// One finding as a list item. With a set of hints already given, a repeated hint is left out.
+function findingLine(f, seenHints = null) {
+  const at = f.path ? ` (${codeSpan(oneLine(`${f.path}${f.line ? `:${f.line}` : ''}`))})` : '';
+  const hint = f.hint && !(seenHints && seenHints.has(f.hint)) ? `. Hint: ${oneLine(f.hint)}` : '';
+  if (seenHints && f.hint) seenHints.add(f.hint);
+  return `- ${f.severity} severity: ${oneLine(f.title)}${at}${hint}`;
+}
+
+// The file a code or document fix starts from, filled in for this repository: {title, code, lang, note}, or null.
+function startingFile(item, ctx, st) {
+  const kind = promptKind(item);
+  const f = item.new_file;
+  if (!f || (kind !== 'code' && kind !== 'doc')) return null;
+  const file = { code: fill(f.template, ctx), lang: langOf(f.path) };
+  if (kind === 'code') return { ...file, title: `If the repository has no ${f.path} yet, start from this`, note: '' };
+  const has = st && st.status === 'warn';
+  return { ...file, title: has ? `What ${f.path} should cover` : `Start from this ${f.path}`,
+    note: has ? 'The repository already has a version of this file. Improve that one instead of replacing it: keep what’s accurate and add what’s missing.'
+      : 'Adapt it to this repository. First read the README, CONTRIBUTING, the release notes or CHANGELOG, the existing docs and the git history, so it describes the project as it really is.' };
+}
 
 function promptSections(item, report, ctx, level) {
   const kind = promptKind(item);
@@ -374,10 +432,8 @@ function promptSections(item, report, ctx, level) {
   const st = report ? itemStatus(item, report, ctx.full) : null;
   if (st && st.source === 'scan') {
     const finds = findingsFor(item, report);
-    const lines = [`Status from a scan of the repository: ${statusLabel(st).toLowerCase()}.${st.summary ? ` ${st.summary}` : ''}`];
-    for (const f of finds.slice(0, 15)) {
-      lines.push(`- ${f.severity} severity: ${f.title}${f.path ? ` in \`${f.path}\`${f.line ? ` line ${f.line}` : ''}` : ''}${f.hint ? `. Hint: ${f.hint}` : ''}`);
-    }
+    const lines = [`Status from a scan of the repository: ${statusLabel(st).toLowerCase()}.${st.summary ? ` ${oneLine(st.summary)}` : ''}`];
+    for (const f of finds.slice(0, 15)) lines.push(findingLine(f));
     if (finds.length > 15) lines.push(`- …and ${finds.length - 15} more like these. Find them all before you start.`);
     out.push(H('What a scan found'), lines.join('\n'));
   }
@@ -390,17 +446,13 @@ function promptSections(item, report, ctx, level) {
     const links = settingsLinks(item, ctx);
     if (links.length) out.push(`${cli ? 'Or I can' : 'I can'} change it myself on GitHub: ${links.map((l) => `${l.label}, ${l.url}`).join('; ')}.`);
   }
-  if (kind === 'doc' && item.new_file) {
-    const has = st && st.status === 'warn';
-    out.push(H(has ? `What ${item.new_file.path} should cover` : `Start from this ${item.new_file.path}`), fence(fill(item.new_file.template, ctx), langOf(item.new_file.path)),
-      has ? 'The repository already has a version of this file. Improve that one instead of replacing it: keep what’s accurate and add what’s missing.'
-        : 'Adapt it to this repository. First read the README, CONTRIBUTING, the release notes or CHANGELOG, the existing docs and the git history, so it describes the project as it really is.');
-  }
+  const start = startingFile(item, ctx, st);
+  if (kind === 'doc' && start) out.push(H(start.title), fence(start.code, start.lang), start.note);
   if ((item.steps || []).length) out.push(H(kind === 'setting' ? 'The steps, for reference' : 'How to fix it'), item.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'));
   if (kind !== 'setting') {
     const sn = (item.snippets || []).slice(0, 4);
     if (sn.length) out.push(H(sn.length === 1 ? 'Example' : 'Examples'), sn.map((x) => `${x.label ? `${x.label}:\n` : ''}${fence(fill(x.code, ctx), x.lang)}`).join('\n\n'));
-    if (kind === 'code' && item.new_file) out.push(H(`If the repository has no ${item.new_file.path} yet, start from this`), fence(fill(item.new_file.template, ctx), langOf(item.new_file.path)));
+    if (kind === 'code' && start) out.push(H(start.title), fence(start.code, start.lang));
   }
   const commits = (item.fix_commits || []).slice(0, 3);
   const ex = commits.length ? [] : (item.repo_examples || []).slice(0, 2);
@@ -422,26 +474,102 @@ export function agentPrompt(item, { report = null, ctx = ctxFromReport(report) }
   return `${[`# ${item.title}`, lead, ...promptSections(item, report, ctx, 2), '## Ground rules', rulesFor(item).map((r) => `- ${r}`).join('\n'), PROMPT_DONE[kind]].join('\n\n')}\n`;
 }
 
-// Several checks in one prompt, in the order given. Checks an agent can't help with are left out.
-export function agentPromptMany(items, { report = null, ctx = ctxFromReport(report), title = '' } = {}) {
-  const list = items.filter((it) => promptKind(it));
-  if (list.length < 2) return list.length ? agentPrompt(list[0], { report, ctx }) : null;
-  const parts = [
-    `# ${title || `${list.length} security fixes`}`,
-    `Fix these ${list.length} security problems in ${whereOf(ctx)}, one at a time and in this order. Make a separate commit for each one, and stop to ask me if one of them doesn’t fit this repository.`,
-    list.map((it, i) => `${i + 1}. ${it.title}`).join('\n'),
+// ---------------------------------------------------------------------------------- Prompt to fix
+// What "Prompt to fix" offers, from a page's rows (checkRow): the checks that need work at the repo's size, missing and
+// then partly done, most urgent first, and those that will once it grows (later), in the order to add them. Checks no
+// agent can help with aren't offered (outside), but they still count toward what needs work (need). recommended is the
+// most urgent few, as on is-agentic.com; all is every check offered. Null when nothing at the repo's size needs work an
+// agent can do, and then the page shows no button.
+export const PROMPT_PICKS = 5;
+export function promptChoices(rows, { max = PROMPT_PICKS } = {}) {
+  const need = rows.filter((r) => NEEDS_WORK.has(r.bucket));
+  const can = (r) => !!promptKind(r.item);
+  const now = need.filter(can).sort(byUrgency);
+  if (!now.length) return null;
+  const missing = now.filter((r) => r.bucket === 'fail');
+  const partly = now.filter((r) => r.bucket === 'warn');
+  const later = rows.filter((r) => r.bucket === 'later' && NEEDS_WORK.has(r.st.status) && can(r)).sort(byTier);
+  return {
+    missing, partly, later, outside: need.filter((r) => !can(r)).sort(byUrgency),
+    recommended: now.slice(0, max).map((r) => r.item.id),
+    all: [...missing, ...partly, ...later].map((r) => r.item.id),
+    need: { fail: need.filter((r) => r.bucket === 'fail').length, warn: need.filter((r) => r.bucket === 'warn').length },
+  };
+}
+
+const SCAN_NAME = { public: 'public scan', private: 'private scan', app: 'GitHub App check' };
+const stageOf = (item, guide) => ((guide && (guide.stagesById ? guide.stagesById[item.stage] : (guide.stages || []).find((s) => s.id === item.stage))) || {}).label || item.stage;
+const sentence = (t) => (t && !/[.!?…:]$/.test(t) ? `${t}.` : t);
+const pageOrigin = () => (typeof location === 'undefined' ? '' : location.origin);
+
+// One prompt for an AI coding agent, covering the checks picked (item ids) from promptChoices(): missing first, then
+// partly done, then the ones for later. Modeled on is-agentic.com's: the scan's result; for each fix the evidence, the
+// recommended fix and the current result; then requirements. site is this site's address, for the link back to the
+// report. Null when nothing is picked.
+export function fixPrompt(choices, picked, { report = null, ctx = ctxFromReport(report), guide = _guide, tier = report && report.tier, site = pageOrigin() } = {}) {
+  const on = new Set(picked);
+  const rows = [...choices.missing, ...choices.partly, ...choices.later].filter((r) => on.has(r.item.id));
+  if (!rows.length) return null;
+  const full = ctx.full || 'OWNER/REPO';
+  const link = site ? `${site}/?repo=${full}` : '';
+  const { fail, warn } = choices.need;
+  const now = rows.filter((r) => r.bucket !== 'later').length;
+  const later = rows.length - now;
+  const scans = [...new Set((report && (report.layers || [report.layer])) || [])].map((l) => SCAN_NAME[l]).filter(Boolean).join(' and ');
+  const date = report && /^\d{4}-\d\d-\d\d/.test(report.scanned_at || '') ? report.scanned_at.slice(0, 10) : '';
+  const about = [report && report.tool && report.tool.version ? `sosf-scan ${report.tool.version}` : '', scans && date ? `${scans} of ${date}` : scans].filter(Boolean).join(', ');
+  const result = [
+    `Current sossscan result: ${tier ? `tier ${tier.id} (${tier.name}); ` : ''}${plural(fail + warn, 'check')} ${fail + warn === 1 ? 'needs' : 'need'} work (${[fail && `${fail} missing`, warn && `${warn} partly done`].filter(Boolean).join(', ')}).`,
+    link ? `Full report: ${link}${about ? ` (${about})` : ''}.` : '',
+    now < fail + warn || later ? `This prompt covers ${now ? (now === fail + warn ? 'all of them' : `${now} of them`) : ''}${now && later ? ', plus ' : ''}${later ? `${plural(later, 'check')} for when the repository grows` : ''}.` : '',
   ];
-  list.forEach((it, i) => {
-    const kind = promptKind(it);
-    parts.push(`## ${i + 1}. ${it.title}`);
-    if (kind === 'setting') parts.push('This one is a repository setting, not a code change.');
-    if (kind === 'doc') parts.push('This one is a document to write.');
-    parts.push(...promptSections(it, report, ctx, 3));
-  });
-  const rules = [...new Set(list.flatMap(rulesFor))];
-  parts.push('## Ground rules for all of them', rules.map((r) => `- ${r}`).join('\n'),
-    'After each one, show me the diff or the result and explain it briefly. At the end, list anything I still need to do by hand.');
-  return `${parts.join('\n\n')}\n`;
+  const order = [rows.some((r) => r.bucket === 'fail') && 'missing', rows.some((r) => r.bucket === 'warn') && 'partly done', later && 'the ones for when the repository grows'].filter(Boolean);
+  const kinds = new Set(rows.map((r) => promptKind(r.item)));
+  const requirements = [
+    'Inspect the repository before you change anything, and stop to ask me if it doesn’t match what this prompt describes.',
+    'Work on a new branch, with a commit for each fix. Keep each change to what its fix needs: no unrelated refactoring or reformatting.',
+    'Follow each tool’s documented format exactly: GitHub Actions workflow syntax, dependabot.yml, CODEOWNERS and the rest.',
+    'Don’t change repository or organization settings or secrets yourself. List each change with its exact `gh` command or settings URL, and ask me first.',
+    kinds.has('code') && RULE_PIN, kinds.has('code') && RULE_WEAKEN, kinds.has('doc') && RULE_FACTS,
+    ...new Set(rows.flatMap((r) => PROMPT_ITEM_RULES[r.item.id] || [])),
+    'Preserve the project’s existing behavior, and keep CI green.',
+    'Add or update tests wherever behavior changes.',
+    `Verify each change locally first. The scan reads the default branch, so once the changes are merged, ${link ? `open ${link} and press Rescan, or run the scanner CLI (\`node sosf-scan.mjs ${full}\`, from ${site}/download/sosf-scan.mjs),` : 'scan the repository again'} and check that each fix reads Done.`,
+    'Finish with a concise summary of what you changed, the verification results, and anything that needs a maintainer’s decision or credentials.',
+  ].filter(Boolean);
+  return `${[
+    `Improve the security of github.com/${full}.`,
+    result.filter(Boolean).join(' '),
+    `Implement the following ${rows.length === 1 ? 'fix' : `fixes in priority order${order.length > 1 ? ` (${order[0]} first, then ${order.slice(1).join(', then ')})` : ''}`}:`,
+    ...rows.map((r, i) => fixItem(r, i + 1, { ctx, guide, tier })),
+    `Requirements:\n${requirements.map((x) => `- ${x}`).join('\n')}`,
+  ].join('\n\n')}\n`;
+}
+
+// One numbered fix: "Title (Stage, Missing)", then Evidence, Recommended fix and Current result.
+function fixItem(r, n, { ctx, guide, tier }) {
+  const { item, st } = r;
+  const kind = promptKind(item);
+  const label = statusLabel(st);
+  const lines = [`${n}. ${item.title} (${stageOf(item, guide)}, ${label})`];
+  // The summary and up to three findings, the most severe first.
+  const finds = [...r.finds].sort((a, b) => (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0));
+  const hints = new Set();
+  lines.push(`Evidence: ${sentence(oneLine(st.summary)) || 'The scan gave no details.'}`, ...finds.slice(0, 3).map((f) => findingLine(f, hints)));
+  if (finds.length > 3) lines.push(`- …and ${finds.length - 3} more like these. Find them all before you start.`);
+  lines.push(`Recommended fix: ${sentence(item.short || item.title)}${kind === 'setting' ? ' It’s a setting, not a file, so don’t change it yourself.' : ''}`);
+  lines.push(...(item.steps || []).map((s) => `- ${s}`));
+  const cli = cliFor(item, ctx);
+  if (cli) lines.push(`With the GitHub CLI (ask me first): ${codeSpan(cli)}`);
+  const links = settingsLinks(item, ctx);
+  if (links.length) lines.push(`On GitHub: ${links.map((l) => `${l.label}, ${l.url}`).join('; ')}`);
+  const start = startingFile(item, ctx, st);
+  if (start) lines.push(`${start.title}:\n${fence(start.code, start.lang)}${start.note ? `\n${start.note}` : ''}`);
+  if (PROMPT_CHECK[item.id]) lines.push(`Check your work: ${PROMPT_CHECK[item.id]}`);
+  if ((item.pitfalls || []).length) lines.push('Watch out:', ...item.pitfalls.map((p) => `- ${p}`));
+  const where = [SCAN_NAME[st.layer], r.finds.length ? plural(r.finds.length, 'finding') : ''].filter(Boolean).join(', ');
+  lines.push(`Current result: ${label}${where ? ` (${where})` : ''}.${r.bucket === 'later' ? ` It starts at tier ${item.tier}${tier ? `; the repository is tier ${tier.id}` : ''}.` : ''}`);
+  return lines.join('\n');
 }
 
 // ------------------------------------------------------------------------------- progress store
@@ -682,6 +810,122 @@ export function confirmDialog({ title, body, confirm = 'Confirm', cancel = 'Canc
     d.showModal();
     ok.focus();
   });
+}
+
+// ------------------------------------------------------------------------ "Prompt to fix" dialog
+// Pick the checks one prompt should cover, then copy it. choices is promptChoices(); opts go to fixPrompt(), plus opener,
+// the button to return focus to (Safari doesn't focus a button on click). Escape, Cancel or a click outside closes it.
+export function promptDialog(choices, opts = {}) {
+  const guide = opts.guide || _guide;
+  const back = opts.opener || document.activeElement;
+  const id = `sg-pick-${Math.random().toString(36).slice(2, 9)}`;
+  const picked = new Set(choices.recommended);
+  const boxes = new Map();
+  const need = choices.need.fail + choices.need.warn;
+  const tier = opts.tier || (opts.report && opts.report.tier);
+  const text = () => fixPrompt(choices, picked, opts);
+  let flash = ''; // "Copied" or "Select and copy" on the button, for a moment after copying
+  let timer = null;
+
+  // The live region sits inside the dialog: while it's open, everything outside is inert, page announcements included.
+  const live = el('p', { class: 'sg-sr', 'aria-live': 'polite' });
+  const say = (t) => { live.textContent = ''; requestAnimationFrame(() => { live.textContent = t; }); };
+  const sub = el('p', { class: 'sg-picker__sub', id: `${id}-sub` });
+  const code = el('code', { translate: 'no' });
+  const see = el('details', { class: 'sg-prompt__see sg-picker__see' }, el('summary', {}, 'Read the prompt first'), el('pre', { class: 'sg-wrap', tabindex: '0' }, code));
+  // Only when the text changes, so a selection made for copying by hand survives.
+  const show = () => { const t = text() || 'Pick at least one check.'; if (code.textContent !== t) code.textContent = t; };
+  see.addEventListener('toggle', () => { if (see.open) show(); });
+  const copy = el('button', { type: 'button', class: 'sg-btn sg-btn--primary' });
+  const cancel = el('button', { type: 'button', class: 'sg-btn' }, 'Cancel');
+  // The separators are for the eye; screen readers hear a pause instead.
+  const dot = () => [el('span', { 'aria-hidden': 'true' }, ' · '), el('span', { class: 'sg-sr' }, ', ')];
+
+  const sync = () => {
+    const n = picked.size;
+    sub.replaceChildren(`${plural(need, 'check')} ${need === 1 ? 'needs' : 'need'} work`, ...dot(), n ? `${n} selected` : 'none selected');
+    copy.textContent = flash || `Copy prompt (${n})`;
+    copy.disabled = !n;
+    if (see.open) show();
+  };
+  const choose = (ids) => {
+    picked.clear();
+    for (const x of ids) picked.add(x);
+    for (const [x, box] of boxes) box.checked = picked.has(x);
+    flash = '';
+    sync();
+    say(picked.size ? `${picked.size} selected.` : 'None selected.');
+  };
+  const preset = (label, ids) => el('button', { type: 'button', class: 'sg-btn sg-btn--small', onclick: () => choose(ids) }, label);
+
+  const row = (r) => {
+    const box = el('input', { type: 'checkbox', value: r.item.id, checked: picked.has(r.item.id) ? true : null });
+    box.addEventListener('change', () => { if (box.checked) picked.add(r.item.id); else picked.delete(r.item.id); flash = ''; sync(); });
+    boxes.set(r.item.id, box);
+    const meta = [stageOf(r.item, guide), el('span', { class: `sg-tone--${r.st.status === 'fail' ? 'fail' : 'warn'}` }, statusLabel(r.st)),
+      r.bucket === 'later' ? `From tier ${r.item.tier}` : null, r.finds.length ? plural(r.finds.length, 'finding') : null].filter(Boolean);
+    return el('li', {}, el('label', { class: 'sg-picker__row' }, box, el('span', { class: 'sg-picker__title' }, r.item.title), el('span', { class: 'sg-sr' }, ', '),
+      el('span', { class: 'sg-picker__meta' }, meta.flatMap((m, i) => (i ? [...dot(), m] : [m])))));
+  };
+  const group = (key, title, rows, note) => (rows.length ? el('fieldset', { class: 'sg-picker__group', 'aria-describedby': note ? `${id}-${key}` : null },
+    el('legend', {}, `${title} (${rows.length})`), note ? el('p', { class: 'sg-picker__note', id: `${id}-${key}` }, note) : null,
+    el('ul', {}, rows.map(row))) : null);
+  const outside = choices.outside.map((r) => r.item.title);
+
+  const d = el('dialog', { class: 'sg-dialog sg-picker', 'aria-labelledby': `${id}-title`, 'aria-describedby': `${id}-sub` },
+    el('h2', { class: 'sg-dialog__title', id: `${id}-title` }, 'What should the prompt cover?'),
+    sub,
+    el('div', { class: 'sg-picker__presets' },
+      preset(`Recommended (${choices.recommended.length})`, choices.recommended), preset(`All (${choices.all.length})`, choices.all), preset('None', [])),
+    el('div', { class: 'sg-dialog__body' },
+      group('fail', 'Missing', choices.missing),
+      group('warn', 'Partly done', choices.partly),
+      group('later', 'Later, as you grow', choices.later,
+        `These start above ${tier ? `tier ${tier.id}, this repo’s tier` : 'this repo’s tier'}. Add any you want to do early.`),
+      outside.length ? el('p', { class: 'sg-picker__note' }, `Not listed, because nothing in the repository changes for ${outside.length === 1 ? 'it' : 'them'}: ${outside.join('; ')}.`) : null,
+      el('p', { class: 'sg-picker__about' }, 'Paste the prompt into an AI coding agent working in your repository, such as Claude Code, Codex, Copilot or Cursor. Review what it changes before you merge.'),
+      see),
+    el('div', { class: 'sg-dialog__actions' }, live, cancel, copy));
+
+  copy.addEventListener('click', async () => {
+    const t = text();
+    if (!t) return;
+    clearTimeout(timer);
+    try {
+      await navigator.clipboard.writeText(t);
+      flash = 'Copied';
+      cancel.textContent = 'Close';
+      say(`Copied a prompt for ${plural(picked.size, 'check')}.`);
+    } catch {
+      // No clipboard (blocked, or not a secure page): show the prompt, selected, to copy by hand.
+      flash = 'Select and copy';
+      see.open = true;
+      show();
+      getSelection().selectAllChildren(code);
+      see.scrollIntoView({ block: 'nearest' });
+      say('Couldn’t copy. The prompt is shown below the list, selected: copy it yourself.');
+    }
+    sync();
+    timer = setTimeout(() => { flash = ''; sync(); }, 1500);
+  });
+  cancel.addEventListener('click', () => d.close());
+  // A click on the backdrop lands on the dialog itself, outside its box.
+  d.addEventListener('click', (e) => {
+    if (e.target !== d) return;
+    const r = d.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
+  });
+  d.addEventListener('close', () => {
+    clearTimeout(timer);
+    d.remove();
+    if (back && document.contains(back)) back.focus();
+  });
+  sync();
+  document.body.append(d);
+  d.showModal();
+  // Like confirmDialog: start on the main action, which copies the recommended checks.
+  copy.focus();
+  return d;
 }
 
 // ------------------------------------------------------------------------- fix it for me (app)

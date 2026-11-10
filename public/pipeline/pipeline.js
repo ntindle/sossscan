@@ -2,7 +2,7 @@
 // scan which stages are exposed and what to fix first, and open the full fix for every check on the way.
 import * as sg from '/shared/core.js';
 
-const { el } = sg;
+const { el, NEEDS_WORK, byUrgency } = sg;
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const WIDE = matchMedia('(min-width: 1080px)');
@@ -43,9 +43,7 @@ const STATION_GLYPH = { fail: 'cross', warn: 'bang', pass: 'check', open: 'dash'
 const ITEM_TONE = { pass: 'pass', done: 'pass', warn: 'warn', fail: 'fail', info: 'info', unknown: 'open', manual: 'open', todo: 'todo', na: 'skip' };
 const ITEM_GLYPH = { pass: 'check', done: 'check', warn: 'bang', fail: 'cross', info: 'info', unknown: 'query', manual: 'query', todo: null, na: 'dash' };
 const BUCKET_ORDER = { fail: 0, warn: 1, info: 2, open: 3, todo: 3, done: 4, later: 5, skip: 6 };
-const NEEDS_WORK = new Set(['fail', 'warn']);
-// A high or medium finding puts a check ahead of the rest; a low one ranks like none (as on the report card).
-const SEV_RANK = { high: 2, medium: 1 };
+// A check's worst finding (sg.SEV_RANK), in words.
 const SEV_WORD = { 2: 'high', 1: 'medium' };
 const GROUPS = [
   { id: 'work', title: 'Needs work', buckets: ['fail', 'warn'], open: true },
@@ -196,7 +194,7 @@ function buildModel() {
   const tierId = tier ? tier.id : null;
   const releaseAt = guide.stages.findIndex((s) => s.id === 'release');
   const stages = guide.stages.map((stage, index) => {
-    const rows = guide.items.filter((i) => i.stage === stage.id).map((item) => makeRow(item, tierId)).sort(byPriority);
+    const rows = guide.items.filter((i) => i.stage === stage.id).map((item) => sg.checkRow(item, report, S.ctx, tierId)).sort(byPriority);
     const c = { fail: 0, warn: 0, info: 0, open: 0, todo: 0, done: 0, later: 0, skip: 0 };
     for (const r of rows) c[r.bucket] += 1;
     const due = rows.length - c.later - c.skip;
@@ -215,30 +213,16 @@ function buildModel() {
   // Stages with gaps, worst first: by their most urgent check, then by how much impact the stage loses in all.
   const ranked = stages.filter((s) => s.worst).sort((a, b) => byUrgency(a.worst, b.worst) || b.lost - a.lost || a.index - b.index);
   return { tier, tierId, stages, byId: Object.fromEntries(stages.map((s) => [s.id, s])), ranked,
-    fixFirst: ranked.length ? { stage: ranked[0], row: ranked[0].worst } : null };
+    fixFirst: ranked.length ? { stage: ranked[0], row: ranked[0].worst } : null,
+    // What "Prompt to fix" offers; null hides the button.
+    choices: report ? sg.promptChoices(stages.flatMap((s) => s.rows)) : null };
 }
 
-function makeRow(item, tierId) {
-  const st = sg.itemStatus(item, S.report, S.ctx.full || S.repo);
-  const finds = sg.findingsFor(item, S.report);
-  let bucket;
-  if (st.status === 'pass' || st.status === 'done') bucket = 'done';
-  else if (!S.report) bucket = 'todo';
-  else if (st.status === 'na' || !sg.applies(item, S.ctx)) bucket = 'skip';
-  else if (tierId !== null && item.tier > tierId) bucket = 'later';
-  else bucket = ['fail', 'warn', 'info'].includes(st.status) ? st.status : 'open';
-  // Impact lost: all of it when the check is missing, half when it is partly done.
-  const lost = bucket === 'fail' ? item.impact : bucket === 'warn' ? item.impact / 2 : 0;
-  return { item, st, finds, bucket, lost, sev: Math.max(0, ...finds.map((f) => SEV_RANK[f.severity] || 0)) };
-}
-
-// Most urgent first: a high, then medium, severity finding; then the most impact lost; then the quickest fix.
-const byUrgency = (a, b) => b.sev - a.sev || b.lost - a.lost || a.item.effort - b.item.effort || a.item.tier - b.item.tier;
-
+// Rows come from sg.checkRow: what needs work, most urgent first (sg.byUrgency); the rest by bucket, then in the order
+// to add them (sg.byTier).
 function byPriority(a, b) {
   if (NEEDS_WORK.has(a.bucket) && NEEDS_WORK.has(b.bucket)) return byUrgency(a, b);
-  return BUCKET_ORDER[a.bucket] - BUCKET_ORDER[b.bucket]
-    || a.item.tier - b.item.tier || b.item.impact - a.item.impact || a.item.effort - b.item.effort;
+  return BUCKET_ORDER[a.bucket] - BUCKET_ORDER[b.bucket] || sg.byTier(a, b);
 }
 
 // The worst finding severity at a stage and how many findings have it: {word: 'high', n: 1}, or null.
@@ -317,19 +301,21 @@ function drawFirst() {
         ? [el('strong', { class: `sev--${SEV_WORD[row.sev]}` }, `${cap(SEV_WORD[row.sev])}-severity finding`), where]
         : `${sg.STATUS[row.st.status].label}, with ${lc(sg.IMPACT_LABEL[row.item.impact])} impact,${where}`)),
     el('div', { class: 'first__acts' },
-      el('button', { type: 'button', class: 'sg-btn sg-btn--primary first__go', 'data-fk': 'first', onclick: jumpToFirst }, 'Show the fix'),
-      agentPromptButton()));
+      el('button', { type: 'button', class: 'sg-btn sg-btn--primary first__go', 'data-fk': 'first', onclick: jumpToFirst }, 'Show the fix')));
 }
 
-// One prompt for an AI coding agent covering the most urgent fixes, in order. Checks no agent can do are left out.
-function agentPromptButton() {
-  const top = S.model.stages.flatMap((s) => s.rows).filter((r) => NEEDS_WORK.has(r.bucket) && sg.promptKind(r.item)).sort(byUrgency).slice(0, 3);
-  if (!top.length) return null;
-  const b = sg.copyButton(() => sg.agentPromptMany(top.map((r) => r.item), { report: S.report, ctx: S.ctx, title: `Security fixes for ${S.report.repo}` }),
-    top.length === 1 ? 'Copy an AI prompt for it' : `Copy one AI prompt for the top ${WORDS[top.length].toLowerCase()}`, 'sg-btn sg-btn--small');
-  b.dataset.fk = 'first:prompt';
-  b.title = 'For an AI coding agent such as Claude Code, Codex, Copilot or Cursor, working in your repository. Review what it changes.';
-  return b;
+// "Prompt to fix": one prompt for an AI coding agent, covering the checks someone picks in its dialog (most urgent first
+// to start with). Hidden when nothing needs work an agent can do. It's made once and kept across redraws, so the dialog
+// can always hand focus back to it, even when a scan lands while it's open.
+let promptBtn = null;
+function promptButton() {
+  if (!S.model.choices) return null;
+  promptBtn ||= el('button', {
+    type: 'button', class: 'sg-btn sg-btn--primary readout__prompt', 'data-fk': 'prompt', 'aria-haspopup': 'dialog',
+    title: 'One prompt for an AI coding agent such as Claude Code, Codex, Copilot or Cursor, covering the checks you pick',
+    onclick: () => sg.promptDialog(S.model.choices, { report: S.report, ctx: S.ctx, guide: S.guide, tier: S.model.tier, site: location.origin, opener: promptBtn }),
+  }, 'Prompt to fix');
+  return promptBtn;
 }
 
 // "Show the fix": open that stage and check. Wide screens move focus into the reader; phones open the sheet,
@@ -376,6 +362,7 @@ function drawReadout() {
   put(box,
     el('a', { class: 'readout__repo', href: m.html_url || `https://github.com/${r.repo}`, target: '_blank', rel: 'noopener', translate: 'no' }, r.repo),
     el('dl', { class: 'readout__facts' }, facts.map(([k, v]) => el('div', {}, el('dt', {}, k), el('dd', {}, v)))),
+    promptButton(),
     blurb ? el('p', { class: 'readout__note' }, `Tier ${t.id}, ${t.name}: ${blurb}`) : null,
     nextSize(t, m, num),
     S.model.ranked.length
@@ -612,7 +599,7 @@ function statusLine(r, tag, cls) {
 }
 
 function findsPreview(finds) {
-  const top = [...finds].sort((a, b) => (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0)).slice(0, 2);
+  const top = [...finds].sort((a, b) => (sg.SEV_RANK[b.severity] || 0) - (sg.SEV_RANK[a.severity] || 0)).slice(0, 2);
   return el('ul', { class: 'row__finds', 'aria-label': `What the scan found (${finds.length})` },
     top.map((f) => el('li', {},
       el('span', { class: `sev sev--${f.severity}` }, cap(f.severity)), ' ',

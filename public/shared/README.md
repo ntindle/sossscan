@@ -69,6 +69,10 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 - `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). `STATUS[status].label` / `.tone`.
 - `statusLabel(st)` is the label to show for one of those: `STATUS[status].label`, except for a check the scan couldn't read ("Could not read …"), which is "Couldn’t check, try again" from the public checks and "Couldn’t check" from the private layer, not "Needs a deeper scan".
 - `findingsFor(item, report)`, `applies(item, ctx)`, `progress(items, report, repo)` (returns `{pass, warn, fail, open, total, pct}`).
+- `checkRow(item, report, ctx, tierId)` is where one check stands, for a page that sorts and groups the checks: `{item, st, finds, bucket, lost, sev}`.
+  - `bucket` is `done`, `todo` (no scan yet), `skip` (doesn't apply), `later` (it starts above the repo's tier), or the status: `fail`, `warn`, `info` or `open`. `NEEDS_WORK` holds `fail` and `warn`.
+  - `lost` is the impact lost (all of it when missing, half when partly done), and `sev` the worst finding (`SEV_RANK`: high 2, medium 1, else 0).
+  - Sort with `byUrgency` (a high, then medium, finding; then the most impact lost; then the quickest fix) or `byTier` (the order to add them: by tier, then impact, then effort).
 
 **The fix**
 - `renderRemediation(item, {guide, report, ctx, onChange})` is the full fix panel:
@@ -81,9 +85,13 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - It covers one-click settings (`item.app_fix`) and pull request fixes (`pr_fixes` from `/api/app/status`).
   - It's hidden when the app can't fix the item or the item already passes. When it can't act, it says why: sign in, be an admin, install the app, or a missing permission.
   - `cls = {btn, primary}` passes the page's own button classes.
-- `promptBlock(item, {report, ctx, cls})`, `agentPrompt(item, {report, ctx})`, `agentPromptMany(items, {report, ctx, title})`, `promptKind(item)`:
+- `promptBlock(item, {report, ctx, cls})`, `agentPrompt(item, {report, ctx})`, `promptKind(item)`:
   - `promptKind` is `'code'`, `'doc'`, `'setting'` or `null` (no prompt for accounts, people and process checks).
   - The prompts are plain Markdown text built from the guide and the scan.
+- "Prompt to fix", one prompt for several checks, modeled on is-agentic.com's:
+  - `promptChoices(rows)` takes a page's `checkRow` rows and returns what to offer: `missing` and `partly` (what needs work at the repo's size, most urgent first), `later` (missing or partly done checks for a bigger repo, by tier), `recommended` (the `PROMPT_PICKS`, 5, most urgent ids), `all` (every id offered), and `need: {fail, warn}`, which also counts the checks no agent can do (`outside`, not offered). It's `null` when nothing at the repo's size needs work an agent can do; then a page shows no button.
+  - `fixPrompt(choices, pickedIds, {report, ctx, guide, tier, site})` is the prompt: the repository, the scan's result with a link back to `site`, the picked fixes (missing, then partly done, then later), each with its evidence, recommended fix and current result, then requirements. `null` when nothing is picked.
+  - `promptDialog(choices, {…fixPrompt's options, opener})` opens the picker, a modal `<dialog>` with presets, a checklist per group and a live count, and copies the prompt. Escape, Cancel or a click outside closes it, and focus returns to `opener`.
 - `confirmDialog({title, body, confirm, cancel, wide})` is a modal `<dialog>` that resolves `true` or `false` and returns focus afterwards.
 
 **Links, storage and the app**
