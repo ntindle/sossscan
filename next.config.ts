@@ -54,12 +54,16 @@ export const NEGOTIATED = ['/', ...TEXT_PAGES].map((page) => ({
 }));
 
 /**
- * Headers for the pages that come in two representations, matched against the address that was asked for, so they reach
- * both answers: the HTML, and the Markdown that proxy.ts rewrites the request to.
- * - Vary: Accept, so a browser or shared cache keeps the two apart. Vercel's CDN does anyway: they have different
- *   addresses behind the scenes, and its cache key includes Accept.
- * - Link: where the Markdown twin is, and the llms.txt that describes the site (https://llmstxt.org).
- * A twin asked for at its own address names its page as canonical, so search engines index the page, not the twin.
+ * Headers for the pages that come in two representations, and for their Markdown twins.
+ * - Vary: Accept on both, so a browser or shared cache keeps a page's HTML and Markdown apart. Vercel's CDN does
+ *   anyway: they have different addresses behind the scenes, and its cache key includes Accept.
+ *   Both need it. A page's rules are matched against the address that was asked for, so they reach its HTML and,
+ *   usually, the Markdown that proxy.ts rewrites the request to. But `next start --hostname 127.0.0.1` (or [::1])
+ *   can't tell that the rewrite stays on the same server: Next.js writes loopback hosts as localhost in the URL the
+ *   proxy builds, so it fetches the twin over HTTP as a new request and sends that answer back, with the twin's own
+ *   headers. With Vary on the twin too, the Markdown carries it either way.
+ * - Link: on a page, where its Markdown twin is and the llms.txt that describes the site (https://llmstxt.org). On a
+ *   twin, its page as canonical, so search engines index the page, not the twin.
  */
 export const NEGOTIATION_HEADERS = NEGOTIATED.flatMap(({ page, markdown }) => [
   {
@@ -71,7 +75,10 @@ export const NEGOTIATION_HEADERS = NEGOTIATED.flatMap(({ page, markdown }) => [
   },
   {
     source: markdown,
-    headers: [{ key: 'Link', value: `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"` }],
+    headers: [
+      { key: 'Vary', value: 'Accept' },
+      { key: 'Link', value: `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"` },
+    ],
   },
 ]);
 

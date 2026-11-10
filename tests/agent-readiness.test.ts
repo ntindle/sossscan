@@ -17,6 +17,7 @@ import config, {
   historyStopsAt,
   lastModified,
   NEGOTIATED,
+  NEGOTIATION_HEADERS,
   PAGE_DATES,
   PAGE_SOURCES,
   SECURITY_HEADERS,
@@ -24,13 +25,14 @@ import config, {
 } from '@/next.config.ts';
 import { config as proxyConfig } from '@/proxy.ts';
 import { routeFor } from './helpers.ts';
-import { proxyRuns, serve } from './site.ts';
+import { proxyRuns, type Rewrites, serve } from './site.ts';
 
 const ROOT = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const ALL = ['/', ...PAGES.map((p) => p.path)];
 const MD = { accept: 'text/markdown' };
 const HTML = { accept: 'text/html' };
+const REWRITES: Rewrites[] = ['internal', 'proxied'];
 
 /** The tokens of a Vary header, in lowercase. */
 const varies = (res: Response) => (res.headers.get('vary') ?? '').split(',').map((s) => s.trim().toLowerCase());
@@ -65,66 +67,89 @@ describe('Markdown content negotiation', () => {
     }
   });
 
-  it.each(ALL)('sends %s as Markdown to a request that asks for it, with Vary: Accept', async (page) => {
-    const res = await serve(page, { headers: MD });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
-    expect(varies(res)).toContain('accept');
-    const body = await res.text();
-    expect(body).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
-    expect(body).toMatch(/^# \S/);
-    expect(res.headers.get('link')).toBe(
-      `<${markdownPath(page)}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`,
-    );
-  });
-
-  it.each(ALL)('still sends %s as HTML to a browser, with Vary: Accept', async (page) => {
-    for (const accept of [
-      'text/html',
-      'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      '*/*',
-      'text/*',
-      'text/markdown;q=0, text/html',
-    ]) {
-      const res = await serve(page, { headers: { accept } });
-      expect(res.status, accept).toBe(200);
-      expect(res.headers.get('content-type')?.toLowerCase(), accept).toBe(HTML_TYPE);
-      expect(varies(res), accept).toContain('accept');
-      expect((await res.text()).startsWith('<!doctype html>'), accept).toBe(true);
-    }
-    const plain = await serve(page); // no Accept header at all
-    expect(plain.headers.get('content-type')?.toLowerCase()).toBe(HTML_TYPE);
-    expect(varies(plain)).toContain('accept');
-  });
-
-  it('gives agents that list Markdown first the Markdown', async () => {
-    const res = await serve('/', { headers: { accept: 'text/markdown, text/html, */*' } });
-    expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
-  });
-
-  it.each(ALL)('answers HEAD for %s as it answers GET, without a body', async (page) => {
-    for (const headers of [MD, HTML]) {
-      const [get, head] = [await serve(page, { headers }), await serve(page, { method: 'HEAD', headers })];
-      expect(head.status).toBe(get.status);
-      expect([...head.headers]).toEqual([...get.headers]);
-      expect(await head.text()).toBe('');
-    }
-  });
-
-  it('answers 406 when Accept rules out both, saying what the page comes in, and nothing caches it', async () => {
-    for (const accept of ['application/json', 'image/*', 'text/markdown;q=0']) {
-      const res = await serve('/about', { headers: { accept } });
-      expect(res.status, accept).toBe(406);
-      expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
-      expect(res.headers.get('cache-control')).toBe('no-store');
+  // Both ways a server can carry out the proxy's rewrite (tests/site.ts). The local service, next start with
+  // --hostname 127.0.0.1, does it the second way, where the Markdown comes back with the twin's own headers.
+  describe.each(REWRITES)('with %s rewrites', (rewrites) => {
+    it.each(ALL)('sends %s as Markdown to a request that asks for it, with Vary: Accept', async (page) => {
+      const res = await serve(page, { headers: MD, rewrites });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
       expect(varies(res)).toContain('accept');
+      expect(varies(res).filter((token) => token === 'accept')).toHaveLength(1);
       const body = await res.text();
-      expect(body).toContain('text/html');
-      expect(body).toContain('text/markdown');
+      expect(body).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
+      expect(body).toMatch(/^# \S/);
+      // The page's Link names the twin; a twin fetched on its own names the page as canonical. Both hold.
+      expect(res.headers.get('link')).toBe(
+        rewrites === 'internal'
+          ? `<${markdownPath(page)}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`
+          : `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`,
+      );
+      for (const { key, value } of SECURITY_HEADERS) expect(res.headers.get(key), key).toBe(value);
+    });
+
+    it.each(ALL)('still sends %s as HTML to a browser, with Vary: Accept', async (page) => {
+      for (const accept of [
+        'text/html',
+        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '*/*',
+        'text/*',
+        'text/markdown;q=0, text/html',
+      ]) {
+        const res = await serve(page, { headers: { accept }, rewrites });
+        expect(res.status, accept).toBe(200);
+        expect(res.headers.get('content-type')?.toLowerCase(), accept).toBe(HTML_TYPE);
+        expect(varies(res), accept).toContain('accept');
+        expect((await res.text()).startsWith('<!doctype html>'), accept).toBe(true);
+      }
+      const plain = await serve(page, { rewrites }); // no Accept header at all
+      expect(plain.headers.get('content-type')?.toLowerCase()).toBe(HTML_TYPE);
+      expect(varies(plain)).toContain('accept');
+    });
+
+    it('gives agents that list Markdown first the Markdown', async () => {
+      const res = await serve('/', { headers: { accept: 'text/markdown, text/html, */*' }, rewrites });
+      expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
+      expect(varies(res)).toContain('accept');
+    });
+
+    it.each(ALL)('answers HEAD for %s as it answers GET, without a body', async (page) => {
+      for (const headers of [MD, HTML]) {
+        const get = await serve(page, { headers, rewrites });
+        const head = await serve(page, { method: 'HEAD', headers, rewrites });
+        expect(head.status).toBe(get.status);
+        expect([...head.headers]).toEqual([...get.headers]);
+        expect(await head.text()).toBe('');
+      }
+    });
+
+    it('answers 406 when Accept rules out both, saying what the page comes in, and nothing caches it', async () => {
+      for (const accept of ['application/json', 'image/*', 'text/markdown;q=0']) {
+        const res = await serve('/about', { headers: { accept }, rewrites });
+        expect(res.status, accept).toBe(406);
+        expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+        expect(res.headers.get('cache-control')).toBe('no-store');
+        expect(varies(res)).toContain('accept');
+        const body = await res.text();
+        expect(body).toContain('text/html');
+        expect(body).toContain('text/markdown');
+      }
+      const head = await serve('/', { method: 'HEAD', headers: { accept: 'application/pdf' }, rewrites });
+      expect(head.status).toBe(406);
+      expect(await head.text()).toBe('');
+    });
+  });
+
+  it('puts Vary: Accept on each page and on its twin, the two places its Markdown can come from', () => {
+    const vary = (source: string) =>
+      NEGOTIATION_HEADERS.filter((rule) => rule.source === source)
+        .flatMap((rule) => rule.headers)
+        .filter((h) => h.key.toLowerCase() === 'vary')
+        .map((h) => h.value);
+    for (const { page, markdown } of NEGOTIATED) {
+      expect(vary(page), page).toEqual(['Accept']);
+      expect(vary(markdown), markdown).toEqual(['Accept']);
     }
-    const head = await serve('/', { method: 'HEAD', headers: { accept: 'application/pdf' } });
-    expect(head.status).toBe(406);
-    expect(await head.text()).toBe('');
   });
 
   it('leaves other methods to the page, whatever they accept', async () => {
@@ -138,7 +163,7 @@ describe('Markdown content negotiation', () => {
     expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
     expect(await res.text()).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
     expect(res.headers.get('link')).toBe(`<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`);
-    expect(varies(res)).not.toContain('accept'); // the twin is Markdown whatever the request accepts
+    expect(varies(res)).toContain('accept');
   });
 
   it('prerenders every twin, and keeps the files they read in the trace', () => {

@@ -11,8 +11,8 @@ import { markdownPath, negotiate, NOT_ACCEPTABLE } from './lib/negotiate.ts';
  * read the request. And with each representation at its own address behind the scenes, a cache keyed on that address
  * can't mix them. On Vercel this runs before the CDN cache, whose key also includes the Accept header
  * (https://vercel.com/docs/caching/cdn-cache). Browsers and other caches only see the page's own address, so both
- * answers carry Vary: Accept, from the headers next.config.ts sets for these paths (matched against the address that
- * was asked for, before this rewrite).
+ * answers carry Vary: Accept, from the headers next.config.ts sets for the pages and for their twins (it explains why
+ * the twins need it too).
  */
 export function proxy(request: NextRequest): Response {
   const { pathname } = request.nextUrl;
