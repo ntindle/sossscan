@@ -22,7 +22,7 @@ COPY --from=build /srv/site/package.json /srv/site/next.config.ts ./
 COPY --from=build /srv/site/node_modules ./node_modules
 COPY --from=build /srv/site/.next ./.next
 COPY --from=build /srv/site/public ./public
-# The text pages' Markdown: they're prerendered, so only a page that renders per request would read it.
+# The text pages' Markdown, which each page reads when it first renders.
 COPY --from=build /srv/site/content ./content
 EXPOSE 8080
 # Start as root only to hand the mounted volume to the node user, then drop to that user for good.

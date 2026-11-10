@@ -2,11 +2,16 @@
  * The site's text pages: About, Contact, Privacy, the developer docs and the page for AI agents. Each is one Markdown
  * file in content/ at its URL path (/docs/api is content/docs/api.md), written once and served two ways:
  * - pageHtml(path): the Markdown rendered by lib/markdown.ts inside the site's header and footer. The route handlers
- *   (app/about/route.ts and the rest) return it, prerendered at build time.
+ *   (app/about/route.ts and the rest) return it.
  * - pageMarkdown(path): the Markdown itself, at the page's Markdown twin (/about.md, from app/about.md/route.ts), and
  *   at the page's own address for requests that ask for Markdown (proxy.ts). The home page's twin is /index.md
  *   (lib/home.ts).
  * PAGES lists them all, with the description and schema.org type each one's HTML needs.
+ *
+ * Each of those routes answers with Vary: Accept, which caches need because one address serves both. That's why they
+ * render per request instead of being prerendered: Vercel sends a prerendered route with the Vary Next.js gives it,
+ * which lists Next.js's own headers and not Accept, while a route that renders per request keeps the Vary it sets.
+ * The text is rendered once per server instance, and the CDN keeps each answer for a day (PAGE_CACHE_CONTROL).
  *
  * Addresses no route or file answers get notFound(), a 404 with a page in the same style, or Markdown for requests that
  * ask for it (app/[...path]/route.ts).
@@ -244,13 +249,34 @@ export function pageHtml(urlPath: string): string {
 /** A GET handler that returns the page. */
 export function pageRoute(urlPath: string): () => Response {
   pageAt(urlPath);
-  return () => new Response(pageHtml(urlPath), { headers: { 'Content-Type': HTML_TYPE } });
+  return () => pageResponse(`html ${urlPath}`, HTML_TYPE, () => pageHtml(urlPath));
 }
 
 /** A GET handler for a page's Markdown twin (/about.md), or the home page's (/index.md). */
 export function markdownRoute(urlPath: string): () => Response {
   if (urlPath !== '/') pageAt(urlPath);
-  return () => new Response(markdownFor(urlPath), { headers: { 'Content-Type': MARKDOWN_TYPE } });
+  return () => pageResponse(`markdown ${urlPath}`, MARKDOWN_TYPE, () => markdownFor(urlPath));
+}
+
+/**
+ * How long caches may keep a page. A page changes only when the site is deployed, and each deployment has its own CDN
+ * cache on Vercel, so the CDN keeps an answer for a day and serves it for a week more while it fetches a new one.
+ * Browsers check back each time (max-age=0).
+ */
+export const PAGE_CACHE_CONTROL = 'public, max-age=0, s-maxage=86400, stale-while-revalidate=604800';
+
+/** Each page's rendered text, made on its first request: it can't change while the server runs. */
+const rendered = new Map<string, string>();
+
+function pageResponse(key: string, type: string, render: () => string): Response {
+  let text = rendered.get(key);
+  if (text === undefined) {
+    text = render();
+    rendered.set(key, text);
+  }
+  return new Response(text, {
+    headers: { 'Content-Type': type, Vary: 'Accept', 'Cache-Control': PAGE_CACHE_CONTROL },
+  });
 }
 
 /**

@@ -12,7 +12,16 @@ import { getSortedRoutes } from 'next/dist/shared/lib/router/utils/sorted-routes
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { homeMarkdown } from '@/lib/home.ts';
 import { HTML_TYPE, MARKDOWN_TYPE, markdownPath } from '@/lib/negotiate.ts';
-import { headMetadataHtml, NOT_FOUND_MARKDOWN, OG_IMAGE, PAGES, pageHtml, pageMarkdown, SITE } from '@/lib/pages.ts';
+import {
+  headMetadataHtml,
+  NOT_FOUND_MARKDOWN,
+  OG_IMAGE,
+  PAGE_CACHE_CONTROL,
+  PAGES,
+  pageHtml,
+  pageMarkdown,
+  SITE,
+} from '@/lib/pages.ts';
 import config, {
   historyStopsAt,
   lastModified,
@@ -25,14 +34,14 @@ import config, {
 } from '@/next.config.ts';
 import { config as proxyConfig } from '@/proxy.ts';
 import { routeFor } from './helpers.ts';
-import { proxyRuns, type Rewrites, serve } from './site.ts';
+import { type Host, proxyRuns, serve } from './site.ts';
 
 const ROOT = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const ALL = ['/', ...PAGES.map((p) => p.path)];
 const MD = { accept: 'text/markdown' };
 const HTML = { accept: 'text/html' };
-const REWRITES: Rewrites[] = ['internal', 'proxied'];
+const HOSTS: Host[] = ['next', 'next-loopback', 'vercel'];
 
 /** The tokens of a Vary header, in lowercase. */
 const varies = (res: Response) => (res.headers.get('vary') ?? '').split(',').map((s) => s.trim().toLowerCase());
@@ -67,24 +76,24 @@ describe('Markdown content negotiation', () => {
     }
   });
 
-  // Both ways a server can carry out the proxy's rewrite (tests/site.ts). The local service, next start with
-  // --hostname 127.0.0.1, does it the second way, where the Markdown comes back with the twin's own headers.
-  describe.each(REWRITES)('with %s rewrites', (rewrites) => {
+  // Each kind of server that answers for the site (tests/site.ts). On Vercel, a prerendered route's Vary isn't ours to
+  // set, and the local service (next start --hostname 127.0.0.1) answers the Markdown with the twin's own headers.
+  describe.each(HOSTS)('on %s', (host) => {
     it.each(ALL)('sends %s as Markdown to a request that asks for it, with Vary: Accept', async (page) => {
-      const res = await serve(page, { headers: MD, rewrites });
+      const res = await serve(page, { headers: MD, host });
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
       expect(varies(res)).toContain('accept');
-      expect(varies(res).filter((token) => token === 'accept')).toHaveLength(1);
       const body = await res.text();
       expect(body).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
       expect(body).toMatch(/^# \S/);
       // The page's Link names the twin; a twin fetched on its own names the page as canonical. Both hold.
       expect(res.headers.get('link')).toBe(
-        rewrites === 'internal'
-          ? `<${markdownPath(page)}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`
-          : `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`,
+        host === 'next-loopback'
+          ? `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`
+          : `<${markdownPath(page)}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`,
       );
+      expect(res.headers.get('cache-control')).toBe(PAGE_CACHE_CONTROL);
       for (const { key, value } of SECURITY_HEADERS) expect(res.headers.get(key), key).toBe(value);
     });
 
@@ -96,27 +105,27 @@ describe('Markdown content negotiation', () => {
         'text/*',
         'text/markdown;q=0, text/html',
       ]) {
-        const res = await serve(page, { headers: { accept }, rewrites });
+        const res = await serve(page, { headers: { accept }, host });
         expect(res.status, accept).toBe(200);
         expect(res.headers.get('content-type')?.toLowerCase(), accept).toBe(HTML_TYPE);
         expect(varies(res), accept).toContain('accept');
         expect((await res.text()).startsWith('<!doctype html>'), accept).toBe(true);
       }
-      const plain = await serve(page, { rewrites }); // no Accept header at all
+      const plain = await serve(page, { host }); // no Accept header at all
       expect(plain.headers.get('content-type')?.toLowerCase()).toBe(HTML_TYPE);
       expect(varies(plain)).toContain('accept');
     });
 
     it('gives agents that list Markdown first the Markdown', async () => {
-      const res = await serve('/', { headers: { accept: 'text/markdown, text/html, */*' }, rewrites });
+      const res = await serve('/', { headers: { accept: 'text/markdown, text/html, */*' }, host });
       expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
       expect(varies(res)).toContain('accept');
     });
 
     it.each(ALL)('answers HEAD for %s as it answers GET, without a body', async (page) => {
       for (const headers of [MD, HTML]) {
-        const get = await serve(page, { headers, rewrites });
-        const head = await serve(page, { method: 'HEAD', headers, rewrites });
+        const get = await serve(page, { headers, host });
+        const head = await serve(page, { method: 'HEAD', headers, host });
         expect(head.status).toBe(get.status);
         expect([...head.headers]).toEqual([...get.headers]);
         expect(await head.text()).toBe('');
@@ -125,7 +134,7 @@ describe('Markdown content negotiation', () => {
 
     it('answers 406 when Accept rules out both, saying what the page comes in, and nothing caches it', async () => {
       for (const accept of ['application/json', 'image/*', 'text/markdown;q=0']) {
-        const res = await serve('/about', { headers: { accept }, rewrites });
+        const res = await serve('/about', { headers: { accept }, host });
         expect(res.status, accept).toBe(406);
         expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
         expect(res.headers.get('cache-control')).toBe('no-store');
@@ -134,47 +143,59 @@ describe('Markdown content negotiation', () => {
         expect(body).toContain('text/html');
         expect(body).toContain('text/markdown');
       }
-      const head = await serve('/', { method: 'HEAD', headers: { accept: 'application/pdf' }, rewrites });
+      const head = await serve('/', { method: 'HEAD', headers: { accept: 'application/pdf' }, host });
       expect(head.status).toBe(406);
       expect(await head.text()).toBe('');
     });
+
+    it.each(ALL)('serves the Markdown of %s at its .md twin, which names the page as canonical', async (page) => {
+      const res = await serve(markdownPath(page), { host });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
+      expect(await res.text()).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
+      expect(res.headers.get('link')).toBe(`<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`);
+      expect(varies(res)).toContain('accept');
+    });
   });
 
-  it('puts Vary: Accept on each page and on its twin, the two places its Markdown can come from', () => {
-    const vary = (source: string) =>
-      NEGOTIATION_HEADERS.filter((rule) => rule.source === source)
-        .flatMap((rule) => rule.headers)
-        .filter((h) => h.key.toLowerCase() === 'vary')
-        .map((h) => h.value);
-    for (const { page, markdown } of NEGOTIATED) {
-      expect(vary(page), page).toEqual(['Accept']);
-      expect(vary(markdown), markdown).toEqual(['Accept']);
+  it("renders every page and twin per request, since Vercel replaces a prerendered route's Vary with its own", () => {
+    expect(NEGOTIATED.map((n) => n.markdown)).toEqual(ALL.map(markdownPath));
+    const routes = [
+      ...PAGES.map((p) => [p.path, `pageRoute('${p.path}')`]),
+      ...NEGOTIATED.map((n) => [n.markdown, `markdownRoute('${n.page}')`]),
+    ];
+    for (const [address, call] of routes) {
+      const route = read(`app${address}/route.ts`);
+      expect(route, address).toContain("export const dynamic = 'force-dynamic';");
+      expect(route, address).not.toContain('force-static');
+      expect(route, address).toContain(call);
+      // It reads its Markdown when it first renders, so the deployment has to include it.
+      expect(config.outputFileTracingIncludes?.[address], address).toContain('./content/**/*.md');
     }
+    expect(config.outputFileTracingIncludes?.['/index.md']).toContain('./public/data/guide.json');
+  });
+
+  it('has each page and twin route set Vary: Accept, its type and a cache header on its own answer', async () => {
+    const routes = [...PAGES.map((p) => [p.path, HTML_TYPE]), ...NEGOTIATED.map((n) => [n.markdown, MARKDOWN_TYPE])];
+    for (const [address, type] of routes) {
+      const { GET } = await routeFor(address)![1]();
+      const res: Response = await GET();
+      expect(res.headers.get('vary'), address).toBe('Accept');
+      expect(res.headers.get('content-type'), address).toBe(type);
+      expect(res.headers.get('cache-control'), address).toBe(PAGE_CACHE_CONTROL);
+      expect((await res.text()).length, address).toBeGreaterThan(100);
+    }
+  });
+
+  it('sets Vary in next.config.ts only for the home page, whose HTML is a file', () => {
+    const vary = NEGOTIATION_HEADERS.filter((rule) => rule.headers.some((h) => h.key.toLowerCase() === 'vary'));
+    expect(vary.map((rule) => rule.source)).toEqual(['/']);
+    expect(fs.existsSync(path.join(ROOT, 'public/index.html'))).toBe(true);
   });
 
   it('leaves other methods to the page, whatever they accept', async () => {
     const res = await serve('/about', { method: 'POST', headers: MD });
     expect(res.status).toBe(405);
-  });
-
-  it.each(ALL)('serves the Markdown of %s at its .md twin, which names the page as canonical', async (page) => {
-    const res = await serve(markdownPath(page));
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe(MARKDOWN_TYPE);
-    expect(await res.text()).toBe(page === '/' ? homeMarkdown() : pageMarkdown(page));
-    expect(res.headers.get('link')).toBe(`<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"`);
-    expect(varies(res)).toContain('accept');
-  });
-
-  it('prerenders every twin, and keeps the files they read in the trace', () => {
-    expect(NEGOTIATED.map((n) => n.markdown)).toEqual(ALL.map(markdownPath));
-    for (const { page, markdown } of NEGOTIATED) {
-      const route = read(`app${markdown}/route.ts`);
-      expect(route).toContain("export const dynamic = 'force-static';");
-      expect(route).toContain(`markdownRoute('${page}')`);
-      expect(config.outputFileTracingIncludes?.[markdown]).toContain('./content/**/*.md');
-    }
-    expect(config.outputFileTracingIncludes?.['/index.md']).toContain('./public/data/guide.json');
   });
 
   it('lets the HTML say where its Markdown is', () => {
@@ -222,6 +243,14 @@ describe('404s', () => {
       expect(html).toContain('<title>Page not found · sossscan</title>');
       expect(html).toContain('<link rel="stylesheet" href="/shared/text.css">');
       expect(html).toContain('<a href="/llms.txt">llms.txt</a>');
+    }
+  });
+
+  it.each(HOSTS)('keeps Vary: Accept on the 404 on %s, from its own route', async (host) => {
+    for (const headers of [MD, HTML]) {
+      const res = await serve('/some-path-that-does-not-exist', { headers, host });
+      expect(res.status).toBe(404);
+      expect(varies(res)).toContain('accept');
     }
   });
 
