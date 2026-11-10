@@ -7,6 +7,7 @@ import path from 'node:path';
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match.js';
 import { describe, expect, it } from 'vitest';
 import { renderInline, renderMarkdown } from '@/lib/markdown.ts';
+import { markdownPath } from '@/lib/negotiate.ts';
 import {
   AUTHOR_URL,
   FOOTER_LINKS,
@@ -87,6 +88,7 @@ describe('the text pages', () => {
       'sossscan docs',
       'sossscan API',
       'sossscan CLI',
+      'sossscan for AI agents',
     ]);
     for (const page of PAGES) {
       expect(pageMarkdown(page.path)).toMatch(/^# \S/);
@@ -105,11 +107,15 @@ describe('the text pages', () => {
   it('only links to pages and files that exist, and to sections that exist', () => {
     const pages = new Map(PAGES.map((p) => [p.path, pageHtml(p.path)]));
     pages.set('/', INDEX);
+    // Routes that aren't pages: each page's Markdown twin, and the sitemap.
+    const routes = new Set([...[...pages.keys()].map(markdownPath), '/sitemap.xml']);
     for (const [from, html] of pages) {
       for (const [, target] of html.matchAll(/\b(?:href|src)="((?:\/|#)[^"]*)"/g)) {
         const [where, section] = target.split('#');
         const to = where || from;
-        if (!pages.has(to)) expect(fs.existsSync(path.join(ROOT, 'public', to)), `${from} links ${target}`).toBe(true);
+        if (!pages.has(to) && !routes.has(to)) {
+          expect(fs.existsSync(path.join(ROOT, 'public', to)), `${from} links ${target}`).toBe(true);
+        }
         if (section) expect(pages.get(to), `${from} links ${target}`).toContain(`id="${section}"`);
       }
     }

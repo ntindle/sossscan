@@ -117,15 +117,19 @@ npm run build          # set SITE_BASE_URL to the public address for a real depl
 
 ## Layout
 
-The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`. The text pages (About, Contact, Privacy and the docs) are route handlers too, rendered from Markdown.
+The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`. The text pages (About, Contact, Privacy, the docs and the page for AI agents) are route handlers too, rendered from Markdown. Every page also comes as Markdown, for agents: at its address with `.md` added (`/index.md` for the home page), and at its own address for requests that send `Accept: text/markdown`.
 
 | Path | What |
 |---|---|
 | `app/api/scan/`, `app/api/health/` | The public scan API and a health check. |
-| `content/` | The text pages' Markdown, one file per page at its address: `/docs/api` is `content/docs/api.md`. |
-| `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/` and `app/docs/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
+| `content/` | The text pages' Markdown, one file per page at its address: `/docs/api` is `content/docs/api.md`. `content/index.md` starts the home page's Markdown. |
+| `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/`, `app/docs/` and `app/agents/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
+| `proxy.ts`, `lib/negotiate.ts` | Markdown content negotiation (acceptmarkdown.com) for the home page and the text pages: a request whose `Accept` header prefers Markdown is rewritten to the page's Markdown twin (`app/about.md/`, `app/index.md/` and the rest), and one that rules out both HTML and Markdown gets 406. `next.config.ts` adds `Vary: Accept` to both answers. |
+| `lib/home.ts` | The home page as Markdown: `content/index.md`, then every stage and check, listed from `public/data/guide.json`. |
+| `app/[...path]/` | Every address nothing else answers: a 404, as Markdown for requests that ask for it and as a page in the site's style otherwise. Next.js tries it after every file and route. |
+| `public/llms.txt`, `public/robots.txt`, `app/sitemap.ts` | For agents and crawlers: an index of the site in the llms.txt format, the crawl rules (crawlers stay out of `/api/` and `/app/`), and a sitemap dated by each page's last commit (`PAGE_DATES` in `next.config.ts`). |
 | `app/api/app/`, `app/app/` | The optional GitHub App: sign-in, the admin-settings check, settings fixes and pull request fixes. Nothing here creates or replaces the app. |
-| `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), and redirects retired pages. |
+| `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), redirects retired pages, and dates each page from Git for the sitemap. |
 | `lib/scanner/` | The scanner: the server's engine and the downloadable CLI. Read-only, no dependencies. |
 | `lib/public-scan.ts`, `lib/scan-token.ts` | Public scans: which repo, the 6-hour cache, at most 3 at once, and which token. |
 | `lib/github-app.ts`, `lib/sealed.ts`, `lib/github.ts` | The app's credentials (environment only), sealed sign-ins and previews, and GitHub API calls. |

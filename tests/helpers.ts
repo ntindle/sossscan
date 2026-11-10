@@ -200,7 +200,23 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs$/, () => import('@/app/docs/route.ts')],
   [/^\/docs\/api$/, () => import('@/app/docs/api/route.ts')],
   [/^\/docs\/cli$/, () => import('@/app/docs/cli/route.ts')],
+  [/^\/agents$/, () => import('@/app/agents/route.ts')],
+  [/^\/index\.md$/, () => import('@/app/index.md/route.ts')],
+  [/^\/about\.md$/, () => import('@/app/about.md/route.ts')],
+  [/^\/contact\.md$/, () => import('@/app/contact.md/route.ts')],
+  [/^\/privacy\.md$/, () => import('@/app/privacy.md/route.ts')],
+  [/^\/docs\.md$/, () => import('@/app/docs.md/route.ts')],
+  [/^\/docs\/api\.md$/, () => import('@/app/docs/api.md/route.ts')],
+  [/^\/docs\/cli\.md$/, () => import('@/app/docs/cli.md/route.ts')],
+  [/^\/agents\.md$/, () => import('@/app/agents.md/route.ts')],
+  // Last, as in Next.js: every address no file in public/ and no other route answers.
+  [/^\/.+$/, () => import('@/app/[...path]/route.ts')],
 ];
+
+/** The route module for an address, as the Browser and serve() find it. */
+export function routeFor(pathname: string): [RegExp, () => Promise<Record<string, any>>] | undefined {
+  return ROUTES.find(([re]) => re.test(pathname));
+}
 
 /** A browser with a cookie jar that calls the route handlers directly, the way Next.js would. */
 export class Browser {
@@ -228,7 +244,7 @@ export class Browser {
       body = JSON.stringify(json);
       h.set('content-type', 'application/json');
     }
-    const found = ROUTES.find(([re]) => re.test(url.pathname));
+    const found = routeFor(url.pathname);
     if (!found) throw new Error(`no route for ${url.pathname}`);
     const mod = await found[1]();
     const handler = mod[method];
