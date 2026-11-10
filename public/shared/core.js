@@ -32,6 +32,15 @@ export const STATUS = {
   done: { label: 'Marked done', tone: 'pass', rank: 5 },
   todo: { label: 'Not scanned', tone: 'unknown', rank: 3 },
 };
+// A result is unknown, but not for want of a deeper scan, when the scan couldn't read what it needed: "Could not read …",
+// "… couldn't be checked" (lib/scanner). The public checks fail that way when GitHub errs or limits requests, and another
+// try helps. The private layer's also fail that way for want of a permission, which another try doesn't fix.
+const UNREAD = /\bcould(?: not|n[’']t) (?:read|be checked)\b/i;
+// The label for a status from itemStatus(): STATUS[status].label, except for a check the scan couldn't read.
+export function statusLabel(st) {
+  if (st && st.status === 'unknown' && UNREAD.test(st.summary || '')) return st.layer === 'public' ? 'Couldn’t check, try again' : 'Couldn’t check';
+  return (STATUS[st && st.status] || STATUS.unknown).label;
+}
 export const LAYER_LABEL = { public: 'Public scan', private: 'Private scan', app: 'GitHub App', manual: 'Self-check', self: 'Self-check' };
 export const EFFORT_LABEL = { 1: 'Minutes', 2: 'An hour or two', 3: 'A day', 4: 'A few days', 5: 'Weeks' };
 export const IMPACT_LABEL = { 1: 'Nice to have', 2: 'Helps', 3: 'Solid', 4: 'High', 5: 'Critical' };
@@ -278,7 +287,7 @@ export function newIssueUrl(ctx, { title, body, labels = ['security'] }) {
 
 export function issueForItem(item, ctx, report) {
   const st = itemStatus(item, report, ctx.full);
-  const lines = [`**${item.title}**`, '', item.why || item.short || '', '', `Current status: ${STATUS[st.status].label}. ${st.summary || ''}`];
+  const lines = [`**${item.title}**`, '', item.why || item.short || '', '', `Current status: ${statusLabel(st)}. ${st.summary || ''}`];
   if ((item.steps || []).length) lines.push('', '### Steps', ...item.steps.map((s, i) => `${i + 1}. ${s}`));
   const links = settingsLinks(item, ctx);
   if (links.length) lines.push('', '### Links', ...links.map((l) => `- [${l.label}](${l.url})`));
@@ -365,7 +374,7 @@ function promptSections(item, report, ctx, level) {
   const st = report ? itemStatus(item, report, ctx.full) : null;
   if (st && st.source === 'scan') {
     const finds = findingsFor(item, report);
-    const lines = [`Status from a scan of the repository: ${STATUS[st.status].label.toLowerCase()}.${st.summary ? ` ${st.summary}` : ''}`];
+    const lines = [`Status from a scan of the repository: ${statusLabel(st).toLowerCase()}.${st.summary ? ` ${st.summary}` : ''}`];
     for (const f of finds.slice(0, 15)) {
       lines.push(`- ${f.severity} severity: ${f.title}${f.path ? ` in \`${f.path}\`${f.line ? ` line ${f.line}` : ''}` : ''}${f.hint ? `. Hint: ${f.hint}` : ''}`);
     }
@@ -542,9 +551,9 @@ export function copyButton(text, label = 'Copy', cls = 'sg-btn sg-btn--small') {
   return b;
 }
 
-export function statusBadge(status) {
+export function statusBadge(status, label = (STATUS[status] || STATUS.unknown).label) {
   const s = STATUS[status] || STATUS.unknown;
-  return el('span', { class: `sg-badge sg-badge--${s.tone}` }, s.label);
+  return el('span', { class: `sg-badge sg-badge--${s.tone}` }, label);
 }
 
 export function codeBlock(code, lang = '') {
@@ -564,7 +573,7 @@ export function renderRemediation(item, opts = {}) {
   const tier = guide && guide.tiersById ? guide.tiersById[item.tier] : null;
 
   root.append(el('header', { class: 'sg-remedy__head' },
-    el('div', { class: 'sg-remedy__title' }, el('h3', {}, item.title), statusBadge(st.status)),
+    el('div', { class: 'sg-remedy__title' }, el('h3', {}, item.title), statusBadge(st.status, statusLabel(st))),
     el('div', { class: 'sg-chips' },
       tier ? el('span', { class: 'sg-chip', title: tier.blurb }, `From tier ${tier.id}: ${tier.name}`) : null,
       el('span', { class: 'sg-chip' }, `Effort: ${EFFORT_LABEL[item.effort]}`),

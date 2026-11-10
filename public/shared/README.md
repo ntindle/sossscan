@@ -65,6 +65,7 @@ Pages are static files under `public/`. You don't need to restart the server for
 **Status and context**
 - `ctxFromReport(report, repo)` returns `{owner, repo, full, branch, ecosystems, ownerType, stars, dependents, tier, publishes, hasActions, workflowCount}`. `workflowCount` is `null` unless the report counted the workflows. `tierFor(stars, dependents, guide.tiers)`.
 - `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). `STATUS[status].label` / `.tone`.
+- `statusLabel(st)` is the label to show for one of those: `STATUS[status].label`, except for a check the scan couldn't read ("Could not read …"), which is "Couldn’t check, try again" from the public checks and "Couldn’t check" from the private layer, not "Needs a deeper scan".
 - `findingsFor(item, report)`, `applies(item, ctx)`, `progress(items, report, repo)` (returns `{pass, warn, fail, open, total, pct}`).
 
 **The fix**
@@ -98,7 +99,7 @@ Pages are static files under `public/`. You don't need to restart the server for
 
 **DOM helpers**
 - `el(tag, attrs, ...children)`: children are text, never HTML, and `javascript:` links are refused.
-- `statusBadge(status)`, `codeBlock(code, lang)`, `copyButton(text, label, cls)`.
+- `statusBadge(status, label)` (the label defaults to `STATUS[status].label`; pass `statusLabel(st)`), `codeBlock(code, lang)`, `copyButton(text, label, cls)`.
 - `liveSay(text)` announces to screen readers.
 - `EFFORT_LABEL`, `IMPACT_LABEL`, `LAYER_LABEL`.
 

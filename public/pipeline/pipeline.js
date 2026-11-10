@@ -605,7 +605,7 @@ function statusLine(r, tag, cls) {
     const short = item.short && norm(item.short) !== norm(item.title) ? item.short : '';
     return short ? el(tag, { class: 'row__short' }, short) : null;
   }
-  const label = (sg.STATUS[st.status] || sg.STATUS.unknown).label;
+  const label = sg.statusLabel(st);
   const detail = st.source === 'scan' && st.summary ? st.summary : '';
   return el(tag, { class: cls }, el('strong', { class: `tone--${ITEM_TONE[st.status] || 'open'}` }, label), detail ? `: ${detail}` : '');
 }

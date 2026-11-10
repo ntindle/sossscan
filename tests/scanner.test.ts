@@ -1638,6 +1638,27 @@ describe('API failures', () => {
       'rel-signing': ['unknown', 'Could not read .goreleaser.yaml (HTTP 0)'],
     });
   });
+
+  it("labels a check it couldn't read, on the page, as one to try again rather than one for a deeper scan", async () => {
+    const shown = async (scenario: string, replace: Record<string, Route> = {}) => {
+      const merged = sg.mergeReports((await scanScenario(scenario, replace)).rep);
+      return (id: string) => sg.statusLabel(sg.itemStatus({ id }, merged, merged.repo));
+    };
+    const raw = 'https://raw.githubusercontent.com/octo/demo/main';
+    const advisories = 'https://api.github.com/repos/octo/demo/security-advisories?state=published&per_page=100';
+    const label = await shown('public', { [`${raw}/SECURITY.md`]: SERVER_ERROR, [advisories]: RATE_LIMITED });
+    expect([label('disc-security-md'), label('disc-advisories-cves')]).toEqual([
+      'Couldn’t check, try again',
+      'Couldn’t check, try again',
+    ]);
+    // An unknown that only a deeper scan settles keeps its label, and the other statuses theirs.
+    expect([label('secrets-push-protection'), label('disc-private-reporting')]).toEqual([
+      'Needs a deeper scan',
+      'Done',
+    ]);
+    // The private layer fails that way for want of a permission too, which another try doesn't fix.
+    expect((await shown('admin-denied'))('deps-alerts')).toBe('Couldn’t check');
+  });
 });
 
 // ------------------------------------------------------------------------------------------------- CLI
