@@ -14,7 +14,7 @@ For each check a scan reads, you get a status and its findings, with file and li
 
 ## Where the guide comes from
 
-The guide is built from what the 193 projects in the Fund wrote and changed. Their 84 posts and GitHub's write-ups about the program give 784 claims about what a team did, planned or recommends. A scan of each project's repository adds the controls it has and the commits where teams fixed CI and supply chain risks.
+The guide is built from what the 193 projects in the Fund wrote and changed. Their 84 posts and GitHub's write-ups about the program give 784 quoted statements about what a team did, planned or recommends. A scan of each project's repository adds the controls it has and the commits where teams fixed CI and supply chain risks.
 
 The research files stay private because they hold full copies of the original posts. What's published is the result, [guide.json](/data/guide.json), with short quotes that link to their sources.
 
