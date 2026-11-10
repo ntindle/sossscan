@@ -1687,6 +1687,25 @@ describe('CLI', () => {
     expect(JSON.parse(readFileSync(out, 'utf8')).repo).toBe('octo/demo');
   });
 
+  it("ends with what got in the scan's way, such as GitHub's rate limit, unless --quiet", async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'test-token');
+    const limited = { status: 403, json: { message: 'API rate limit exceeded for user ID 1.' } };
+    const routes = { ...routesFor('public'), 'https://api.github.com/repos/octo/demo/branches/main': limited };
+    stubFetch(routes);
+    const loud = await run(['Octo/Demo', '--out', join(dir, 'loud.json')]);
+    expect(loud.stderr.split('\n').slice(-3)).toEqual([
+      'warning: Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it',
+      'warning: GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.',
+      '',
+    ]);
+    stubFetch(routes);
+    expect(await run(['Octo/Demo', '--quiet', '--out', join(dir, 'quiet.json')])).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: '',
+    });
+  });
+
   it.skipIf(process.platform === 'win32')(
     'says why it scans without a token: --public leaves it out, or none was found',
     async () => {

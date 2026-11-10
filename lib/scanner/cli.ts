@@ -212,6 +212,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     lines.push(`\nReport written to ${out}. Load it into the guide site to see fixes (it stays in your browser).`);
     process.stdout.write(lines.join('\n') + '\n');
   }
+  // What got in the scan's way (a rate limit, files it couldn't read), last so it isn't lost above the table: why
+  // there are no results, or why some of them may be wrong.
+  const kind = Object.keys(rep.results).length ? 'warning' : 'error';
+  for (const e of rep.errors) log(`${kind}: ${e}`);
   return !rep.errors.length || Object.keys(rep.results).length ? 0 : 1;
 }
 
