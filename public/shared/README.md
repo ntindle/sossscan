@@ -26,7 +26,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 - `categories[]`: `{id, label}`.
 - `app_fixes{}`: the one-click settings fixes the GitHub App can apply.
 - `counts`: teams, repos scanned, posts, claims.
-- `items[]`: the checklist (80 items). Each item has:
+- `items[]`: the checklist, one entry per check. Each item has:
   - `id`, `title`, `short`, `why`, `steps[]`, `snippets[] {label, lang, code}`, `pitfalls[]`, `docs[] {label, url}`. The prose fields may be empty for a few items; always handle empty arrays and strings.
   - `category`, `category_label`, `stage`, `attacks[]`, `week`, `tags[]` (`actions`, `publishes`, `npm`, `org`, `ai`, `parses_input`, `multi_maintainer`).
   - `tier` (0–7: the tier at which you should do it), `effort` (1 = minutes … 5 = weeks), `impact` (1–5), `layer` (which scan layer can check it).

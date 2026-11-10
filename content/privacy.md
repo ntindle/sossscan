@@ -16,25 +16,25 @@ Whether a repository is in OSS-Fuzz is looked up in a list that ships with the s
 
 ## Caching
 
-So that a repeat scan doesn't go back to GitHub, the server keeps each public scan's result for 6 hours, in memory and in a cache folder on its disk. The CDN in front of the site keeps the answer from /api/scan/owner/repo for 6 hours too, and for up to 10 minutes longer while it fetches a fresh one. A cached scan describes a public repository and is the same for everyone who asks. Nothing about who asked is stored with it. Rescan skips both caches, and errors, private repositories and scans that GitHub rate-limited are never cached.
+So that a repeat scan doesn't go back to GitHub, the server reuses each public scan's result for 6 hours. It keeps the result in memory and in a cache folder on its disk until a newer scan replaces it or the server instance stops. The CDN in front of the site keeps the answer from /api/scan/owner/repo for 6 hours too, and for up to 10 minutes longer while it fetches a fresh one. A cached scan describes a public repository and is the same for everyone who asks. Nothing about who asked is stored with it. Rescan skips both caches. Error responses, private repositories and scans that GitHub rate-limited are never cached.
 
 ## Rate limits
 
-So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scans a minute and 40 an hour, and 90 sign-in and app requests a minute. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in and app requests) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
+So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scan requests a minute and 40 an hour, and 90 sign-in and app requests a minute. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in and app requests) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
 
 ## Signing in with GitHub
 
 You only need to sign in to use the GitHub App's checks and fixes. The sign-in itself happens on GitHub, under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). When GitHub sends you back, the server gets a GitHub user token for you and asks GitHub for your username.
 
-Both go into a cookie in your browser, with the app's ID and the time your sign-in ends. The cookie is encrypted and signed with a key only the server has, so its contents can't be read or changed in the browser, and the page's scripts can't access it at all. It lasts 7 hours, and Sign out deletes it. While you're on GitHub's sign-in page, a second cookie holds a random value for up to 15 minutes, to make sure the sign-in that comes back started in your browser. These two are the only cookies the site sets.
+Both go into a cookie in your browser, with the app's ID and the time your sign-in ends. The cookie is encrypted and signed with a key only the server has, so its contents can't be read or changed in the browser, and the page's scripts can't read it. It lasts 7 hours, and Sign out deletes it. While you're on GitHub's sign-in page, a second cookie holds a random value for up to 15 minutes, to make sure the sign-in that comes back started in your browser. These two are the only cookies the site sets.
 
-The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of a repository you ask it to check or fix. It keeps the answer to the second, with whether the app is installed there, in memory and reuses it for up to a minute.
+The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. It keeps that answer in memory, with your username, the repository's name and whether the app is installed there, until the server instance stops, and reuses it for up to a minute.
 
 ## Checks and fixes through the app
 
-For the app's admin check and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview. The preview comes to your browser encrypted, only you can use it, and it expires after 15 minutes. The pull request opens only when you confirm.
+For the app's admin check and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. The admin check runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
 
-A pull request the app opens is public like any other, and its description says it was opened at your request, with your GitHub username. A new file it adds, such as CODEOWNERS, may also name you as the maintainer. Both are in the preview, so you see them before you confirm.
+A pull request the app opens can be seen by everyone who can see the repository, and its description says it was opened at your request, with your GitHub username. A new file it adds, such as CODEOWNERS, may also name you as the maintainer. Both are in the preview, so you see them before you confirm.
 
 ## AI fixes
 
@@ -45,13 +45,13 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 The page saves a few things in your browser's storage, on your device:
 
 - in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done, with any pull request the app opened for them;
-- in sessionStorage: reports from the private scan and the GitHub App, which your browser deletes when you close the tab.
+- in sessionStorage: reports from the GitHub App, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
 
-Clearing this site's data in your browser removes all of it. The prompts for AI coding agents are built in the page too, and copying one sends nothing.
+A report from the CLI without admin access is marked as a public scan, so the page keeps it in localStorage in place of the public scan of that repository. Clearing this site's data in your browser removes all of it. The prompts for AI coding agents are built in the page too, and copying one sends nothing.
 
 ## The private scan
 
-The [sossscan CLI](/docs/cli) runs on your machine and sends nothing to this site. It reads the repository on GitHub with your token, asks the two OpenSSF services about public repositories, and writes its report to a file on your machine. When you load that file into the page, the page reads it in your browser and keeps it in sessionStorage. It isn't uploaded.
+The [sossscan CLI](/docs/cli) runs on your machine and sends nothing to this site. It reads the repository on GitHub with your token, asks the two OpenSSF services about public repositories, and writes its report to a file on your machine. When you load that file into the page, the page reads it in your browser and keeps it as described above. It isn't uploaded. If you're signed in with GitHub, the page does send the repository's name, though not the report, to ask whether you're an admin there.
 
 ## Hosting
 

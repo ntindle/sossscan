@@ -159,7 +159,7 @@ describe('the facts on the pages', () => {
     for (const phrase of [
       `${guide.items.length} checks`,
       `${guide.counts.teams} projects`,
-      `${guide.counts.posts} posts by the teams`,
+      `${guide.counts.posts} posts`,
       `${guide.counts.claims} claims`,
       `covers ${layer('public')} of the checks`,
       `covers ${layer('private')} more`,
@@ -189,9 +189,9 @@ describe('the facts on the pages', () => {
     const limits = read('lib/limits.ts');
     const [, perMinute, perHour] = /scan: \[\s*\[60, (\d+)\],\s*\[3600, (\d+)\],?\s*\]/.exec(limits)!;
     const [, app] = /app: \[\[60, (\d+)\]\]/.exec(limits)!;
-    expect(pageMarkdown('/docs/api')).toContain(`${perMinute} scans a minute and ${perHour} an hour`);
+    expect(pageMarkdown('/docs/api')).toContain(`${perMinute} scan requests a minute and ${perHour} an hour`);
     expect(pageMarkdown('/privacy')).toContain(
-      `${perMinute} scans a minute and ${perHour} an hour, and ${app} sign-in and app requests a minute`,
+      `${perMinute} scan requests a minute and ${perHour} an hour, and ${app} sign-in and app requests a minute`,
     );
   });
 

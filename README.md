@@ -13,7 +13,7 @@ Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner
    - It uses the first of these tokens (`lib/scan-token.ts`): `GITHUB_TOKEN` or `GH_TOKEN`; then a token of the site's GitHub App, once it's installed on its owner's account, limited to `metadata: read`; then none (60 requests an hour). It never borrows a `gh` CLI token.
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (`repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
    - Results are cached for 6 hours.
-2. **Private scan**, on your own machine, with the [scanner CLI](#the-scanner-cli) and your own token. An admin token unlocks the checks only admins can see. You load its JSON report into the page, which parses it in your browser; it's kept in `sessionStorage` and never uploaded.
+2. **Private scan**, on your own machine, with the [scanner CLI](#the-scanner-cli) and your own token. An admin token unlocks the checks only admins can see. You load its JSON report into the page, which parses it in your browser and never uploads it. A report made with an admin token is kept in `sessionStorage`; one made without is marked as a public scan and kept in `localStorage`, like one.
 3. **GitHub App.** Signed-in admins of a repo where the [app](#the-github-app) is installed can run the admin checks through it.
 
 Reports are sanitized on the way in: markup characters are neutralized and only http(s) links are kept.

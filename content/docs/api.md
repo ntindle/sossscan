@@ -12,7 +12,7 @@ The base address is `https://sossscan.ntindle.com`. The API sends no CORS header
 curl https://sossscan.ntindle.com/api/scan/ntindle/sossscan
 ```
 
-This runs the public scan, which reads what anyone can see on GitHub, and returns the [report](#the-report). A scan takes about 5 to 30 seconds. The answer is cached for 6 hours, by the server and by the CDN in front of it, so asking again within that time returns the same report without a new scan. `"cached": true` means the server answered from its cache. A copy from the CDN comes back exactly as it was first sent, so check `scanned_at` to see how old a report is.
+This runs the public scan, which reads what anyone can see on GitHub, and returns the [report](#the-report). A scan takes about 5 to 30 seconds. The server reuses each result for 6 hours, and the CDN in front of it keeps each answer for 6 hours too, so asking again returns the same report without a new scan. `"cached": true` means the server answered from its cache. The CDN returns an answer exactly as it was first sent, and it may hold one the server took from its cache, so a report can be up to about 12 hours old. `scanned_at` says when the scan ran.
 
 Private repositories are refused. They get the same 404 as a repository that doesn't exist, so the API never shows whether a private repository exists.
 
@@ -33,7 +33,7 @@ The body is a JSON object:
 | `repo` | string, 3 to 200 characters | The repository: `owner/repo`, or a github.com address such as `https://github.com/owner/repo.git` or a page inside the repository. |
 | `refresh` | boolean, optional | With `true`, the server skips its cache and scans again. Without it, a scan from the last 6 hours is reused. |
 
-The answer is the same report, sent with `Cache-Control: no-store`, so no cache keeps it. The page's Rescan button uses this endpoint.
+The answer is the same report, sent with `Cache-Control: no-store`, so the CDN doesn't keep it. The server does save the new scan in its own cache. The page's Rescan button uses this endpoint.
 
 ## Check that the service is up
 
@@ -41,7 +41,7 @@ The answer is the same report, sent with `Cache-Control: no-store`, so no cache 
 
 ## Download the guide's data
 
-`GET /data/guide.json` is the whole guide as one JSON file of about 700 KB. Its `items` are the 81 checks, with their steps, snippets, settings links and what Fund projects did, and each check's `id` is its key in a report's `results`. The file also holds the stages, tiers and scan layers, the 193 Fund projects in `teams`, and the `counts` behind the guide. [public/shared/README.md](https://github.com/ntindle/sossscan/blob/main/public/shared/README.md) describes every field.
+`GET /data/guide.json` is the whole guide as one JSON file of about 700 KB. Its `items` are the 81 checks, with their steps, snippets, settings links and what Fund projects did, and each check's `id` is its key in a report's `results`. The file also holds the stages, tiers and scan layers, the 193 Fund projects in `teams`, and the `counts` behind the guide. [public/shared/README.md](https://github.com/ntindle/sossscan/blob/main/public/shared/README.md) describes its fields.
 
 ## The report
 
@@ -74,7 +74,7 @@ Each entry in `results` has a `status`, a one-sentence `summary`, `evidence` (a 
 | `warn` | It's partly in place | Partly done |
 | `fail` | It's missing | Missing |
 | `info` | A fact worth knowing, with no verdict | Info |
-| `unknown` | This scan couldn't settle it: it needs admin access, or the scan couldn't read something | Needs a deeper scan |
+| `unknown` | This scan couldn't settle it: it needs admin access, or the scan couldn't read something | Needs a deeper scan, or Couldn't check when a read failed |
 | `na` | It doesn't apply to this repository | Not applicable |
 
 A finding names its check in `item_id` and has a `severity` (`high`, `medium` or `low`) and a `title`. Its `path`, `line`, `url` and `hint` can each be `null`.
@@ -146,14 +146,14 @@ A finding looks like this, with a placeholder repository and path:
 | 404 | The scan has no results: the repository doesn't exist, it's private, or GitHub wouldn't show it. `detail` has the scanner's words, such as `repo lookup failed: HTTP 404 (private repo? pass a token)`. |
 | 422 | The repository name or the request body isn't valid. `detail` says what's wrong, for example `Expected OWNER/REPO or a github.com URL`. |
 | 429 | Too many requests from your IP address. The `Retry-After` header says how many seconds to wait. |
-| 503 | The scanner is busy: three scans were already running and none finished within two minutes. Try again in a minute. |
+| 503 | The scanner is busy: the request waited two minutes for one of the three scans its server instance runs at once. Try again in a minute. |
 | 500 | Something went wrong on the server. Try again in a minute. |
 
-Only successful scans are cached, so an error never sticks around for the next request.
+Error responses aren't cached, and neither are scans GitHub rate-limited. A scan with results is cached even when its `errors` lists something it couldn't read. To try again sooner, POST with `refresh`.
 
 ## Limits
 
-Each IP address can start 6 scans a minute and 40 an hour, and GET and POST scans count together. A request the CDN answers from its cache doesn't reach the server, so it doesn't count. Each server instance runs at most 3 scans at once, and a scan waits up to two minutes for its turn before the 503. The site can run on several instances that each keep their own count, so the limits are approximate.
+Each IP address can make 6 scan requests a minute and 40 an hour. GET and POST count together, and so do requests the server answers from its cache, but a request the CDN answers doesn't reach the server, so it doesn't count. Each server instance runs at most 3 scans at once, and a scan waits up to two minutes for its turn before the 503. The site can run on several instances that each keep their own count, so the limits are approximate.
 
 ## The app endpoints
 

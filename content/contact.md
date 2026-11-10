@@ -1,6 +1,6 @@
 # Contact
 
-sossscan is a spare-time project with one maintainer, Nick Tindle, so replies can take a while. There's no company or support team behind it.
+sossscan is a spare-time project with one maintainer, Nick Tindle, so replies can take a while.
 
 ## Email
 
@@ -8,7 +8,7 @@ For questions about the site, the guide or the GitHub App, or anything that does
 
 ## Bugs and ideas
 
-Open an issue on GitHub at [github.com/ntindle/sossscan/issues/new](https://github.com/ntindle/sossscan/issues/new). For a wrong result, include the repository you scanned, the name of the check and what you expected it to say. To suggest a change to a check's text or structure, an issue or a pull request against the repository's build/ folder works, and the maintainer rebuilds the guide from there.
+Open an issue on GitHub at [github.com/ntindle/sossscan/issues/new](https://github.com/ntindle/sossscan/issues/new). For a wrong result, include the repository you scanned, the name of the check and what you expected it to say. To suggest a change to a check's text or structure, open an issue, or a pull request that changes the repository's build/ folder. The maintainer rebuilds the guide from it.
 
 ## Security problems in sossscan
 

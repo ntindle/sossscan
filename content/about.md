@@ -1,6 +1,6 @@
 # About sossscan
 
-sossscan is a security scanner and guide for open source maintainers. Give it a GitHub repository and it shows where the project has security gaps, from the accounts that can push code to the releases your users install, and which gap to close first. Each check comes with what projects in GitHub's Secure Open Source Fund did about the same problem: what they wrote about it, the files they added and the commits that fixed it. The site's own pages call it the Secure Open Source guide.
+sossscan is a security scanner and guide for open source maintainers. Give it a GitHub repository and it shows where the project has security gaps, from the accounts that can push code to the releases your users install, and which gap to close first. Most checks come with what projects in GitHub's Secure Open Source Fund did about the same problem: what they wrote about it and, where there are any, the files they added and the commits that fixed it. On the site it's called the Secure Open Source guide.
 
 ## What it checks
 
@@ -10,17 +10,19 @@ The public scan covers 36 of the checks, using what anyone can see, and a scan w
 
 Each check also has a tier: the size of project at which it's worth doing, from "Just you" to "Critical infrastructure". Your repository's tier comes from its stars and dependents, and checks above it wait in a list called "Later, as you grow".
 
-For each check you get a status, the specific findings with file and line, and three ways to fix it: steps to follow yourself, a prompt to paste into your AI coding agent, or the GitHub App, which can change a setting in one click or open a pull request that you preview first.
+For each check a scan reads, you get a status and its findings, with file and line. Every check has steps to follow yourself. Most also have a prompt to paste into your AI coding agent, and some can be fixed by the GitHub App, which changes a setting in one click or opens a pull request that you preview first.
 
 ## Where the guide comes from
 
-The guide is built from what the 193 projects in the Fund wrote and changed: 84 posts by the teams, 784 claims about what a team did, planned or recommends, each with a quote, and a scan of each project's repository, including the commits where teams fixed CI and supply chain risks. The research files stay private because they hold full copies of the original posts. What's published is the result, [guide.json](/data/guide.json), with short quotes that link to their sources.
+The guide is built from what the 193 projects in the Fund wrote and changed. Their 84 posts and GitHub's write-ups about the program give 784 claims about what a team did, planned or recommends. A scan of each project's repository adds the controls it has and the commits where teams fixed CI and supply chain risks.
+
+The research files stay private because they hold full copies of the original posts. What's published is the result, [guide.json](/data/guide.json), with short quotes that link to their sources.
 
 The repository checks are heuristics that read file names and workflow text, so treat a finding as a lead to verify. The README lists the [known limitations](https://github.com/ntindle/sossscan#known-limitations).
 
 ## Three ways to scan
 
-The public scan runs on this site. Type owner/repo on the [home page](/) and the server reads what anyone can see: files, workflows, public settings, and whether the project has an OpenSSF Scorecard, a Best Practices badge, an OSS-Fuzz project or an OSS Scanner enrollment. It only reads, and it refuses private repositories. Results are cached for 6 hours. Scripts can run the same scan through the [sossscan API](/docs/api).
+The public scan runs on this site. Type owner/repo on the [home page](/) and the server reads what anyone can see: files, workflows, public settings, and whether the project has an OpenSSF Scorecard, a Best Practices badge or an OSS-Fuzz project. For larger projects it also checks for an OSS Scanner enrollment. It only reads, and it refuses private repositories. Results are cached for 6 hours. Scripts can run the same scan through the [sossscan API](/docs/api).
 
 The private scan runs on your machine. Download the [sossscan CLI](/docs/cli), run it with Node.js and your own GitHub token, then load the JSON report it writes into the page. With a token that has admin access, it also checks settings only admins can see, such as secret scanning and Dependabot alerts. The page reads the report in your browser and doesn't upload it.
 

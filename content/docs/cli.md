@@ -18,7 +18,7 @@ The file isn't minified, so you can read it before you run it. It only sends GET
 | `--token TOKEN` | The GitHub token to use. Without it, the CLI looks for one (see below). |
 | `--public` | Runs only the checks anyone can see, with no token unless you also pass `--token`. |
 | `--out FILE` | Where to write the JSON report. The default is `sosf-report-OWNER-REPO.json` in the current folder. |
-| `--quiet` | Prints nothing: no progress, no warnings and no table. The report is still written. |
+| `--quiet` | Prints no progress, warnings or table. The report is still written. |
 | `-h`, `--help` | Shows the usage and exits. |
 
 A long option can be shortened to any prefix that isn't ambiguous, such as `--pub`.
@@ -35,7 +35,7 @@ With `--public` it skips all three. Without a token, GitHub allows only 60 reque
 
 ## The admin checks
 
-When the token belongs to an admin of the repository, the CLI also checks the settings only admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions, approval for fork pull requests, rulesets, immutable releases, environments, the organization's two-factor requirement, and open alert backlogs. The report's `layer` is then `private`. A setting the token can't read comes back as `unknown`, with the HTTP status in its summary.
+When the token belongs to an admin of the repository, the CLI also checks the settings only admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions, approval for fork pull requests, rulesets, immutable releases, environments, the organization's two-factor requirement, and open alert backlogs. The report's `layer` is then `private`. Most settings the token can't read come back as `unknown`, usually with the HTTP status in the summary.
 
 ## What it contacts
 
@@ -49,7 +49,9 @@ It exits with 0 when the scan produced results, even with warnings, and with 1 w
 
 ## Load the report into the page
 
-On the [home page](/), open "Three ways to scan". Under "2 · Private scan", choose "Load the report" and pick the JSON file. The page reads the file in your browser, checks that it's an `sosf-scan/1` report, and keeps it in sessionStorage for that tab. It isn't uploaded. The map then shows its results, findings and fixes, together with a public scan of the same repository if you ran one.
+On the [home page](/), open "Three ways to scan". Under "2 · Private scan", choose "Load the report" and pick the JSON file. The page reads the file in your browser and checks that it's an `sosf-scan/1` report. It isn't uploaded. The map then shows its results, findings and fixes.
+
+A report made with admin access (`layer` is `private`) joins a public scan of the same repository, if you ran one, and the page keeps it in sessionStorage for that tab. A report made without admin access is marked as a public scan, so it takes the place of the site's public scan of that repository and is kept in localStorage, like one.
 
 ## Build it yourself
 
