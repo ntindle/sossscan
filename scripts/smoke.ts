@@ -1,6 +1,6 @@
 /**
- * Smoke-test a running site (after `npm run build`): the page and its files with their headers, retired-page
- * redirects, the scanner download, and the API answering. Nothing here scans a repo or touches GitHub.
+ * Smoke-test a running site (after `npm run build`): the page and its files with their headers, the text pages,
+ * retired-page redirects, the scanner download, and the API answering. Nothing here scans a repo or touches GitHub.
  *   node scripts/smoke.ts [base URL, default http://127.0.0.1:3340]
  */
 export {};
@@ -55,6 +55,18 @@ check(
 );
 check('/index.html has the same CSP', (await get('/index.html')).headers.get('content-security-policy') === csp);
 check('no X-Powered-By header', !home.headers.has('x-powered-by'));
+for (const path of ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli']) {
+  const r = await get(path);
+  const html = await r.text();
+  check(
+    `${path} is a page with the site's footer`,
+    r.status === 200 &&
+      (r.headers.get('content-type') || '').startsWith('text/html') &&
+      html.includes('<a href="/privacy"'),
+    `${r.status} ${r.headers.get('content-type')}`,
+  );
+  check(`${path} has the same CSP`, r.headers.get('content-security-policy') === csp);
+}
 
 const files = await Promise.all(Array.from({ length: 30 }, () => get('/pipeline/pipeline.js')));
 check(

@@ -41,6 +41,9 @@ export const SECURITY_HEADERS = [
  */
 export const RETIRED = ['/ui/:path+', '/variants', '/variants/:path+', '/wizard', '/wizard/:path+', '/pipeline'];
 
+/** The text pages (lib/pages.ts PAGES), whose route handlers read their Markdown from content/. */
+export const TEXT_PAGES = ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli'];
+
 const config: NextConfig = {
   poweredByHeader: false,
   // The page is plain files in public/; the server is route handlers only.
@@ -54,8 +57,12 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }];
   },
-  // Pull request fixes read the guide's templates at run time.
-  outputFileTracingIncludes: { '/api/app/pr/preview': ['./public/data/guide.json'] },
+  // Pull request fixes read the guide's templates at run time. The text pages are prerendered when the site builds,
+  // but if one ever renders per request, it reads its Markdown then.
+  outputFileTracingIncludes: {
+    '/api/app/pr/preview': ['./public/data/guide.json'],
+    ...Object.fromEntries(TEXT_PAGES.map((page) => [page, ['./content/**/*.md']])),
+  },
   // A machine's own files must never be bundled into a deployment: the code reads .cache at run time, so the tracer
   // could otherwise copy whatever the building machine has there, or in an old .secrets folder (a private key, say).
   outputFileTracingExcludes: { '**': ['.secrets/**', '.cache/**', '.vercel/**', '.venv/**'] },

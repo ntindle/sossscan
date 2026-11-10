@@ -8,6 +8,8 @@ Those were retired and deleted.
 
 Pages are static files under `public/`. You don't need to restart the server for HTML, CSS or JS changes.
 
+The site's text pages (About, Contact, Privacy and the docs) don't use this engine. `lib/pages.ts` renders them from Markdown in `content/`, with `core.css`, `pipeline.css` and `text.css` for the look and `theme.js` for the theme, and no other script.
+
 ## How a view uses it
 - Import the module with `<script type="module">import * as sg from '/shared/core.js'; …</script>`.
 - Include `/shared/core.css` (the base styles for `sg-*` components), then override its CSS variables (`--sg-*`) so the components match the view. Set them on `body` if the view's own `:root` tokens must win.

@@ -22,6 +22,8 @@ COPY --from=build /srv/site/package.json /srv/site/next.config.ts ./
 COPY --from=build /srv/site/node_modules ./node_modules
 COPY --from=build /srv/site/.next ./.next
 COPY --from=build /srv/site/public ./public
+# The text pages' Markdown: they're prerendered, so only a page that renders per request would read it.
+COPY --from=build /srv/site/content ./content
 EXPOSE 8080
 # Start as root only to hand the mounted volume to the node user, then drop to that user for good.
 CMD ["sh", "-c", "chown -R node:node /data && exec setpriv --reuid=node --regid=node --init-groups node_modules/.bin/next start --hostname 0.0.0.0 --port 8080"]

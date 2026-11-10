@@ -194,6 +194,12 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/app\/login$/, () => import('@/app/app/login/route.ts')],
   [/^\/app\/oauth-callback$/, () => import('@/app/app/oauth-callback/route.ts')],
   [/^\/app\/logout$/, () => import('@/app/app/logout/route.ts')],
+  [/^\/about$/, () => import('@/app/about/route.ts')],
+  [/^\/contact$/, () => import('@/app/contact/route.ts')],
+  [/^\/privacy$/, () => import('@/app/privacy/route.ts')],
+  [/^\/docs$/, () => import('@/app/docs/route.ts')],
+  [/^\/docs\/api$/, () => import('@/app/docs/api/route.ts')],
+  [/^\/docs\/cli$/, () => import('@/app/docs/cli/route.ts')],
 ];
 
 /** A browser with a cookie jar that calls the route handlers directly, the way Next.js would. */

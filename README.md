@@ -115,11 +115,13 @@ npm run build          # set SITE_BASE_URL to the public address for a real depl
 
 ## Layout
 
-The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`.
+The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`. The text pages (About, Contact, Privacy and the docs) are route handlers too, rendered from Markdown.
 
 | Path | What |
 |---|---|
 | `app/api/scan/`, `app/api/health/` | The public scan API and a health check. |
+| `content/` | The text pages' Markdown, one file per page at its address: `/docs/api` is `content/docs/api.md`. |
+| `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/` and `app/docs/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
 | `app/api/app/`, `app/app/` | The optional GitHub App: sign-in, the admin-settings check, settings fixes and pull request fixes. Nothing here creates or replaces the app. |
 | `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), and redirects retired pages. |
 | `lib/scanner/` | The scanner: the server's engine and the downloadable CLI. Read-only, no dependencies. |
@@ -130,7 +132,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `lib/ossfuzz.ts`, `lib/ossfuzz.json` | Which repos have an OSS-Fuzz project. `npm run ossfuzz` refreshes the list. |
 | `lib/limits.ts` | Rate limits per visitor address. |
 | `public/index.html`, `public/pipeline/` | The page: the pipeline map. |
-| `public/shared/` | The engine the page runs on: the scan panel, the fix panel, the AI prompts and "Fix it for me". `public/shared/README.md` is its contract. |
+| `public/shared/` | The engine the page runs on: the scan panel, the fix panel, the AI prompts and "Fix it for me". `public/shared/README.md` is its contract. Also the text pages' styles and theme script (`text.css`, `theme.js`). |
 | `public/data/guide.json` | The guide data, built by `build/build_guide.py`. |
 | `build/skeleton.json`, `build/content/*.json` | The guide's structure (tiers, stages, attacks, settings links, `gh` commands, file templates, the settings-fix allowlist) and its prose per check. |
 | `tests/` | Vitest tests. No network. |
