@@ -68,9 +68,18 @@ describe("the OSS Scanner item (sast-oss-scanner, the scanner's result for it)",
     expect(prompt).toContain('docker run --rm --network none oss-scanner-test');
     expect(prompt).toContain('Don’t open the enrollment pull request to anthropics/oss-scanner');
     expect(prompt).toContain('repo: https://github.com/octo/demo');
-    // In a prompt for several checks, its rule is listed once, with the others'.
-    const other = guide.items.find((i: { id: string }) => i.id === 'fuzz-harnesses');
-    const many = sg.agentPromptMany([item, other], { ctx }) ?? '';
+    // In "Prompt to fix", with other checks, its rule is one of the requirements, listed once.
+    const report = {
+      repo: 'octo/demo',
+      meta: { default_branch: 'main', owner_type: 'Organization' },
+      tier: { id: 5, name: 'Widely used' },
+      results: { 'sast-oss-scanner': { status: 'fail' }, 'fuzz-harnesses': { status: 'fail' } },
+    };
+    const rows = guide.items.map((i: unknown) => sg.checkRow(i, report, sg.ctxFromReport(report), 5));
+    const choices = sg.promptChoices(rows);
+    expect(choices?.all).toEqual(['fuzz-harnesses', 'sast-oss-scanner']);
+    // Untyped: TypeScript reads fixPrompt's {report = null} as "always null".
+    const many: string = (choices && (sg as any).fixPrompt(choices, choices.all, { report, guide })) ?? '';
     expect(many.split('Don’t open the enrollment pull request').length - 1).toBe(1);
   });
 

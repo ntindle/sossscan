@@ -31,6 +31,8 @@ Each check's fix panel offers:
 2. **Hand it to your AI agent:** a prompt to paste into Claude Code, Codex, Copilot or Cursor. It holds the scan's findings, the steps, real fix commits from fund projects, and ground rules: a new branch, the smallest change, pinned actions, nothing weakened, ask instead of guessing, and no settings changed behind your back. Checks about accounts, people and process get no prompt, because nothing in the repo would change.
 3. **Fix it for me**, with the GitHub App: a setting changes in one click, or the app opens a pull request that you preview first. [What the app does and never does](#the-github-app) is below.
 
+After a scan, **Prompt to fix**, at the head of the results, hands several checks to your agent at once. You pick them, starting from the five most urgent, and it copies one prompt: the scan's result with a link back to it, then each fix with its evidence, the recommended fix and the current result, then the requirements. Settings stay yours: the agent lists each one with its `gh` command or settings page and asks first.
+
 ### AI agent fixes (optional, off by default)
 
 Three workflow fixes need judgment but are well defined: moving untrusted `${{ }}` values out of `run:` steps, `persist-credentials: false` on checkouts, and least-privilege `permissions:` blocks. When the site is configured with an OpenAI-compatible chat API (`AGENT_BASE_URL` and `AGENT_MODEL`), these get a "Let an AI agent fix it" button (`lib/agent.ts`):
