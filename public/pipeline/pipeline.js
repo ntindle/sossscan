@@ -639,7 +639,7 @@ function stepEl({ step, row }) {
       S.report || st.status === 'done' ? statusLine(row, 'p', 'rl__status') : null,
       bucket === 'later' ? el('p', { class: 'rl__status' }, `This starts at tier ${item.tier}; the repo is tier ${S.model.tierId}.`) : null,
       el('p', { class: 'rl__what' }, step.what),
-      pa && pa.overall != null ? el('p', { class: 'rl__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects have this.`) : null,
+      pa && pa.overall != null ? el('p', { class: 'rl__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects ${sg.peerHave(item)}.`) : null,
       finds.length ? findsPreview(finds) : null));
 }
 
@@ -731,7 +731,7 @@ function readerExtra(item) {
   if (pa && pa.overall != null) {
     const t = starsTier();
     const near = t && pa.by_tier && pa.by_tier[t.id] != null ? pa.by_tier[t.id] : null;
-    bits.push(el('p', { class: 'reader__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects have this.`
+    bits.push(el('p', { class: 'reader__peers' }, `${pa.overall}% of the ${S.guide.counts.repos_scanned} Fund projects ${sg.peerHave(item)}.`
       + (near != null ? ` Among those in this repo's star range (tier ${t.id}, ${t.name}): ${near}%.` : '')));
   }
   const attacks = (item.attacks || []).map((id) => S.guide.attacksById[id]).filter(Boolean);

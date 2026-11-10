@@ -769,6 +769,12 @@ export function renderRemediation(item, opts = {}) {
   return root;
 }
 
+// What a check's Fund repo count measures, where that isn't the check itself. The Fund's repos were scanned from outside,
+// where GitHub's own secret scanning doesn't show, so for that check the count is of secret scanners run in CI.
+const PEER_COUNTS = { 'secrets-scanning': 'run a secret scanner (gitleaks or TruffleHog) in CI' };
+// The end of "n% of the 193 Fund projects …": "have this", or what the count measures instead.
+export const peerHave = (item) => PEER_COUNTS[item.id] || 'have this';
+
 // One honest sentence about how the fund's projects handle this item.
 export function evidenceSummary(item) {
   const s = item.stats || {};
@@ -777,8 +783,12 @@ export function evidenceSummary(item) {
     return `The scan flagged this risk in ${s.repo_risk} of ${s.repo_total} Fund projects' repos` + (wrote ? `; ${wrote}` : '') + '.';
   }
   if (!item.peer_adoption) return wrote ? `${wrote}. No scanner can see this from outside a repo.` : '';
-  return `${s.repo_present ?? 0} of ${s.repo_total ?? 0} Fund projects have this in their repo` +
-    (s.repo_added_in_window ? `, ${s.repo_added_in_window} added it during the program` : '') + (wrote ? `; ${wrote}` : '') + '.';
+  const other = PEER_COUNTS[item.id];
+  const have = `${s.repo_present ?? 0} of ${s.repo_total ?? 0} Fund projects ${other || 'have this in their repo'}` +
+    (s.repo_added_in_window ? `, ${s.repo_added_in_window} added it during the program` : '');
+  // A count of something else goes second, so "doing this" still means the check.
+  if (other) return `${[wrote, have].filter(Boolean).join('. ')}.`;
+  return have + (wrote ? `; ${wrote}` : '') + '.';
 }
 
 
