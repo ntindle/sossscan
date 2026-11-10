@@ -7,12 +7,12 @@ import { markdownPath, negotiate, NOT_ACCEPTABLE } from './lib/negotiate.ts';
  * twin, /index.md for the home page and /about.md for /about. One that rules out both HTML and Markdown gets 406.
  * Everything else, HTML requests included, goes on to the page as before.
  *
- * Why a rewrite to a separate address: the HTML pages are prerendered (or, for /, a file in public/), so they can't
- * read the request. And with each representation at its own address behind the scenes, a cache keyed on that address
- * can't mix them. On Vercel this runs before the CDN cache, whose key also includes the Accept header
- * (https://vercel.com/docs/caching/cdn-cache). Browsers and other caches only see the page's own address, so both
- * answers carry Vary: Accept, from the headers next.config.ts sets for the pages and for their twins (it explains why
- * the twins need it too).
+ * Why a rewrite to a separate address: the home page's HTML is a file in public/, which can't read the request, and
+ * with each representation at its own address behind the scenes, a cache keyed on that address can't mix them. On
+ * Vercel this runs before the CDN cache, whose key also includes the Accept header
+ * (https://vercel.com/docs/caching/cdn-cache). Browsers and other caches only see the page's own address, so every
+ * answer there carries Vary: Accept: the routes set it themselves (lib/pages.ts), next.config.ts adds it to the home
+ * page's file, and the 406 below sets its own.
  */
 export function proxy(request: NextRequest): Response {
   const { pathname } = request.nextUrl;
@@ -27,7 +27,7 @@ export function proxy(request: NextRequest): Response {
   }
   return new NextResponse(request.method === 'HEAD' ? null : NOT_ACCEPTABLE, {
     status: 406,
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Accept' },
   });
 }
 

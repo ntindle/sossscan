@@ -293,10 +293,10 @@ describe('serving the pages', () => {
     }
   });
 
-  it('prerenders each page, and keeps its Markdown in the trace in case one ever renders per request', () => {
+  it('renders each page per request, with its Markdown in the trace, since it reads it then', () => {
     expect(TEXT_PAGES).toEqual(PATHS);
     for (const urlPath of PATHS) {
-      expect(read(`app${urlPath}/route.ts`)).toContain("export const dynamic = 'force-static';");
+      expect(read(`app${urlPath}/route.ts`)).toContain("export const dynamic = 'force-dynamic';");
       expect(config.outputFileTracingIncludes?.[urlPath]).toEqual(['./content/**/*.md']);
     }
     expect(read('Dockerfile')).toContain('COPY --from=build /srv/site/content ./content');

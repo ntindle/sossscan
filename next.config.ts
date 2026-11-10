@@ -54,14 +54,12 @@ export const NEGOTIATED = ['/', ...TEXT_PAGES].map((page) => ({
 }));
 
 /**
- * Headers for the pages that come in two representations, and for their Markdown twins.
- * - Vary: Accept on both, so a browser or shared cache keeps a page's HTML and Markdown apart. Vercel's CDN does
- *   anyway: they have different addresses behind the scenes, and its cache key includes Accept.
- *   Both need it. A page's rules are matched against the address that was asked for, so they reach its HTML and,
- *   usually, the Markdown that proxy.ts rewrites the request to. But `next start --hostname 127.0.0.1` (or [::1])
- *   can't tell that the rewrite stays on the same server: Next.js writes loopback hosts as localhost in the URL the
- *   proxy builds, so it fetches the twin over HTTP as a new request and sends that answer back, with the twin's own
- *   headers. With Vary on the twin too, the Markdown carries it either way.
+ * Headers for the pages that come in two representations, and for their Markdown twins. These rules are matched against
+ * the address that was asked for.
+ * - Vary: Accept, here for the home page only. Every answer at a page's address needs it, so that a browser or shared
+ *   cache keeps the HTML and the Markdown apart, but only the home page's HTML gets it from here: it's a file in public/,
+ *   and Vercel keeps these headers on files. The routes set their own (lib/pages.ts), because Vercel sends a prerendered
+ *   route with the Vary Next.js gives it, in place of this one, and a rule here would only repeat theirs.
  * - Link: on a page, where its Markdown twin is and the llms.txt that describes the site (https://llmstxt.org). On a
  *   twin, its page as canonical, so search engines index the page, not the twin.
  */
@@ -69,16 +67,13 @@ export const NEGOTIATION_HEADERS = NEGOTIATED.flatMap(({ page, markdown }) => [
   {
     source: page,
     headers: [
-      { key: 'Vary', value: 'Accept' },
+      ...(page === '/' ? [{ key: 'Vary', value: 'Accept' }] : []),
       { key: 'Link', value: `<${markdown}>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"` },
     ],
   },
   {
     source: markdown,
-    headers: [
-      { key: 'Vary', value: 'Accept' },
-      { key: 'Link', value: `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"` },
-    ],
+    headers: [{ key: 'Link', value: `<${SITE}${page}>; rel="canonical", </llms.txt>; rel="describedby"` }],
   },
 ]);
 
@@ -157,8 +152,8 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: SECURITY_HEADERS }, ...NEGOTIATION_HEADERS];
   },
-  // Pull request fixes read the guide's templates at run time. The text pages and their Markdown twins are prerendered
-  // when the site builds, but if one ever renders per request, it reads its Markdown then (and the home page's Markdown
+  // Files the server reads at run time, which the deployment must include: the guide's templates for pull request
+  // fixes, and the Markdown each text page and twin renders from on its first request (the home page's Markdown also
   // lists the guide's checks).
   outputFileTracingIncludes: {
     '/api/app/pr/preview': ['./public/data/guide.json'],
