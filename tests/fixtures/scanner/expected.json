@@ -11472,7 +11472,7 @@
       "help": {
         "argv": ["-h"],
         "code": 0,
-        "stdout": "usage: <PROG> [-h] [--out OUT] [--token TOKEN] [--public] [--quiet] repo\n\nSecurity self-check for a GitHub repository (read-only).\n\npositional arguments:\n  repo           OWNER/REPO or a GitHub URL\n\noptions:\n  -h, --help     show this help message and exit\n  --out OUT      write the JSON report here (default: sosf-report-OWNER-\n                 REPO.json)\n  --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or `gh auth\n                 token`)\n  --public       only run checks anyone can see\n  --quiet\n",
+        "stdout": "usage: <PROG> [-h] [--out OUT] [--token TOKEN] [--public] [--quiet] repo\n\nSecurity self-check for a GitHub repository (read-only).\n\npositional arguments:\n  repo           OWNER/REPO or a GitHub URL\n\noptions:\n  -h, --help     show this help message and exit\n  --out OUT      write the JSON report here (default: sosf-report-OWNER-\n                 REPO.json)\n  --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or `gh auth\n                 token`)\n  --public       only run checks anyone can see, without a token unless\n                 --token is given\n  --quiet\n",
         "stderr": "",
         "calls": 0
       },

@@ -11,7 +11,8 @@
  * Usage:
  *   node sosf-scan.mjs OWNER/REPO [--out report.json] [--public] [--token TOKEN] [--quiet]
  *
- * Token (optional, recommended): --token, $GITHUB_TOKEN, $GH_TOKEN, or `gh auth token`.
+ * Token (optional, recommended): --token, $GITHUB_TOKEN, $GH_TOKEN, or `gh auth token`. --public uses none of them
+ * unless you pass --token, so it sees what anyone would.
  * With a token that has admin access to the repo, the private layer also checks settings only
  * admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions,
  * fork-PR approval, rulesets, immutable releases, environments, org 2FA, open alert backlogs.
@@ -74,7 +75,8 @@ options:
                  REPO.json)
   --token TOKEN  GitHub token (default: $GITHUB_TOKEN, $GH_TOKEN or \`gh auth
                  token\`)
-  --public       only run checks anyone can see
+  --public       only run checks anyone can see, without a token unless
+                 --token is given
   --quiet
 `;
 }
@@ -180,9 +182,21 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const parsed = parseOrExit(argv);
   if (typeof parsed === 'number') return parsed;
   const { a, repo } = parsed;
-  const token = a.public && !a.token ? null : findToken(a.token);
+  // --public scans as anyone would, so it leaves out the token this machine has (a --token still counts).
+  const anonymous = a.public && !a.token;
+  const token = anonymous ? null : findToken(a.token);
   const log = a.quiet ? () => {} : (msg: string) => void process.stderr.write(msg + '\n');
-  if (!token) log('no token found: public checks only, at 60 requests/hour (set GITHUB_TOKEN or install gh)');
+  if (anonymous) {
+    log(
+      '--public: scanning without a token, as anyone would see it ' +
+        '(GitHub allows 60 requests an hour; pass --token to raise that)',
+    );
+  } else if (!token) {
+    log(
+      'no token found: running the public checks only, at 60 requests an hour. ' +
+        'Set GITHUB_TOKEN, pass --token, or sign in with `gh auth login`',
+    );
+  }
   const rep = await scan(repo, { token, layer: a.public ? 'public' : 'private', log });
   const out = a.out || `sosf-report-${repo.replaceAll('/', '-')}.json`;
   writeFileSync(out, JSON.stringify(rep, null, 1));

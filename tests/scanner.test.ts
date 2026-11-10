@@ -1686,4 +1686,36 @@ describe('CLI', () => {
     expect((await run(['git@github.com:Octo/Demo.git', '--quiet', '--out', out])).code).toBe(0);
     expect(JSON.parse(readFileSync(out, 'utf8')).repo).toBe('octo/demo');
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'says why it scans without a token: --public leaves it out, or none was found',
+    async () => {
+      const firstLine = async (argv: string[]) => {
+        const calls = stubFetch(routesFor('public'));
+        const { stderr } = await run([...argv, '--out', join(dir, 'report.json')]);
+        return { line: stderr.split('\n')[0], tokens: new Set(calls.map(([, , auth]) => auth)) };
+      };
+      // The machine has a token, and --public scans as anyone would without it.
+      vi.stubEnv('GITHUB_TOKEN', 'test-token');
+      vi.stubEnv('GH_TOKEN', '');
+      expect(await firstLine(['Octo/Demo', '--public'])).toEqual({
+        line:
+          '--public: scanning without a token, as anyone would see it ' +
+          '(GitHub allows 60 requests an hour; pass --token to raise that)',
+        tokens: new Set([null]),
+      });
+      // A token passed with --public is used, and there's nothing to say.
+      const passed = await firstLine(['Octo/Demo', '--public', '--token', 'tok']);
+      expect([passed.line, passed.tokens.has('Bearer tok')]).toEqual(['scanning octo/demo (public layer)', true]);
+      // Without --public, only a missing token is worth a line: no variable, no --token and no gh.
+      vi.stubEnv('GITHUB_TOKEN', '');
+      vi.stubEnv('PATH', dir);
+      expect(await firstLine(['Octo/Demo'])).toEqual({
+        line:
+          'no token found: running the public checks only, at 60 requests an hour. ' +
+          'Set GITHUB_TOKEN, pass --token, or sign in with `gh auth login`',
+        tokens: new Set([null]),
+      });
+    },
+  );
 });
