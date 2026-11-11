@@ -817,6 +817,9 @@ function showLayers() {
 
 // ------------------------------------------------------------------------------------ plumbing
 function setupStatic() {
+  // index.html lists the stages in #line for readers without JavaScript. Empty it now: drawLine() draws the map there,
+  // and if the guide doesn't load, the line stays empty.
+  $('#line').replaceChildren();
   $('#legend').replaceChildren(...LEGEND.map(([tone, label]) => el('li', {}, lamp(tone, 'xs', STATION_GLYPH[tone]), label)),
     el('li', {}, el('span', { class: 'ticks ticks--key', 'aria-hidden': 'true' }, ['fail', 'warn', 'done', 'info', 'open'].map((b) => el('i', { 'data-b': b }))),
       'One bar per check (blue: info)'));

@@ -27,7 +27,17 @@
 <link rel="stylesheet" href="/shared/core.css">
 <link rel="stylesheet" href="/pipeline/pipeline.css">
 <script>try { var t = localStorage.getItem('pl:theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) { /* storage blocked */ }</script>
-<noscript><style>.scan__wait { display: none; } .is-booting #foot { display: block; }</style></noscript>
+<noscript><style>
+.scan__wait { display: none; }
+.is-booting :is(#map, #foot) { display: block; }
+/* The map as a plain list of its stages, without the legend and tools, which need the script. */
+#legend, .map__tools { display: none; }
+#line { display: block; padding-left: 1.5em; list-style: decimal; }
+#line > li { color: var(--muted); font-size: 15px; line-height: 1.45; }
+#line > li + li { margin-top: 10px; }
+#line > li::before { content: none; }
+#line b { display: block; color: var(--ink); font: 700 17px/1.25 var(--f-plate); font-stretch: semi-condensed; }
+</style></noscript>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -104,7 +114,17 @@
         <button class="sg-btn sg-btn--small map__trace" id="trace" type="button">Trace a change</button>
       </div>
     </div>
-    <ol class="line" id="line" aria-label="Stages, in the order a change passes them"></ol>
+    <ol class="line" id="line" aria-label="Stages, in the order a change passes them">
+      <li><b>Accounts</b> Who can push, merge and publish</li>
+      <li><b>Repository</b> Branch, tag and repository settings</li>
+      <li><b>Code</b> Finding bugs before attackers do</li>
+      <li><b>Pull requests and CI</b> Running untrusted contributions safely</li>
+      <li><b>Dependencies</b> What you pull in</li>
+      <li><b>Build and release</b> Proving what you ship</li>
+      <li><b>Disclosure</b> How people report problems to you</li>
+      <li><b>Response</b> What happens when something goes wrong</li>
+      <li><b>People</b> Time, training and community</li>
+    </ol>
     <span class="token" id="token" aria-hidden="true" hidden></span>
   </section>
 

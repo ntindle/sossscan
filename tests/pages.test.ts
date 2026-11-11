@@ -28,15 +28,29 @@ const INDEX = read('public/index.html');
 const PATHS = PAGES.map((p) => p.path);
 const TRUST = ['/about', '/contact', '/privacy'];
 
-/** What a reader sees of the page's content: the text in <main>, without the markup. */
-function visibleText(html: string): string {
+/** HTML as text: no markup, the few entities the pages use decoded, and no script, style or noscript content. */
+function textOf(html: string): string {
   const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
-  return (/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '')
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+  return html
+    .replace(/<(script|style|noscript)\b[\s\S]*?<\/\1\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&(amp|lt|gt|quot|#39);/g, (_m, name: string) => entities[name])
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * What a reader sees of the page's content: the text in <main>, without the markup. Text in <noscript> doesn't count,
+ * since a browser that runs scripts never shows it.
+ */
+function visibleText(html: string): string {
+  return textOf(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '');
+}
+
+/** The levels of the page's headings, in order: [1, 2, 2] for an h1 and two h2s. */
+function headingLevels(html: string): number[] {
+  const markup = html.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+  return [...markup.matchAll(/<h([1-6])\b/gi)].map((m) => Number(m[1]));
 }
 
 function jsonLd(html: string): any[] {
@@ -215,6 +229,34 @@ describe('the facts on the pages', () => {
     const names = [...options.matchAll(/^\s*(\w+): \{/gm)].map((m) => m[1]);
     expect(names).toEqual(['out', 'token', 'public', 'quiet', 'help']);
     for (const name of names) expect(pageMarkdown('/docs/cli')).toContain(`--${name}`);
+  });
+});
+
+// What a reader without JavaScript gets, and what an agent or crawler that doesn't run scripts reads.
+describe('the home page before any script runs', () => {
+  const guide = JSON.parse(read('public/data/guide.json'));
+
+  it("lists the map's stages, each with its label and blurb as guide.json has them, in order", () => {
+    const line = /<ol\b[^>]*\bid="line"[^>]*>([\s\S]*?)<\/ol>/.exec(INDEX)?.[1] ?? '';
+    const stages = [...line.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => {
+      const [, label = '', blurb = ''] = /^\s*<b>([\s\S]*?)<\/b>([\s\S]*)$/.exec(m[1]) ?? [];
+      return { label: textOf(label), blurb: textOf(blurb) };
+    });
+    expect(stages).toEqual(
+      guide.stages.map(({ label, blurb }: { label: string; blurb: string }) => ({ label, blurb })),
+    );
+    // pipeline.js empties the list, then draws the map in its place.
+    expect(read('public/pipeline/pipeline.js')).toContain("$('#line').replaceChildren();");
+  });
+
+  it('gives at least 500 characters of text to read, under one h1, with no heading level skipped', () => {
+    expect(visibleText(INDEX).length).toBeGreaterThanOrEqual(500);
+    const levels = headingLevels(INDEX);
+    expect(levels[0]).toBe(1);
+    expect(levels.filter((level) => level === 1)).toHaveLength(1);
+    for (let i = 1; i < levels.length; i += 1) {
+      expect(levels[i], `heading ${i + 1}`).toBeLessThanOrEqual(levels[i - 1] + 1);
+    }
   });
 });
 
