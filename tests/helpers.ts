@@ -200,6 +200,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs$/, () => import('@/app/docs/route.ts')],
   [/^\/docs\/api$/, () => import('@/app/docs/api/route.ts')],
   [/^\/docs\/cli$/, () => import('@/app/docs/cli/route.ts')],
+  [/^\/docs\/mcp$/, () => import('@/app/docs/mcp/route.ts')],
   [/^\/agents$/, () => import('@/app/agents/route.ts')],
   [/^\/index\.md$/, () => import('@/app/index.md/route.ts')],
   [/^\/about\.md$/, () => import('@/app/about.md/route.ts')],
@@ -208,7 +209,14 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs\.md$/, () => import('@/app/docs.md/route.ts')],
   [/^\/docs\/api\.md$/, () => import('@/app/docs/api.md/route.ts')],
   [/^\/docs\/cli\.md$/, () => import('@/app/docs/cli.md/route.ts')],
+  [/^\/docs\/mcp\.md$/, () => import('@/app/docs/mcp.md/route.ts')],
   [/^\/agents\.md$/, () => import('@/app/agents.md/route.ts')],
+  [/^\/openapi\.json$/, () => import('@/app/openapi.json/route.ts')],
+  [/^\/mcp$/, () => import('@/app/mcp/route.ts')],
+  [/^\/mcp\/server-card$/, () => import('@/app/mcp/server-card/route.ts')],
+  [/^\/\.well-known\/ai-catalog\.json$/, () => import('@/app/.well-known/ai-catalog.json/route.ts')],
+  // After the API's own routes: every other address under /api/, and /api itself.
+  [/^\/api(?:\/.*)?$/, () => import('@/app/api/[[...path]]/route.ts')],
   // Last, as in Next.js: every address no file in public/ and no other route answers.
   [/^\/.+$/, () => import('@/app/[...path]/route.ts')],
 ];
@@ -231,15 +239,15 @@ export class Browser {
     target: string,
     {
       json,
+      body,
       headers = {},
       query,
-    }: { json?: unknown; headers?: Record<string, string>; query?: Record<string, string> } = {},
+    }: { json?: unknown; body?: string; headers?: Record<string, string>; query?: Record<string, string> } = {},
   ): Promise<Response> {
     const url = new URL(target, 'http://127.0.0.1:3340');
     for (const [k, v] of Object.entries(query || {})) url.searchParams.set(k, v);
     const h = new Headers({ ...this.headers, ...headers });
     if (this.cookies.size) h.set('cookie', [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '));
-    let body: string | undefined;
     if (json !== undefined) {
       body = JSON.stringify(json);
       h.set('content-type', 'application/json');

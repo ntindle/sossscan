@@ -62,6 +62,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - It shows the `?app=` notice after a GitHub sign-in round trip.
 - `scanPublic(repo, {refresh})`, `readReportFile(file)`, `mergeReports(...reports)`, `recallReports(repo)`, `initialRepo()` (reads `?repo=` and then the last repo used), `parseRepoInput(str)`.
 - `scanTrouble(repo, err, where)` returns `[title, next step]` for a failed scan, in plain words.
+- A failed API request, from `scanPublic` or the `app` calls, throws an Error whose message is the API's message and hint together. `err.code` is the API's error code (`lib/http.ts`), and `err.detail` the message alone, which `scanTrouble` reads.
 - The `sg:report` document event, with detail `{report, item?}` or a bare report, adds a report to the scan panel (the app's re-check after a one-click fix uses it). The main page listens too, and reopens `item` after it redraws.
 
 **Status and context**

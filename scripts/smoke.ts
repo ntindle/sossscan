@@ -123,8 +123,45 @@ const noHeader = await get('/api/app/repo', {
   body: '{"repo":"octo/demo"}',
   headers: { 'content-type': 'application/json' },
 });
-check('app requests need X-Requested-With', noHeader.status === 400, String(noHeader.status));
+const noHeaderBody = await noHeader.json().catch(() => ({}));
+check(
+  'app requests need X-Requested-With',
+  noHeader.status === 400 && noHeaderBody.error?.code === 'missing_header',
+  `${noHeader.status} ${JSON.stringify(noHeaderBody)}`,
+);
 check('unknown paths are 404', (await get('/no-such-page')).status === 404);
+const nowhere = await get('/api/no-such-endpoint');
+const nowhereBody = await nowhere.json().catch(() => ({}));
+check(
+  'an unknown /api/ address is a JSON 404',
+  nowhere.status === 404 &&
+    nowhereBody.error?.code === 'not_found' &&
+    nowhereBody.detail === nowhereBody.error?.message,
+  `${nowhere.status} ${JSON.stringify(nowhereBody)}`,
+);
+const wrongMethod = await get('/api/health', { method: 'POST' });
+const wrongBody = await wrongMethod.json().catch(() => ({}));
+check(
+  "a method an endpoint doesn't take is a JSON 405 with Allow",
+  wrongMethod.status === 405 &&
+    wrongBody.error?.code === 'method_not_allowed' &&
+    wrongMethod.headers.get('allow') === 'GET, HEAD, OPTIONS',
+  `${wrongMethod.status} ${wrongMethod.headers.get('allow')} ${JSON.stringify(wrongBody)}`,
+);
+const spec = await get('/openapi.json');
+const specDoc = spec.status === 200 ? await spec.json().catch(() => ({})) : {};
+check(
+  '/openapi.json is the API in OpenAPI 3.1',
+  spec.headers.get('content-type') === 'application/json' &&
+    /^3\.1\./.test(String(specDoc.openapi)) &&
+    Boolean(specDoc.paths?.['/api/scan/{owner}/{name}']),
+  `${spec.status} ${spec.headers.get('content-type')}`,
+);
+check(
+  'API answers link to /openapi.json',
+  (health.headers.get('link') || '').includes('</openapi.json>; rel="service-desc"'),
+  health.headers.get('link') || '',
+);
 
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

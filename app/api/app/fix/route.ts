@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { ghRequest } from '@/lib/github.ts';
 import { configOr404, FIXES, installationToken, repoCache, requireAdmin, sessionOf } from '@/lib/github-app.ts';
-import { csrf, field, HttpError, jsonBody, privateJson, route } from '@/lib/http.ts';
+import { csrf, field, HttpError, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
-import { parseRepo } from '@/lib/public-scan.ts';
+import { parseRepo, REPO_LENGTH } from '@/lib/public-scan.ts';
 
 /** One allow-listed settings fix: a single API call through the app, for a signed-in admin of the repo. */
 export const POST = route(async (req: NextRequest) => {
@@ -14,9 +14,16 @@ export const POST = route(async (req: NextRequest) => {
   const cfg = configOr404();
   const fixId = field(body, 'fix_id', { max: 60 });
   const fix = Object.hasOwn(FIXES, fixId) ? FIXES[fixId] : null;
-  if (!fix) throw new HttpError(422, 'Unknown fix');
+  if (!fix) {
+    throw new HttpError(
+      422,
+      'invalid_request',
+      "There's no settings fix with that fix_id.",
+      'Use one of the fix ids that /api/app/status lists under fixes.',
+    );
+  }
   const sess = sessionOf(req);
-  const repo = parseRepo(field(body, 'repo', { min: 3, max: 200 }));
+  const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   await requireAdmin(sess, repo);
   const [owner, name] = repo.split('/');
   const token = await installationToken(cfg, repo);
@@ -37,3 +44,5 @@ export const POST = route(async (req: NextRequest) => {
   repoCache.delete(`${sess.login.toLowerCase()}\n${repo.toLowerCase()}`);
   return privateJson({ ok, fix_id: fixId, status: r.status, label: fix.label, message });
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

@@ -1,7 +1,15 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { HttpError, route } from '@/lib/http.ts';
+import { otherMethods, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
-import { cacheable, parseRepo, SCAN_TTL, scanOr404 } from '@/lib/public-scan.ts';
+import {
+  cacheable,
+  invalidRepo,
+  NAME_MAX,
+  OWNER_MAX,
+  parseRepo,
+  SCAN_CACHE_CONTROL,
+  scanOr404,
+} from '@/lib/public-scan.ts';
 
 export const maxDuration = 300;
 
@@ -14,8 +22,9 @@ export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ owner
   const limited = rateLimit(req, 'scan');
   if (limited) return limited;
   const { owner, name } = await ctx.params;
-  if (owner.length > 39 || name.length > 100) throw new HttpError(422, 'Expected OWNER/REPO or a github.com URL');
+  if (owner.length > OWNER_MAX || name.length > NAME_MAX) throw invalidRepo();
   const rep = await scanOr404(parseRepo(`${owner}/${name}`), false);
-  const cache = cacheable(rep) ? `public, max-age=0, s-maxage=${SCAN_TTL}, stale-while-revalidate=600` : 'no-store';
-  return NextResponse.json(rep, { headers: { 'Cache-Control': cache } });
+  return NextResponse.json(rep, { headers: { 'Cache-Control': cacheable(rep) ? SCAN_CACHE_CONTROL : 'no-store' } });
 });
+
+export const { POST, PUT, PATCH, DELETE, OPTIONS } = otherMethods('GET');

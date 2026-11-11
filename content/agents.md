@@ -35,6 +35,10 @@ A result is `unknown` when the scan couldn't settle it. When its summary says it
 
 To choose what to fix first, do what the web page does. Take the checks that are `fail` or `warn` and whose tier is at or below the repository's. A check with a `high` finding comes first, then one with a `medium` finding, then the one that loses the most impact (all of its `impact` for `fail`, half for `warn`), then the one with the least `effort`. Each check's `impact`, `effort`, `tier`, steps and snippets are in [guide.json](/data/guide.json), about 700 KB, under `items`.
 
+When a request fails, the answer is JSON with `error.code`, such as `repo_not_found` or `rate_limited`, `error.message`, and `error.hint`, which says what to do next. [openapi.json](/openapi.json) describes the API in OpenAPI 3.1, with every code and the report's schema.
+
+If you can use MCP servers, the [sossscan MCP server](/docs/mcp) at `https://sossscan.ntindle.com/mcp` has this scan as a tool. Its `scan_repository` returns the tier, the counts and the checks that need work, already in that order. `get_check` gives one check's steps and what Fund projects did, `list_checks` lists the checks, and `fix_prompt` writes a prompt for a coding agent that fixes the ones you pick. Scans through it count against the same limit.
+
 To show a person the result with every fix, link to `https://sossscan.ntindle.com/?repo=OWNER/REPO`. The [API docs](/docs/api) describe the whole report, the other endpoints and the errors.
 
 ## Private repositories and admin settings

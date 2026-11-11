@@ -11,9 +11,9 @@ import {
   sessionOf,
   setSession,
 } from '@/lib/github-app.ts';
-import { csrf, errorResponse, field, HttpError, jsonBody, privateJson, route } from '@/lib/http.ts';
+import { csrf, errorResponse, field, HttpError, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
-import { parseRepo } from '@/lib/public-scan.ts';
+import { parseRepo, REPO_LENGTH } from '@/lib/public-scan.ts';
 import { seal } from '@/lib/sealed.ts';
 
 export const maxDuration = 300;
@@ -29,7 +29,7 @@ export const POST = route(async (req: NextRequest) => {
   const body = await jsonBody(req);
   const cfg = configOr404();
   const sess = sessionOf(req);
-  const repo = parseRepo(field(body, 'repo', { min: 3, max: 200 }));
+  const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   const itemId = field(body, 'item_id', { max: 60 });
   const { inst } = await prReady(cfg, sess, repo, itemId);
   const isAgent = available()[itemId].kind === 'agent';
@@ -47,7 +47,7 @@ export const POST = route(async (req: NextRequest) => {
     } catch (e) {
       if (!(e instanceof FixError)) throw e;
       if (isAgent) usage().record(e.usage);
-      throw new HttpError(e.status, e.message);
+      throw new HttpError(e.status, e.code, e.message, e.hint);
     }
     if ('existing' in p) return answer(privateJson({ existing: p.existing }));
     if (isAgent) usage().record(p.usage);
@@ -62,3 +62,5 @@ export const POST = route(async (req: NextRequest) => {
     return answer(errorResponse(e));
   }
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

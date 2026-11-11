@@ -71,8 +71,9 @@ export async function serve(
   {
     method = 'GET',
     headers = {},
+    body,
     host = 'next',
-  }: { method?: string; headers?: Record<string, string>; host?: Host } = {},
+  }: { method?: string; headers?: Record<string, string>; body?: BodyInit; host?: Host } = {},
 ): Promise<Response> {
   const url = new URL(target, 'http://127.0.0.1:3340');
   let pathname = url.pathname;
@@ -113,7 +114,7 @@ export async function serve(
     if (testing.isRewrite(res)) {
       const to = new URL(testing.getRewrittenUrl(res)!);
       if (host === 'next-loopback') {
-        const fetched = await serve(to.pathname + to.search, { method, headers, host });
+        const fetched = await serve(to.pathname + to.search, { method, headers, body, host });
         const out = new Headers(fromConfig);
         fetched.headers.forEach((value, name) => out.set(name, value));
         return new Response(fetched.body, { status: fetched.status, headers: out });
@@ -146,7 +147,7 @@ export async function serve(
   const source: Source = route.dynamic === 'force-static' ? 'prerendered' : 'route';
   const handler = route[method] ?? (method === 'HEAD' ? route.GET : undefined);
   if (!handler) return answer(new Response(null, { status: 405 }), source);
-  const request = new NextRequest(new URL(pathname + url.search, url), { method, headers });
+  const request = new NextRequest(new URL(pathname + url.search, url), { method, headers, body });
   const [, owner = '', name = ''] = pattern.exec(pathname)!;
   return answer(await handler(request, { params: Promise.resolve({ owner, name }) }), source);
 }

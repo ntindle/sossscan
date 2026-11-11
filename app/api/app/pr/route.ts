@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { apply, FixError, openPull, type Plan } from '@/lib/fixes.ts';
 import { client } from '@/lib/github.ts';
 import { configOr404, installationToken, PLAN_TTL, prReady, sessionOf } from '@/lib/github-app.ts';
-import { csrf, field, HttpError, jsonBody, privateJson, route } from '@/lib/http.ts';
+import { csrf, field, HttpError, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
 import { unseal } from '@/lib/sealed.ts';
 
@@ -18,7 +18,7 @@ export const POST = route(async (req: NextRequest) => {
   const sess = sessionOf(req);
   const p = unseal<Plan & { login: string }>('plan', field(body, 'plan', { min: 20, max: 3_000_000 }), PLAN_TTL);
   if (!p || p.login !== sess.login.toLowerCase()) {
-    throw new HttpError(410, 'This preview has expired. Preview the fix again.');
+    throw new HttpError(410, 'preview_expired', 'This preview has expired.', 'Preview the fix again.');
   }
   const { inst, need } = await prReady(cfg, sess, p.repo, p.item_id);
   const token = await installationToken(cfg, p.repo, { permissions: { ...need, metadata: 'read' }, inst });
@@ -29,7 +29,9 @@ export const POST = route(async (req: NextRequest) => {
   try {
     return privateJson({ ok: true, ...(await apply(gh, p)) });
   } catch (e) {
-    if (e instanceof FixError) throw new HttpError(e.status, e.message);
+    if (e instanceof FixError) throw new HttpError(e.status, e.code, e.message, e.hint);
     throw e;
   }
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

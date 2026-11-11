@@ -209,13 +209,14 @@ describe('Markdown content negotiation', () => {
 });
 
 describe('404s', () => {
+  // Addresses under /api/ get the API's JSON 404 instead (tests/api.test.ts).
   const MISSING = [
     '/some-path-that-does-not-exist',
     '/__ora-404-probe-4soa29ro',
     '/docs/nope',
     '/about/team',
-    '/api/nope',
-    '/api/scan/octo',
+    '/apis',
+    '/api.md',
     '/app/nope',
     '/nope.md',
     '/shared/nope.css',

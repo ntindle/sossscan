@@ -220,10 +220,12 @@ describe('plan', () => {
     // With neither, the file would update nothing, so no pull request is offered.
     const gh = new FakeGitHub(repoRoutes({ tree: ['Dockerfile', 'README.md'] }));
     const err = await refusal(plan(gh.call, 'octo/demo', 'deps-update-automation', 'octo'));
-    expect([err.status, err.message]).toEqual([
+    expect([err.status, err.code, err.message, err.hint]).toEqual([
       409,
+      'fix_failed',
       'octo/demo has no workflows and no package manifests the template covers, so its dependabot.yml would update ' +
-        'nothing. Write one by hand for what the repository uses, such as Docker images.',
+        'nothing.',
+      'Write one by hand for what the repository uses, such as Docker images.',
     ]);
   });
 

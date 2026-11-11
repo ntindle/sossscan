@@ -7,7 +7,8 @@ This is the home page as Markdown. The web page at https://sossscan.ntindle.com/
 ## Scan a repository
 
 - In a browser, open `https://sossscan.ntindle.com/?repo=OWNER/REPO`. A github.com address of the repository works too. The page runs the public scan and shows the results.
-- From a script or an agent, `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report as JSON, with no key or sign-in. The [API docs](/docs/api) describe the report.
+- From a script or an agent, `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report as JSON, with no key or sign-in. The [API docs](/docs/api) describe the report, and [openapi.json](/openapi.json) is the API's OpenAPI 3.1 description.
+- From an AI agent that uses the Model Context Protocol, connect to the [sossscan MCP server](/docs/mcp) at `https://sossscan.ntindle.com/mcp`. Its tools scan a repository and read the guide.
 - For a private repository, or for settings only admins can see, run the [sossscan CLI](/docs/cli) on your own machine with your own GitHub token.
 
 [sossscan for AI agents](/agents) says when sossscan fits a task, which parts of a report matter and what the limits are.
@@ -27,7 +28,7 @@ Each check also has a tier: the size of project at which it's worth doing, from 
 ## More about sossscan
 
 - [About](/about): where the guide comes from and who made it.
-- [Docs](/docs): the API and the CLI.
+- [Docs](/docs): the API, the MCP server and the CLI.
 - [Privacy](/privacy) and [Contact](/contact).
 - [llms.txt](/llms.txt): an index of this site for agents.
 - The source code is at [github.com/ntindle/sossscan](https://github.com/ntindle/sossscan), under the MIT license.

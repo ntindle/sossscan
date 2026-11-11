@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { ghRequest } from '@/lib/github.ts';
 import { configOr404, installation, REPO_CACHE_TTL, repoCache, sessionOf } from '@/lib/github-app.ts';
-import { csrf, field, jsonBody, privateJson, route } from '@/lib/http.ts';
+import { csrf, field, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
-import { parseRepo } from '@/lib/public-scan.ts';
+import { parseRepo, REPO_LENGTH } from '@/lib/public-scan.ts';
 
 /** What the signed-in person can fix on one repo: are they an admin, is the app installed, with which permissions. */
 export const POST = route(async (req: NextRequest) => {
@@ -13,7 +13,7 @@ export const POST = route(async (req: NextRequest) => {
   const body = await jsonBody(req);
   const cfg = configOr404();
   const sess = sessionOf(req);
-  const repo = parseRepo(field(body, 'repo', { min: 3, max: 200 }));
+  const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   const key = `${sess.login.toLowerCase()}\n${repo.toLowerCase()}`;
   const hit = repoCache.get(key);
   if (hit && Date.now() / 1000 - hit.at < REPO_CACHE_TTL) return privateJson(hit.value);
@@ -51,3 +51,5 @@ export const POST = route(async (req: NextRequest) => {
   repoCache.set(key, { at: Date.now() / 1000, value: out });
   return privateJson(out);
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

@@ -14,6 +14,7 @@ Vercel's functions don't remember anything between requests, so the server doesn
 | Public scan results | Vercel's CDN, for 6 hours per repo. Rescan skips it |
 | The OSS-Fuzz project list | A file shipped with the site (`lib/ossfuzz.json`) |
 | An AI fix | It runs inside one request (up to 5 minutes), so there's no background job to track |
+| An MCP client's connection | Nowhere: the MCP server has no sessions, and each message stands alone |
 | AI fixes per person per day | In their sign-in cookie |
 
 Two things are only per instance on Vercel, so treat them as speed bumps, not hard limits:

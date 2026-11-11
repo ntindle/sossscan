@@ -1,9 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { configOr404, installationToken, requireAdmin, sessionOf } from '@/lib/github-app.ts';
-import { csrf, field, jsonBody, privateJson, route } from '@/lib/http.ts';
+import { csrf, field, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
 import { ossFuzzLookup } from '@/lib/ossfuzz.ts';
-import { parseRepo } from '@/lib/public-scan.ts';
+import { parseRepo, REPO_LENGTH } from '@/lib/public-scan.ts';
 import { scan } from '@/lib/scanner/index.ts';
 
 export const maxDuration = 300;
@@ -16,9 +16,11 @@ export const POST = route(async (req: NextRequest) => {
   const body = await jsonBody(req);
   const cfg = configOr404();
   const sess = sessionOf(req);
-  const repo = parseRepo(field(body, 'repo', { min: 3, max: 200 }));
+  const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   await requireAdmin(sess, repo);
   const token = await installationToken(cfg, repo);
   const rep = await scan(repo, { token, layer: 'private', assumeAdmin: true, ossFuzzLookup });
   return privateJson({ ...rep, layer: 'app' });
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

@@ -260,7 +260,12 @@ describe('a private repo', () => {
     ]) {
       answers.push({ status: r.status, cache: r.headers.get('cache-control'), body: await r.json() });
     }
-    expect(answers).toEqual(Array(4).fill({ status: 404, cache: 'no-store', body: { detail: NOT_FOUND } }));
+    // The same status, code, words and hint: nothing in the answer depends on whether the repo exists.
+    const { error } = answers[0].body;
+    expect(error.code).toBe('repo_not_found');
+    expect(error.hint).not.toContain('octo');
+    const body = { error: { code: 'repo_not_found', message: NOT_FOUND, hint: error.hint }, detail: NOT_FOUND };
+    expect(answers).toEqual(Array(4).fill({ status: 404, cache: 'no-store', body }));
   });
 });
 
@@ -300,10 +305,11 @@ it('has the page say GitHub is limiting requests, not that the repo is missing, 
   env.world().repo.set('GET /repos/octo/demo', [403, { message: 'API rate limit exceeded for installation ID 5.' }]);
   const c = new Browser();
   const r = await c.get('/api/scan/octo/demo');
-  const { detail } = await r.json();
-  expect([r.status, r.headers.get('cache-control'), detail]).toEqual([
+  const { detail, error } = await r.json();
+  expect([r.status, r.headers.get('cache-control'), error.code, detail]).toEqual([
     404,
     'no-store',
+    'scan_failed',
     `repo lookup failed: HTTP 403; ${RATE_LIMITED}`,
   ]);
   // The page's words for it (scanPublic throws the detail).
