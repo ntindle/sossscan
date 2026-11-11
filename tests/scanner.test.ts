@@ -39,14 +39,7 @@ import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
 import { securityConfiguration, smsTwoFactor } from '../lib/scanner/private-layer.ts';
 import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
-import {
-  customQueries,
-  dependabotLimit,
-  licenseGate,
-  memorySafety,
-  refreshBacklog,
-  tracedSecrets,
-} from '../lib/scanner/self-checks.ts';
+import { customQueries, licenseGate, memorySafety, refreshBacklog, tracedSecrets } from '../lib/scanner/self-checks.ts';
 import { covers, supportTable, targetRelease } from '../lib/scanner/versions.ts';
 import { parseYaml } from '../lib/scanner/yaml-lite.ts';
 import type { YNode } from '../lib/scanner/yaml-lite.ts';
@@ -2593,26 +2586,15 @@ describe('deps-refresh', () => {
     ]);
   });
 
-  it('warns when as many Dependabot pull requests are open as dependabot.yml allows', async () => {
-    // open-pull-requests-limit: 1 for npm, and the default 5 for github-actions.
-    const six = { json: [1, 2, 3, 4, 5, 6].map((n) => pr(n, n)) };
-    expect(await refresh(six, dependabot('    open-pull-requests-limit: 1'))).toEqual([
-      'warn',
-      'Dependabot has 6 pull requests open, as many as dependabot.yml allows at once, so new updates wait',
-    ]);
-    expect(dependabotLimit(dependabot('    open-pull-requests-limit: 0'))).toBe(5);
-  });
-
-  it('adds nothing for a short, fresh queue, or when the pull requests could not be listed', async () => {
+  it('adds nothing for fresh pull requests, however many, or when they could not be listed', async () => {
     expect(await refresh({ json: [pr(1, 10), pr(2, 40)] })).toBeNull();
+    // A queue at dependabot.yml's open-pull-requests-limit isn't a warning: security updates count toward the open
+    // pull requests but not toward that limit, so the count can't show it was reached.
+    const six = { json: [1, 2, 3, 4, 5, 6].map((n) => pr(n, n)) };
+    expect(await refresh(six, dependabot('    open-pull-requests-limit: 1'))).toBeNull();
     expect(await refresh({ status: 403, json: { message: 'Forbidden' } })).toBeNull();
     // A full page that has no bot pull request says nothing about the ones after it.
-    expect(
-      refreshBacklog(
-        Array.from({ length: 100 }, (_, i) => pr(i, 300, 'octocat')),
-        5,
-      ),
-    ).toBeNull();
+    expect(refreshBacklog(Array.from({ length: 100 }, (_, i) => pr(i, 300, 'octocat')))).toBeNull();
   });
 });
 

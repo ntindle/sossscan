@@ -6,7 +6,7 @@ import { actionName, readWorkflow } from './jobs.ts';
 import type { Step, Workflow } from './jobs.ts';
 import { finditer, re, search, splitLines } from './py.ts';
 import type { Evidence, Status } from './types.ts';
-import { at, list, parseYaml, text } from './yaml-lite.ts';
+import { at, list, parseYaml } from './yaml-lite.ts';
 import type { YNode } from './yaml-lite.ts';
 
 export interface Outcome {
@@ -333,47 +333,23 @@ export function copilotReview(rules: unknown): Outcome | null {
 export const BOT_LOGINS = new Set(['dependabot[bot]', 'renovate[bot]']);
 const DAY = 86_400_000;
 
-/** How many version-update pull requests dependabot.yml lets Dependabot keep open: each entry's limit (5 by default). */
-export function dependabotLimit(yml: string): number | null {
-  const updates = at(parseYaml(yml), 'updates');
-  if (!updates || updates.kind !== 'seq') return null;
-  let total = 0;
-  for (const u of updates.items) {
-    const n = text(at(u, 'open-pull-requests-limit'));
-    total += n === null ? 5 : Number(n) >= 0 ? Number(n) : 0;
-  }
-  return total;
-}
-
 /**
- * deps-refresh warns when the oldest open Dependabot or Renovate pull request is over 90 days old, or when as many
- * Dependabot pull requests are open as dependabot.yml allows at once, so new updates wait. pulls is the first page of
- * open pull requests, oldest first.
+ * deps-refresh warns when the oldest open Dependabot or Renovate pull request is over 90 days old. pulls is the first
+ * page of open pull requests, oldest first, so the first bot pull request in it is the oldest of all; a page with none
+ * says nothing about the pull requests after it.
  */
-export function refreshBacklog(pulls: unknown, limit: number | null, now: Date = new Date()): Outcome | null {
+export function refreshBacklog(pulls: unknown, now: Date = new Date()): Outcome | null {
   if (!Array.isArray(pulls)) return null;
-  const bots = pulls.filter((p) => BOT_LOGINS.has(String(p?.user?.login ?? '')));
-  if (!bots.length) return null;
-  const oldest = bots[0];
+  const oldest = pulls.find((p) => BOT_LOGINS.has(String(p?.user?.login ?? '')));
+  if (!oldest) return null;
   const opened = Date.parse(String(oldest.created_at ?? ''));
   const days = Number.isNaN(opened) ? 0 : Math.floor((now.getTime() - opened) / DAY);
-  const dependabot = bots.filter((p) => p.user.login === 'dependabot[bot]').length;
-  // A full page may leave some of them out, so a count below the limit says nothing.
-  const atLimit = limit !== null && limit > 0 && dependabot >= limit;
-  if (days <= 90 && !atLimit) return null;
+  if (days <= 90) return null;
   const who = oldest.user.login === 'renovate[bot]' ? 'Renovate' : 'Dependabot';
-  const parts: string[] = [];
-  if (days > 90) parts.push(`The oldest open ${who} pull request, #${oldest.number}, is ${days} days old`);
-  if (atLimit) {
-    parts.push(
-      `${parts.length ? '' : 'Dependabot has '}${dependabot} pull requests open, as many as dependabot.yml allows ` +
-        'at once, so new updates wait',
-    );
-  }
   return {
     status: 'warn',
-    summary: parts.join('; '),
+    summary: `The oldest open ${who} pull request, #${oldest.number}, is ${days} days old`,
     evidence: typeof oldest.html_url === 'string' ? [{ label: `#${oldest.number}`, url: oldest.html_url }] : [],
-    details: { oldest_days: days, open_bot_prs: bots.length, dependabot_limit: limit },
+    details: { oldest_days: days },
   };
 }

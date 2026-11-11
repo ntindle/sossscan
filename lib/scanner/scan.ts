@@ -52,7 +52,6 @@ import { releaseCacheCheck } from './release-caches.ts';
 import {
   copilotReview,
   customQueries,
-  dependabotLimit,
   licenseGate,
   memorySafety,
   refreshBacklog,
@@ -978,10 +977,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const reno = find(RENOVATE);
   const dynDbot = dyn.has('dynamic/dependabot/dependabot-updates');
   let cooldown = false;
-  let dbotBody: string | null = null;
   if (dbot.length) {
     const body = await read(dbot[0]);
-    dbotBody = body;
     if (body === null) {
       res('deps-update-automation', 'unknown', couldNotRead(dbot[0]), fileLink(dbot[0]));
     } else {
@@ -1030,7 +1027,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   // Update pull requests left open: the first page of open pull requests, oldest first (new in 0.5.0).
   if (dbot.length || reno.length || dynDbot) {
     const [ps, pulls] = await http.json(`/repos/${repo}/pulls?state=open&sort=created&direction=asc&per_page=100`);
-    const backlog = ps === 200 ? refreshBacklog(pulls, dbotBody === null ? null : dependabotLimit(dbotBody)) : null;
+    const backlog = ps === 200 ? refreshBacklog(pulls) : null;
     if (backlog) res('deps-refresh', backlog.status, backlog.summary, backlog.evidence, backlog.details);
   }
   const npmrc = files.includes('.npmrc') ? await read('.npmrc') : '';
