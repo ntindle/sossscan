@@ -7,14 +7,14 @@
 import type { Finding, Status } from './types.ts';
 import { actionMajor, actionName, grantsIdToken, readCompositeSteps, readWorkflow } from './jobs.ts';
 import type { Job, Step, Workflow } from './jobs.ts';
-import { SCRIPT_RUN } from './hops.ts';
+import { NPM_PUBLISH, SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import type { Hops } from './hops.ts';
 import { finditer, re, search, splitLines } from './py.ts';
 
 /** A command that publishes a package, an image or a release. Dry runs and snapshot builds publish nothing. */
 export const PUBLISH_RUN = re(
   String.raw`(?:^|[\s;&|(/])(?:(?:npm|pnpm)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|` +
-    String.raw`yarn\s+npm\s+publish\b|npm\s+run\s+publish(?![\w:.-])|twine\s+upload\b|` +
+    String.raw`yarn\s+npm\s+publish\b|twine\s+upload\b|` +
     String.raw`(?:uv|poetry|hatch|flit)\s+publish\b|maturin\s+(?:upload|publish)\b|cargo\s+publish\b|gem\s+push\b|` +
     String.raw`docker\s+(?:image\s+)?push\b|` +
     String.raw`docker\s+buildx\s+build\b[^\n]*\s--push\b|gh\s+release\s+(?:create|upload)\b|` +
@@ -440,7 +440,17 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
         for (const m of finditer(SCRIPT_RUN, line)) {
           const tool = m[1].split(' ')[0];
           const body = await hop(tool, m[2]);
-          const ran = typeof body === 'string' ? search(PUBLISH_RUN, body) : null;
+          // npm run publish (or pnpm's or yarn's) counts only when the script publishes to npm; any other script
+          // counts when it runs a publish command.
+          const npmScript = tool !== 'make' && m[2] === 'publish';
+          const ran =
+            typeof body !== 'string'
+              ? null
+              : npmScript
+                ? publishesToNpm(body)
+                  ? search(NPM_PUBLISH, body)
+                  : null
+                : (search(PUBLISH_RUN, body) ?? search(NPM_PUBLISH, body));
           if (ran) return { why: `${m[1]} ${m[2]}, which runs ${command(ran[0])}`, unresolved };
           // A bare "pnpm X" or "yarn X" is often a built-in command, so only a named script counts.
           const named = (m[1].includes(' ') || tool === 'make') && !NOT_PUBLISHING.has(m[2].toLowerCase());

@@ -21,7 +21,7 @@ import {
   updatableFile,
 } from './constants.ts';
 import { fundEntry, sharingResult, trainingResult } from './fund.ts';
-import { Hops } from './hops.ts';
+import { Hops, PUBLISH_SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import { Http, decodeReplace } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
 import { privateLayer } from './private-layer.ts';
@@ -322,6 +322,18 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       `Could not read ${one ? wfUnread[0] : `${wfUnread.length} workflow files, such as ${wfUnread[0]}`} ` +
         `(HTTP ${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
     );
+  }
+  // A workflow that runs the package.json script named publish publishes to npm only when that script does: npm's,
+  // pnpm's or yarn's publish, or a tool that publishes. Without a package.json to read, it doesn't count.
+  const runsScript = (w: WorkflowAnalysis) =>
+    !w.tools.includes('npm_publish') && search(PUBLISH_SCRIPT_RUN, wfText.get(w.path) ?? '') !== null;
+  if (wfs.some(runsScript)) {
+    const script = await hops.body('npm', 'publish');
+    if (typeof script === 'string' && publishesToNpm(script)) {
+      for (const w of wfs.filter(runsScript)) {
+        w.tools = TOOLS.map(([t]) => t).filter((t) => t === 'npm_publish' || w.tools.includes(t));
+      }
+    }
   }
   const tools = new Map<string, string[]>();
   for (const w of wfs) {

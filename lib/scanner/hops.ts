@@ -7,6 +7,23 @@ export const SCRIPT_RUN = re(
   String.raw`(?:^|[\s;&|(])(npm\s+run(?:-script)?|pnpm\s+run|yarn\s+run|bun\s+run|pnpm|yarn|make)` +
     String.raw`(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+([A-Za-z0-9_][\w:.-]*)`,
 );
+/** A step that runs the package.json script named publish: npm run publish, pnpm run publish or yarn run publish. */
+export const PUBLISH_SCRIPT_RUN = re(String.raw`\b(?:npm|pnpm|yarn)\s+run\s+publish(?![\w:.-])`);
+/**
+ * What a package.json script must run to publish to npm: npm's or pnpm's publish (staged too), yarn npm publish, or a
+ * tool that publishes (changesets, semantic-release, np, release-it, lerna publish). A dry run doesn't count.
+ */
+export const NPM_PUBLISH = re(
+  String.raw`(?:^|[\s;&|(])(?:(?:npm|pnpm)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|yarn\s+npm\s+publish\b|` +
+    String.raw`changesets?\s+publish\b|semantic-release\b|(?:npx\s+)?np(?=\s|$)|release-it\b|lerna\s+publish\b)` +
+    String.raw`(?![^\n]*\s--dry-run\b)`,
+);
+
+/** Whether a package.json script publishes to npm (see NPM_PUBLISH). */
+export function publishesToNpm(script: string): boolean {
+  return search(NPM_PUBLISH, script) !== null;
+}
+
 /** A Makefile rule's first line: its targets, then one or two colons (not := or ::=, which assign). */
 const MAKE_TARGET = re(String.raw`^([A-Za-z0-9_][\w.-]*(?:\s+[A-Za-z0-9_][\w.-]*)*)\s*::?(?!=)`);
 

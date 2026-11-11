@@ -1979,31 +1979,35 @@ describe('ci-untrusted-artifacts-caches', () => {
   ];
 
   it('fails when the publishing job restores a cache, with the line in the findings', async () => {
-    // mockoon's release-libs.yml: npm run publish, which 0.4.3 didn't recognize as publishing.
-    const r = await cacheCheck({
-      'release-libs.yml': [
-        'on:',
-        '  push:',
-        "    tags: ['libs-v*']",
-        'permissions:',
-        '  contents: read',
-        'jobs:',
-        '  npm-publish:',
-        '    runs-on: ubuntu-latest',
-        '    permissions:',
-        '      id-token: write',
-        '    steps:',
-        `      - uses: actions/checkout@${PIN} # v7.0.1`,
-        `      - uses: actions/setup-node@${PIN} # v7.1.0`,
-        '        with:',
-        '          node-version: "24"',
-        '          cache: npm',
-        '      - run: npm ci',
-        '      - name: NPM publish',
-        '        run: |',
-        '          npm run publish',
-      ],
-    });
+    // mockoon's release-libs.yml: npm run publish, whose package.json script runs npm publish.
+    const pkg = JSON.stringify({ scripts: { publish: 'npm publish --workspace=@octo/core --workspace=@octo/cli' } });
+    const r = await cacheCheck(
+      {
+        'release-libs.yml': [
+          'on:',
+          '  push:',
+          "    tags: ['libs-v*']",
+          'permissions:',
+          '  contents: read',
+          'jobs:',
+          '  npm-publish:',
+          '    runs-on: ubuntu-latest',
+          '    permissions:',
+          '      id-token: write',
+          '    steps:',
+          `      - uses: actions/checkout@${PIN} # v7.0.1`,
+          `      - uses: actions/setup-node@${PIN} # v7.1.0`,
+          '        with:',
+          '          node-version: "24"',
+          '          cache: npm',
+          '      - run: npm ci',
+          '      - name: NPM publish',
+          '        run: |',
+          '          npm run publish',
+        ],
+      },
+      { 'package.json': pkg },
+    );
     expect([r.status, r.summary]).toEqual([
       'fail',
       'Publishing job npm-publish in .github/workflows/release-libs.yml restores a cache (actions/setup-node with cache: npm)',
@@ -3033,31 +3037,75 @@ describe('scanner bugs fixed in 0.5.0', () => {
     ]);
   });
 
-  it('counts npm stage publish and npm run publish as publishing (bug 5)', async () => {
-    for (const run of ['npm stage publish --tag next', 'npm run publish']) {
-      const text = workflow([
-        'on:',
-        '  release:',
-        'permissions:',
-        '  id-token: write',
-        'jobs:',
-        '  publish:',
-        '    steps:',
-        `      - run: ${run}`,
-      ]);
-      const { rep } = await scanTiny(tiny({ '.github/workflows/publish.yml': text }));
-      expect([run, rep.meta.publishes_from_ci, rep.results['rel-trusted-publishing'].status]).toEqual([
-        run,
-        true,
-        'pass',
-      ]);
-    }
-    expect(
-      analyzeWorkflow(
-        '.github/workflows/x.yml',
-        'on: push\njobs:\n  a:\n    steps:\n      - run: npm run publish:docs\n',
-      ).tools,
-    ).not.toContain('npm_publish');
+  const publishWorkflow = (run: string) =>
+    workflow([
+      'on:',
+      '  release:',
+      'permissions:',
+      '  id-token: write',
+      'jobs:',
+      '  publish:',
+      '    steps:',
+      `      - run: ${run}`,
+    ]);
+  /** Whether the scan counts the workflow as publishing, and what rel-trusted-publishing makes of it. */
+  const publishing = async (run: string, files: Record<string, string> = {}) => {
+    const { rep } = await scanTiny(tiny({ '.github/workflows/publish.yml': publishWorkflow(run), ...files }));
+    return [rep.meta.publishes_from_ci, rep.results['rel-trusted-publishing'].status];
+  };
+  const scripts = (publish: string) => ({ 'package.json': JSON.stringify({ name: 'demo', scripts: { publish } }) });
+
+  it('counts npm stage publish as publishing (bug 5)', async () => {
+    expect(await publishing('npm stage publish --tag next')).toEqual([true, 'pass']);
+  });
+
+  it("counts npm run publish only when package.json's publish script publishes", async () => {
+    // mockoon's script: npm publish for each workspace.
+    expect(await publishing('npm run publish', scripts('npm publish --workspace=@octo/core'))).toEqual([true, 'pass']);
+    // A tool that publishes counts too, from pnpm or yarn.
+    expect(await publishing('pnpm run publish', scripts('changeset publish'))).toEqual([true, 'pass']);
+    expect(await publishing('yarn run publish', scripts('np --no-tests'))).toEqual([true, 'pass']);
+    // A script that does something else, a dry run, or no package.json to read: it doesn't count.
+    expect(await publishing('npm run publish', scripts('gh-pages -d dist'))).toEqual([false, 'na']);
+    expect(await publishing('npm run publish', scripts('npm publish --dry-run'))).toEqual([false, 'na']);
+    expect(await publishing('npm run publish')).toEqual([false, 'na']);
+    const tools = (run: string) =>
+      analyzeWorkflow('.github/workflows/x.yml', `on: push\njobs:\n  a:\n    steps:\n      - run: ${run}\n`).tools;
+    expect([tools('npm run publish'), tools('npm run publish:docs')]).toEqual([[], []]);
+  });
+
+  it('follows npm run publish into package.json for the release cache check too', async () => {
+    const release = (files: Record<string, string>) =>
+      cacheCheck(
+        {
+          'release.yml': [
+            'on:',
+            '  push:',
+            "    tags: ['v*']",
+            'jobs:',
+            '  publish:',
+            '    steps:',
+            '      - uses: actions/setup-node@v4',
+            '        with:',
+            '          cache: npm',
+            '      - run: npm run publish',
+          ],
+        },
+        files,
+      );
+    expect((await release(scripts('npm publish'))).status).toBe('fail');
+    // Not a publishing job: the release workflow runs a script that doesn't publish.
+    expect(await release(scripts('gh-pages -d dist'))).toMatchObject({
+      status: 'info',
+      summary: 'Release workflow .github/workflows/release.yml has no step the scan recognizes as publishing',
+    });
+    // Without package.json the script can't be followed, so it isn't a publishing job, and its cache is named.
+    expect(await release({})).toMatchObject({
+      status: 'info',
+      summary:
+        "Job publish in .github/workflows/release.yml runs npm run publish, which the scan couldn't follow, and a " +
+        'cache is restored on its way (actions/setup-node with cache: npm)',
+    });
   });
 
   it("doesn't count a dynamic workflow GitHub lists as disabled (bug 7)", async () => {
