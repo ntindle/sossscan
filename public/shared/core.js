@@ -118,11 +118,11 @@ export async function readReportFile(file) {
 export function scanTrouble(repo, err, where = '') {
   // The API's message alone (apiError), so the words of its hint can't change which of these it is.
   const msg = String((err && (err.detail || err.message)) || err || '');
-  if (/private repositor/i.test(msg)) return [`${repo} is private, so the public scan can’t read it.`, `Use the private scan${where}. It runs on your machine with your own token, and its report stays in your browser.`];
+  if (/private repositor/i.test(msg)) return [`${repo} is private, so the public scan can’t read it.`, `Press Deep scan if you’re one of its admins, or use the private scan${where}, which runs on your machine with your own token.`];
   // Before "no such repository": a repo lookup GitHub refused for its rate limit also says "lookup failed", followed by
   // the scanner's note, "GitHub rate-limited this scan, … Try again in a few minutes." (lib/scanner/scan.ts).
   if (/rate[- ]limit/i.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a few minutes.'];
-  if (/\b404\b|not found|lookup failed/i.test(msg)) return [`GitHub has no public repository called ${repo}.`, `Check the spelling of the owner and the name. If the repository is private, use the private scan${where}.`];
+  if (/\b404\b|not found|lookup failed/i.test(msg)) return [`GitHub has no public repository called ${repo}.`, `Check the spelling of the owner and the name. If the repository is private, press Deep scan, or use the private scan${where}.`];
   if (/\b(403|429)\b/.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a minute.'];
   if (/\b503\b|busy/i.test(msg)) return ['The scanner is busy with other scans.', 'Try again in a minute.'];
   if (/failed to fetch|network|load failed/i.test(msg)) return ['The scanner didn’t answer.', 'Check your connection, then press Scan again.'];

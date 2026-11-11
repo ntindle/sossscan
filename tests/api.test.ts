@@ -298,7 +298,7 @@ describe("the site's page", () => {
     expect(missing.message.startsWith(`${NOT_FOUND} Check the spelling`)).toBe(true);
     expect(sg.scanTrouble('octo/missing', missing)).toEqual([
       'GitHub has no public repository called octo/missing.',
-      'Check the spelling of the owner and the name. If the repository is private, use the private scan.',
+      'Check the spelling of the owner and the name. If the repository is private, press Deep scan, or use the private scan.',
     ]);
     // GitHub shows the app's token its owner's private repo (tests/scan-token.test.ts).
     const hiddenRepo = { full_name: 'octo/Demo', name: 'Demo', default_branch: 'main', private: true };
