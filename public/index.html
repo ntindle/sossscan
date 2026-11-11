@@ -29,6 +29,8 @@
 <script>try { var t = localStorage.getItem('pl:theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) { /* storage blocked */ }</script>
 <noscript><style>
 .scan__wait { display: none; }
+/* The theme button needs the script, as on the text pages, which render it hidden until theme.js runs. */
+#theme { display: none; }
 .is-booting :is(#map, #foot) { display: block; }
 /* The map as a plain list of its stages, without the legend and tools, which need the script. */
 #legend, .map__tools { display: none; }
