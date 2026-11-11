@@ -48,8 +48,8 @@ const SEV_WORD = { 2: 'high', 1: 'medium' };
 const GROUPS = [
   { id: 'work', title: 'Needs work', buckets: ['fail', 'warn'], open: true },
   { id: 'check', title: 'Still to check', buckets: ['info', 'open'], open: true,
-    note: () => ['The public scan could not settle these. ',
-      el('button', { type: 'button', class: 'linkbtn', onclick: showLayers }, 'Run a deeper scan'), ' or check them yourself.'] },
+    note: () => (deepScanned() ? 'The scans could not settle these. Check them yourself.' : ['The public scan could not settle these. ',
+      el('button', { type: 'button', class: 'linkbtn', onclick: deepScan }, 'Run a deep scan'), ' or check them yourself.']) },
   { id: 'done', title: 'Done', buckets: ['done'], open: true },
   { id: 'later', title: 'Later, as you grow', buckets: ['later'], open: false },
   { id: 'skip', title: "Doesn't apply to this repo", buckets: ['skip'], open: false },
@@ -62,7 +62,7 @@ const S = {
   guide: null, report: null, ctx: {}, repo: '', model: null,
   stage: null, item: null, key: null, first: true, pinned: false, collapsed: false,
   opener: null, readerSig: '', groupOpen: new Map(), threatsOpen: new Set(), switching: false, token: null, rerender: null,
-  layersTouched: false, revealed: false, tokenWanted: false,
+  revealed: false, tokenWanted: false, keep: null,
 };
 
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
@@ -108,8 +108,13 @@ function render({ guide, report, ctx, repo }) {
     if (linked && S.model.byId[linked.stage]) { S.stage = linked.stage; S.item = linked.id; S.pinned = true; }
   }
   // A new scan: open the stage with the most urgent problem and select that check (on phones the sheet stays
-  // closed until asked), unless the page was opened on a specific stage or fix.
-  if (fresh && report && !(first && S.pinned)) {
+  // closed until asked), unless the page was opened on a specific stage or fix, or the scan is the app's check after a
+  // one-click fix, which keeps that fix open (S.keep, from sg:report).
+  const kept = S.keep && guide.itemsById[S.keep];
+  S.keep = null;
+  if (fresh && report && kept && S.model.byId[kept.stage]) {
+    S.stage = kept.stage; S.item = kept.id; S.collapsed = false;
+  } else if (fresh && report && !(first && S.pinned)) {
     const top = S.model.fixFirst;
     if (top) { S.stage = top.stage.id; S.item = WIDE.matches ? top.row.item.id : null; S.collapsed = false; }
   }
@@ -144,22 +149,21 @@ function render({ guide, report, ctx, repo }) {
     }
   }
   S.first = false;
-  // A shared link (?repo=) with no scan in this browser is being scanned right now: show what's below the scan box
-  // once, with the result, instead of drawing an empty map and pushing it down when the result lands.
-  if (first && !report && sg.parseRepoInput(new URLSearchParams(location.search).get('repo') || '')) {
+  // The scan box started a scan of its own as the page loaded: a shared link (?repo=) with no scan in this browser,
+  // or a deep scan it carries on with after GitHub sent the person back. Show what's below the scan box once, with
+  // the result, instead of drawing an empty map and pushing it down when the result lands.
+  if (first && !report && $('#scan-mount .sg-scan[aria-busy="true"]')) {
     S.holdForScan = true;
     setTimeout(() => { if (S.holdForScan) { S.holdForScan = false; reveal(); } }, 15000);
-  } else if (first) revealWhenSettled();
+  } else if (first) reveal();
   else if (S.holdForScan && report) { S.holdForScan = false; reveal(); }
 }
 
 function firstRun() {
-  // Keep the three scan layers together under the repo box; open them where there is room.
-  const layers = $('#scan-mount .sg-layers');
-  const box = $('#layers');
-  if (layers) box.append(layers); else box.hidden = true;
-  box.open = WIDE.matches;
-  box.querySelector('summary').addEventListener('click', () => { S.layersTouched = true; });
+  // The private scan goes under the repo box, in "Scan privately", which stays closed until someone opens it.
+  const priv = $('#scan-mount .sg-private');
+  const box = $('#private');
+  if (priv) box.append(priv); else box.hidden = true;
   watchBusy();
   const c = S.guide.counts || {};
   // Above the site's links, which index.html has in its footer from the start.
@@ -168,18 +172,9 @@ function firstRun() {
 }
 
 // Everything below the scan box waits for the first render (index.html starts with .is-booting), so nothing is
-// drawn in one place and then pushed down. Where the scan layers are open, also wait for the GitHub App box,
-// whose text arrives a moment later and can make the layers taller; give up waiting after 700 ms.
-function revealWhenSettled() {
-  const layers = $('#layers');
-  const app = layers.open ? $('.sg-layer:last-child .sg-layer__body', layers) : null;
-  if (!app || !app.querySelector(':scope > .sg-muted:only-child')) { reveal(); return; }
-  const done = () => { watch.disconnect(); clearTimeout(timer); reveal(); };
-  const watch = new MutationObserver(done);
-  watch.observe(app, { childList: true });
-  const timer = setTimeout(done, 700);
-}
-
+// drawn in one place and then pushed down. Nothing in the scan box changes size when the GitHub App's status arrives
+// a moment later: the sign-in line keeps its space (core.css) and "Scan privately" starts closed. So the first render
+// reveals the page at once, unless a scan is on its way (above).
 function reveal() {
   if (S.revealed) return;
   S.revealed = true;
@@ -580,7 +575,7 @@ function rowEl(r) {
     el('span', {}, `From tier ${item.tier}`),
     el('span', {}, `Effort: ${lc(sg.EFFORT_LABEL[item.effort])}`),
     el('span', {}, `Impact: ${lc(sg.IMPACT_LABEL[item.impact])}`),
-    showLayer ? el('span', {}, `Checked by: ${sg.LAYER_LABEL[item.layer] || item.layer}`) : null));
+    showLayer ? el('span', {}, `Checked by: ${sg.CHECKED_BY[item.layer] || item.layer}`) : null));
   const li = el('li', { class: `row row--${bucket}${current ? ' is-current' : ''}` }, btn);
   if (finds.length) li.append(findsPreview(finds));
   return li;
@@ -806,14 +801,18 @@ function stopToken() {
   for (const li of $$('#line > li.is-hit')) li.classList.remove('is-hit');
 }
 
-// Open the scan layers and bring them into view (from "Still to check").
-function showLayers() {
-  const d = $('#layers');
-  if (d.hidden) return;
-  d.open = true;
-  d.scrollIntoView({ block: 'start', behavior: motion() });
-  d.querySelector('summary').focus({ preventScroll: true });
+// "Run a deep scan" (from "Still to check"): the scan box's Deep scan button, in view and pressed. It's the same flow,
+// so with no sign-in yet it goes on to GitHub, which this click asked for.
+function deepScan() {
+  const btn = $('#scan-mount .sg-scan__deep');
+  if (!btn) return;
+  btn.scrollIntoView({ block: 'center', behavior: motion() });
+  btn.focus({ preventScroll: true });
+  btn.click();
 }
+
+// The report on screen has a scan with admin access: a deep scan, or a private scan's report.
+const deepScanned = () => !!S.report && (S.report.layers || [S.report.layer]).some((l) => l !== 'public');
 
 // ------------------------------------------------------------------------------------ plumbing
 function setupStatic() {
@@ -864,7 +863,6 @@ function setupStatic() {
     } else {
       S.item = null;
     }
-    if (!S.layersTouched) $('#layers').open = WIDE.matches;
     S.readerSig = '';
     drawLine();
     drawStage();
@@ -885,6 +883,12 @@ function setupStatic() {
     else writeHash();
   });
   addEventListener('resize', stopToken);
+  // After a one-click fix, the app checks the repository again and sends the result with the check's id. This runs
+  // before the scan panel's own listener draws the result, so render() keeps that check open.
+  document.addEventListener('sg:report', (e) => {
+    const id = e.detail && e.detail.item;
+    if (id && S.guide && S.guide.itemsById[id]) S.keep = id;
+  });
 }
 
 function setupTheme() {
@@ -901,20 +905,22 @@ function setupTheme() {
   paint();
 }
 
-// While a scan runs, the lamps run a "lamp test" and the map says so. The scan panel marks a public scan with
-// aria-busy; a GitHub App check only shows up in its message ("Checking …").
+// While a scan runs, the lamps run a "lamp test" and the map says so. The scan panel marks every scan with aria-busy
+// (a public scan and a deep scan alike), and its message starts with "Checking" while a deep scan checks your access
+// first, then "Scanning".
 function watchBusy() {
   const scan = $('#scan-mount .sg-scan');
   if (!scan) return;
   const msg = $('.sg-scan__msg', scan);
   const sync = () => {
-    const scanning = scan.getAttribute('aria-busy') === 'true';
-    // A shared link's scan ended without a result (it failed): show the page anyway; the scan box says why.
-    if (!scanning && S.holdForScan && !S.report) { S.holdForScan = false; reveal(); }
-    const checking = !scanning && !!msg && /^Checking\b/.test(msg.textContent.trim());
-    if (scanning || checking) stopToken();
-    $('#map').toggleAttribute('data-busy', scanning || checking);
-    $('#busy').textContent = scanning ? 'Scanning…' : checking ? 'Checking…' : '';
+    const busy = scan.getAttribute('aria-busy') === 'true';
+    // A scan the box started on its own ended without a result (it failed, or a deep scan needs a click first): show
+    // the page anyway; the scan box says why.
+    if (!busy && S.holdForScan && !S.report) { S.holdForScan = false; reveal(); }
+    const checking = busy && !!msg && /^Checking\b/.test(msg.textContent.trim());
+    if (busy) stopToken();
+    $('#map').toggleAttribute('data-busy', busy);
+    $('#busy').textContent = busy ? (checking ? 'Checking…' : 'Scanning…') : '';
   };
   const watch = new MutationObserver(sync);
   watch.observe(scan, { attributes: true, attributeFilter: ['aria-busy'] });

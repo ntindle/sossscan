@@ -99,36 +99,33 @@ button { font: inherit; }
   letter-spacing: -.015em; text-wrap: balance; }
 .lede { margin: 0; max-width: 56ch; color: var(--muted); font-size: 16.5px; text-wrap: pretty; }
 
-.scan { padding: 16px 16px 12px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.scan { padding: 16px 16px 12px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; container-type: inline-size; }
 .scan__h { margin: 0 0 10px; font: 700 19px/1.2 var(--f-plate); font-stretch: semi-condensed; }
-/* The shared form is 40px tall on every platform (explicit line height) and its message one line at least, so the
-   box can hold that space before the scanner mounts: the card doesn't grow when it does. */
+/* The shared form is 40px tall on every platform (explicit line height), or two rows of it where the box is narrow
+   (core.css). Under it, the sign-in line takes one line, or two where the box is narrow, and the message one line at
+   least. So the box can hold that space before the scanner mounts: the card doesn't grow when it does. */
 .scan .sg-scan__form .sg-input { min-width: 12ch; padding: 9px 11px; font-size: 16px; line-height: 20px; }
 .scan .sg-scan__form .sg-btn { min-height: 40px; }
+.scan .sg-scan__who { font-size: 14px; line-height: 1.45; }
 .scan .sg-scan__msg { margin: 8px 0 6px; font-size: 14.5px; }
-#scan-mount { min-height: calc(40px + 8px + 14.5px * 1.5 + 6px); }
+#scan-mount { min-height: calc(40px + 6px + 14px * 1.45 + 8px + 14.5px * 1.5 + 6px); }
+@container (max-width: 31rem) { #scan-mount { min-height: calc(40px + 8px + 40px + 6px + 2 * 14px * 1.45 + 8px + 14.5px * 1.5 + 6px); } }
 #scan-mount > .scan__wait { margin: 0; padding-top: 10px; font-size: 14.5px; }
 .noscript { margin: 0; padding: 9px 12px; border: 1px solid var(--rule); border-radius: 4px; background: var(--page); }
 /* Until the first render, show only what is already in its final place: everything below waits (pipeline.js). */
-.is-booting :is(#first, #layers, #readout, #map, #stage-slot, #foot) { display: none; }
+.is-booting :is(#first, #private, #readout, #map, #stage-slot, #foot) { display: none; }
 /* core hides the report file input with display:none, which keeps it out of the tab order; keep it focusable */
 .scan .sg-file { display: block; position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); }
 .scan label.sg-btn { position: relative; }
 .scan label.sg-btn:focus-within { outline: 2px solid var(--signal); outline-offset: 2px; }
-.layers { border-top: 1px solid var(--rule); padding-top: 8px; }
-.layers > summary { cursor: pointer; padding: 4px 0; font: 600 15px/1.35 var(--f-plate); font-stretch: semi-condensed; }
-.layers > summary::marker { color: var(--muted); }
-.layers .sg-layers { margin: 8px 0 4px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
-@media (min-width: 1080px) { .layers .sg-layers { grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1fr); } }
-.layers .sg-layer { padding: 10px 12px; background: var(--page); border-radius: 4px; }
-.layers .sg-layer h3 { margin-bottom: 4px; font: 700 15px/1.25 var(--f-plate); font-stretch: semi-condensed; }
-.layers .sg-layer p { margin: 0; font-size: 13.5px; line-height: 1.42; }
-.layers .sg-layer__body { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-.layers .sg-layer__body > p { flex: 1 1 100%; }
-.layers .sg-layer__body > .sg-cmd { order: 3; flex: 1 1 100%; }
-.layers .sg-cmd code { flex: 1 1 auto; min-width: 0; }
-.layers .sg-layer__body > label.sg-btn { order: 2; }
-.layers .sg-btn { padding: 6px 10px; }
+/* "Scan privately": the private scan, closed until someone opens it. */
+.private { border-top: 1px solid var(--rule); padding-top: 8px; }
+.private > summary { cursor: pointer; padding: 4px 0; font: 600 15px/1.35 var(--f-plate); font-stretch: semi-condensed; }
+.private > summary::marker { color: var(--muted); }
+.private .sg-private { margin: 6px 0 4px; gap: 7px; }
+.private .sg-private > p { font-size: 14px; line-height: 1.45; }
+.private .sg-cmd code { flex: 1 1 auto; min-width: 0; }
+.private .sg-btn { padding: 6px 10px; }
 
 /* "Fix this first": an annunciator under the scan result, lit in the color of the check it points to */
 .first { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 12px; align-items: start; margin: 0 0 12px;

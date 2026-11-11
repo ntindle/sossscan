@@ -48,18 +48,20 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 
 ## `core.js` API (all exported)
 **Booting and scanning**
-- `boot({mountScan, render, compactScan, autoScan})` does everything for a typical page. With `autoScan`, a shared `?repo=` link that this browser has no scan of is scanned straight away. It loads the guide, mounts the standard scan panel into `mountScan`, and calls `render({guide, report, ctx, repo})` whenever a scan or report loads, or progress changes.
-- `renderScanPanel({onReport, initialRepo, compact})` is the standard three-layer scanner UI:
-  1. a public scan (calls the API);
-  2. a private scan: download `sosf-scan.mjs`, run it with Node, then load the JSON report, which is parsed in the browser and never uploaded;
-  3. the GitHub App: install, sign in, check settings.
-  
+- `boot({mountScan, render, compactScan, autoScan})` does everything for a typical page. With `autoScan`, a shared `?repo=` link that this browser has no scan of is scanned straight away, unless GitHub just sent the person back to the page (`?app=`). It loads the guide, mounts the standard scan panel into `mountScan`, and calls `render({guide, report, ctx, repo})` whenever a scan or report loads, or progress changes.
+- `renderScanPanel({onReport, initialRepo, compact, autoScan})` is the standard scanner UI:
+  1. the repo box, with Scan and Rescan (the public scan, through the API) and Deep scan (the checks only admins can see, through the GitHub App);
+  2. a line under it: what Deep scan does, or who's signed in, with Sign out. Its two texts share one place, so it keeps its height when the app's status arrives;
+  3. the status message;
+  4. the private scan, `.sg-private`: download `sosf-scan.mjs`, run it with Node, then load the JSON report, which is parsed in the browser and never uploaded. A page can move it into a `<details>` of its own, as the map's "Scan privately" does. A message that points to it opens that `<details>`.
+
   How it behaves:
-  - Its layer headings are `h3`, so put it under an `h2`.
-  - While busy, the panel's root has `aria-busy="true"` and its status text starts with "Scanning" or "Checking". Buttons use `aria-disabled`, so keyboard focus stays put.
+  - Deep scan asks `app.status()`, then `app.repo()` (afresh when someone presses it). Signed out, it saves an intent (below) and goes to `/app/login`, which comes back to the page with `?repo=`. For someone who isn't an admin of the repo, it says so and offers Sign out. Where the app isn't installed, it says the app is needed there and links to GitHub's install page in the same tab, saving the intent first. Otherwise it runs `app.check()` and merges the result, which is layer `app`. On a copy of the site without the app, it says Deep scan isn't available there and points to the private scan.
+  - When GitHub sends the person back with `?app=signed-in` or `?app=installed`, the panel carries on with the intent once: a deep scan runs, or the check whose fix was open opens again (the panel puts `#fix=<id>` in the address before the page's first render). It never sends anyone to GitHub without a click.
+  - While busy, the panel's root has `aria-busy="true"` and its status text starts with "Checking" (Deep scan checking access) or "Scanning". Buttons use `aria-disabled`, so keyboard focus stays put. When the panel starts a scan on its own as the page loads (a shared link, or a deep scan it carries on with), it's busy already at the page's first render.
   - Errors appear in `.sg-scan__msg.is-error`: what went wrong, then what to do next.
   - If a scan of a different repo fails, it calls `onReport(null, repo)`, so the old repo's results don't stay on screen under the new name.
-  - It shows the `?app=` notice after a GitHub sign-in round trip.
+  - It shows the `?app=` notice after a GitHub round trip.
 - `scanPublic(repo, {refresh})`, `readReportFile(file)`, `mergeReports(...reports)`, `recallReports(repo)`, `initialRepo()` (reads `?repo=` and then the last repo used), `parseRepoInput(str)`.
 - `scanTrouble(repo, err, where)` returns `[title, next step]` for a failed scan, in plain words.
 - A failed API request, from `scanPublic` or the `app` calls, throws an Error whose message is the API's message and hint together. `err.code` is the API's error code (`lib/http.ts`), and `err.detail` the message alone, which `scanTrouble` reads.
@@ -85,6 +87,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 - `fixItForMe(item, {ctx, report, cls})` is the GitHub App block on its own, for a page that builds its own fix panel.
   - It covers one-click settings (`item.app_fix`) and pull request fixes (`pr_fixes` from `/api/app/status`).
   - It's hidden when the app can't fix the item or the item already passes. When it can't act, it says why: sign in, be an admin, install the app, or a missing permission.
+  - Its sign-in and install links stay in the same tab and save an intent with the check's id (below), so the page opens this check again when GitHub sends the person back.
   - `cls = {btn, primary}` passes the page's own button classes.
 - `promptBlock(item, {report, ctx, cls})`, `agentPrompt(item, {report, ctx})`, `promptKind(item)`:
   - `promptKind` is `'code'`, `'doc'`, `'setting'` or `null` (no prompt for accounts, people and process checks).
@@ -102,17 +105,22 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - When `ctx.workflowCount` is 0, the dependabot.yml template (the one with `{ecosystem_blocks}`) leaves out its github-actions entry, which Dependabot calls an error in a repository with no workflows.
   - `lib/fixes.ts` has a copy for pull requests, and a test keeps the two identical.
 - `store.get(repo, id)`, `store.set(repo, id, {done, dismissed, note, pr, …})` (localStorage). This fires a `sg:progress` event. `pr` is `{url, number}` once the app has opened a pull request for the item.
-- `app.status()` (one request per page load), `app.repo(repo)` (admin? installed? permissions?), `app.check(repo)`, `app.fix(repo, fixId)`, `app.prPreview(repo, itemId)`, `app.prCreate(plan)`, `app.loginUrl()`.
+- `app.status()` (one request per page load), `app.repo(repo, {fresh})` (admin? installed? permissions? Cached per page load unless `fresh`; a failure comes back as `{error, code}`), `app.check(repo)`, `app.fix(repo, fixId)`, `app.prPreview(repo, itemId)`, `app.prCreate(plan)`, `app.loginUrl()`.
   - `status().pr_fixes[itemId].kind` is `file`, `pin` or `agent`.
   - Agent fixes appear only when the site has an AI service configured. Their `prPreview` takes a minute or so, because the agent runs inside that request.
   - `prPreview` returns a sealed `plan` along with the preview. `prCreate(plan)` sends it back, and only the person who previewed it can use it, for 15 minutes.
-  - `takeAppNotice()` returns the `?app=` notice and removes the parameter from the address.
+  - `takeAppNotice()` returns `{key, text, error}` for the `?app=` parameter (`text` is null for a value it doesn't know) and removes the parameter from the address.
+- A trip to GitHub and back. Before Deep scan or a fix panel sends someone to sign in or install the app, the page saves what they asked for in sessionStorage, under `INTENT_KEY` (`sg:intent`): `{repo, item, at}`, where `item` is the check whose fix was open, or null for Deep scan.
+  - `saveIntent(repo, item)` writes it, and `backTo(repo)` is the page's address showing that repo, for `/app/login?next=`.
+  - `readIntent(raw, now)` checks one: the repository with `parseRepoInput`, the check's id, and its age, under `INTENT_TTL` (15 minutes).
+  - `resumeIntent(raw, {app, repo, now})` is the intent to carry on with: only after `?app=signed-in` or `?app=installed`, and only for the repository the page shows.
+  - `takeIntent({app, repo})` takes it out of sessionStorage on every load, whether it carries on or not, so it's used once at most. The Back button, a cancelled sign-in or another repository leaves nothing to carry on with.
 
 **DOM helpers**
 - `el(tag, attrs, ...children)`: children are text, never HTML, and `javascript:` links are refused.
 - `statusBadge(status, label)` (the label defaults to `STATUS[status].label`; pass `statusLabel(st)`), `codeBlock(code, lang)`, `copyButton(text, label, cls)`.
 - `liveSay(text)` announces to screen readers.
-- `EFFORT_LABEL`, `IMPACT_LABEL`, `LAYER_LABEL`.
+- `EFFORT_LABEL`, `IMPACT_LABEL`, `LAYER_LABEL` (a report's layer: Public scan, Private scan, Deep scan) and `CHECKED_BY` (which scan can check an item, by the item's layer).
 
 ## Requirements for the page
 1. **Repo in, scan out.** A visible repo input with all three scan layers. Results must change what the page shows: status per item, findings, and the tier from `report.tier` or `report.meta`. It must also work before any scan, as a browsable guide.

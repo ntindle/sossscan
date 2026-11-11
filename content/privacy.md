@@ -28,15 +28,15 @@ So that one visitor can't use up the site's GitHub quota, the server counts requ
 
 ## Signing in with GitHub
 
-You only need to sign in to use the GitHub App's checks and fixes. The sign-in itself happens on GitHub, under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). When GitHub sends you back, the server gets a GitHub user token for you and asks GitHub for your username.
+You only need to sign in to use Deep scan and the GitHub App's fixes. The sign-in itself happens on GitHub, under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). When GitHub sends you back, the server gets a GitHub user token for you and asks GitHub for your username.
 
 Both go into a cookie in your browser, with the app's ID and the time your sign-in ends. The cookie is encrypted and signed with a key only the server has, so its contents can't be read or changed in the browser, and the page's scripts can't read it. It lasts 7 hours, and Sign out deletes it. While you're on GitHub's sign-in page, a second cookie holds a random value for up to 15 minutes, to make sure the sign-in that comes back started in your browser. These two are the only cookies the site sets.
 
-The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. It keeps that answer in memory, with your username, the repository's name and whether the app is installed there, until the server instance stops, and reuses it for up to a minute.
+The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. When the app is installed there, it keeps that answer in memory, with your username and the repository's name, until the server instance stops, and reuses it for up to a minute.
 
 ## Checks and fixes through the app
 
-For the app's admin check and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. The admin check runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
+For Deep scan and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. A deep scan runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
 
 A pull request the app opens can be seen by everyone who can see the repository, and its description says it was opened at your request, with your GitHub username. A new file it adds, such as CODEOWNERS, may also name you as the maintainer. Both are in the preview, so you see them before you confirm.
 
@@ -49,7 +49,9 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 The page saves a few things in your browser's storage, on your device:
 
 - in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done, with any pull request the app opened for them;
-- in sessionStorage: reports from the GitHub App, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
+- in sessionStorage: reports from deep scans, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
+
+While you sign in with GitHub or install the app, sessionStorage also holds what you asked for: the repository to deep scan, or the check whose fix you had open, with its repository and the time. The page deletes it the next time it loads, and after 15 minutes it isn't used.
 
 A report from the CLI without admin access is marked as a public scan, so the page keeps it in localStorage in place of the public scan of that repository. Clearing this site's data in your browser removes all of it. The prompts for AI coding agents are built in the page too, and copying one sends nothing.
 
@@ -65,4 +67,4 @@ The site runs on Vercel. Vercel receives every request, including your IP addres
 
 Write to [sossscan@ntindle.com](mailto:sossscan@ntindle.com), or see [Contact](/contact) for other ways to reach the maintainer. If this page and the code ever disagree, please [open an issue](https://github.com/ntindle/sossscan/issues/new).
 
-Last updated November 10, 2026.
+Last updated November 11, 2026.

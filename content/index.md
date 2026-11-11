@@ -20,7 +20,7 @@ A report has one result per check, keyed by the check's id, with a status: `pass
 Each check below says which scan can read it:
 
 - public: the public scan reads it from what anyone can see.
-- admin: a setting only the repository's admins can see. A public scan reports it as `unknown`. The CLI with an admin's token, or the [GitHub App](https://github.com/apps/sossscan), checks it.
+- admin: a setting only the repository's admins can see. A public scan reports it as `unknown`. The CLI with an admin's token checks it, and so does Deep scan on the home page, which uses the [GitHub App](https://github.com/apps/sossscan).
 - self-check: something no scanner can see, such as security training. It isn't in the report. You mark it done on the page.
 
 Each check also has a tier: the size of project at which it's worth doing, from 0, "Just you", to 7, "Critical infrastructure". A repository's tier comes from its stars and dependents. [guide.json](/data/guide.json), about 700 KB, has every check's tier, impact, effort, steps and snippets, under `items`.

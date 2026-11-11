@@ -48,7 +48,9 @@ export const POST = route(async (req: NextRequest) => {
         : null,
     });
   }
-  repoCache.set(key, { at: Date.now() / 1000, value: out });
+  // Only an answer with the app installed is kept. Until then the person may be installing it on GitHub right now, and
+  // the page asks again when GitHub sends them back.
+  if (out.installed) repoCache.set(key, { at: Date.now() / 1000, value: out });
   return privateJson(out);
 });
 

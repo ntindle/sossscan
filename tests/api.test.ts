@@ -298,7 +298,7 @@ describe("the site's page", () => {
     expect(missing.message.startsWith(`${NOT_FOUND} Check the spelling`)).toBe(true);
     expect(sg.scanTrouble('octo/missing', missing)).toEqual([
       'GitHub has no public repository called octo/missing.',
-      'Check the spelling of the owner and the name. If the repository is private, use the private scan.',
+      'Check the spelling of the owner and the name. If the repository is private, press Deep scan, or use the private scan.',
     ]);
     // GitHub shows the app's token its owner's private repo (tests/scan-token.test.ts).
     const hiddenRepo = { full_name: 'octo/Demo', name: 'Demo', default_branch: 'main', private: true };
@@ -370,7 +370,8 @@ describe("the site's page", () => {
     expect(err?.message).toBe(
       "You aren't signed in with GitHub, or your sign-in has expired. Sign in with GitHub, then try again.",
     );
-    expect(await sg.app.repo('octo/demo')).toEqual({ error: err?.message });
+    // With its code, so Deep scan can tell a sign-in that has expired from other trouble.
+    expect(await sg.app.repo('octo/demo')).toEqual({ error: err?.message, code: 'sign_in_required' });
   });
 });
 

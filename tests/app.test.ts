@@ -180,6 +180,21 @@ it('reports repo status for admins and others', async () => {
   expect(st.manage_url).toBe('https://github.com/settings/installations/5');
 });
 
+it('asks GitHub again while the app is not installed, so an install shows up at once', async () => {
+  configure();
+  const c = new Browser();
+  await signIn(c);
+  const status = async () => (await c.post('/api/app/repo', { repo: 'octo/demo' })).json();
+  env.world().installed = false;
+  expect(await status()).toMatchObject({ admin: true, installed: false });
+  // Deep scan or a fix sent the person to install the app, and GitHub sent them back within the minute.
+  env.world().installed = true;
+  expect(await status()).toMatchObject({ admin: true, installed: true });
+  // An answer with the app installed is kept for that minute.
+  env.world().installed = false;
+  expect(await status()).toMatchObject({ installed: true });
+});
+
 it('runs a settings fix as the app, for an admin only', async () => {
   configure();
   const c = new Browser();

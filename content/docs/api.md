@@ -53,7 +53,7 @@ Both scan endpoints return the report the scanner writes, in the format `sosf-sc
 | `tool` | The scanner's name and version |
 | `repo` | `owner/repo`, spelled the way GitHub spells it |
 | `scanned_at` | When the scan ran, in UTC |
-| `layer` | `public` from the API. The CLI writes `private` when its token has admin access, and a GitHub App check is `app`. |
+| `layer` | `public` from the API. The CLI writes `private` when its token has admin access, and a deep scan, which the site runs through its GitHub App, is `app`. |
 | `meta` | Facts about the repository: stars, forks, dependents, language, default branch, owner type, package ecosystems, the number of workflows, whether it publishes from CI, and a few more |
 | `results` | One entry per check, keyed by the check's id |
 | `findings` | Specific problems, with file and line |
@@ -176,4 +176,4 @@ Each IP address can make 6 scan requests a minute and 40 an hour. GET and POST c
 
 ## The app endpoints
 
-The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, the admin check and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts, and openapi.json leaves them out. Their errors under `/api/app/` come in the same form, with codes of their own.
+The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, Deep scan and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts, and openapi.json leaves them out. Their errors under `/api/app/` come in the same form, with codes of their own.

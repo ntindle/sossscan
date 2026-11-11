@@ -300,7 +300,7 @@ export const REPORT_SCHEMA: Json = {
       type: 'string',
       enum: ['public', 'private', 'app'],
       description:
-        "Which scan made it: `public` from this API, `private` from the CLI with an admin's token, `app` from the site's GitHub App.",
+        "Which scan made it: `public` from this API, `private` from the CLI with an admin's token, `app` from a deep scan, which the site runs through its GitHub App.",
     },
     meta: REPO_META_SCHEMA,
     results: {
@@ -701,7 +701,7 @@ export function openApiDocument(): Json {
         "sossscan checks how a GitHub repository is set up for security, from who can push and publish to how people report vulnerabilities, and says which gap to close first. This API runs the public scan of a public repository and returns the report. There's no key and no sign-in.",
         "Every error under /api/ has the same body: a code that a program can rely on, a message, and a hint that says what to do next. An address under /api/ with no endpoint gets 404 `not_found`, and a method an endpoint doesn't take gets 405 `method_not_allowed`, with an `Allow` header.",
         `${RATE_LIMIT_NOTE} The API sends no CORS headers, so a web page on another site can't read its answers.`,
-        "The endpoints under /api/app/ serve the site's GitHub App features: sign-in, the admin check and fixes. They need a signed-in browser and a header only the site's page sends, so this document leaves them out.",
+        "The endpoints under /api/app/ serve the site's GitHub App features: sign-in, Deep scan and fixes. They need a signed-in browser and a header only the site's page sends, so this document leaves them out.",
       ].join('\n\n'),
       contact: { name: 'sossscan', url: `${SITE}/contact`, email: 'sossscan@ntindle.com' },
       license: { name: 'MIT', identifier: 'MIT' },
