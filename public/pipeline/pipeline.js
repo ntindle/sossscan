@@ -62,7 +62,7 @@ const S = {
   guide: null, report: null, ctx: {}, repo: '', model: null,
   stage: null, item: null, key: null, first: true, pinned: false, collapsed: false,
   opener: null, readerSig: '', groupOpen: new Map(), threatsOpen: new Set(), switching: false, token: null, rerender: null,
-  revealed: false, tokenWanted: false,
+  revealed: false, tokenWanted: false, keep: null,
 };
 
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
@@ -108,8 +108,13 @@ function render({ guide, report, ctx, repo }) {
     if (linked && S.model.byId[linked.stage]) { S.stage = linked.stage; S.item = linked.id; S.pinned = true; }
   }
   // A new scan: open the stage with the most urgent problem and select that check (on phones the sheet stays
-  // closed until asked), unless the page was opened on a specific stage or fix.
-  if (fresh && report && !(first && S.pinned)) {
+  // closed until asked), unless the page was opened on a specific stage or fix, or the scan is the app's check after a
+  // one-click fix, which keeps that fix open (S.keep, from sg:report).
+  const kept = S.keep && guide.itemsById[S.keep];
+  S.keep = null;
+  if (fresh && report && kept && S.model.byId[kept.stage]) {
+    S.stage = kept.stage; S.item = kept.id; S.collapsed = false;
+  } else if (fresh && report && !(first && S.pinned)) {
     const top = S.model.fixFirst;
     if (top) { S.stage = top.stage.id; S.item = WIDE.matches ? top.row.item.id : null; S.collapsed = false; }
   }
@@ -878,6 +883,12 @@ function setupStatic() {
     else writeHash();
   });
   addEventListener('resize', stopToken);
+  // After a one-click fix, the app checks the repository again and sends the result with the check's id. This runs
+  // before the scan panel's own listener draws the result, so render() keeps that check open.
+  document.addEventListener('sg:report', (e) => {
+    const id = e.detail && e.detail.item;
+    if (id && S.guide && S.guide.itemsById[id]) S.keep = id;
+  });
 }
 
 function setupTheme() {
