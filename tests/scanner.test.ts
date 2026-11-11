@@ -2968,11 +2968,12 @@ describe("GitHub's Secure Open Source Fund (people-security-training, people-sha
       'pass',
       'pass',
     ]);
-    expect(
-      calls
-        .map(([u]) => new URL(u).host)
-        .filter((h) => !h.endsWith('github.com') && !h.endsWith('githubusercontent.com')),
-    ).toEqual(['api.securityscorecards.dev', 'www.bestpractices.dev']);
+    // GitHub's own hosts: the domain itself or a subdomain of it, never a host that merely ends in its name.
+    const onGitHub = (h: string) => ['github.com', 'githubusercontent.com'].some((d) => h === d || h.endsWith(`.${d}`));
+    expect(calls.map(([u]) => new URL(u).host).filter((h) => !onGitHub(h))).toEqual([
+      'api.securityscorecards.dev',
+      'www.bestpractices.dev',
+    ]);
     expect(statusOf((await scanTiny(tiny({}))).rep, 'people-security-training')).toBeNull();
   });
 });
