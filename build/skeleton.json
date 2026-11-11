@@ -14,7 +14,7 @@
   {"id": "public", "label": "Public scan", "blurb": "Anyone can run it. Reads files, workflows and public settings. Nothing to install."},
   {"id": "private", "label": "Private scan (download)", "blurb": "Run sosf-scan.mjs on your machine with your own token. Sees admin-only settings. The report never leaves your browser."},
   {"id": "app", "label": "GitHub App", "blurb": "Install the app on a repo to check admin settings from the site and apply safe fixes with one click."},
-  {"id": "manual", "label": "Self-check", "blurb": "Things no scanner can see (training, audits, process). Tick them off yourself."}
+  {"id": "manual", "label": "Self-check", "blurb": "Things a scan can only sometimes settle, such as training, audits and process. Tick them off when they're done."}
  ],
  "stages": [
   {"id": "accounts", "label": "Accounts", "blurb": "Who can push, merge and publish"},
