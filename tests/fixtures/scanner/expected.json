@@ -19505,6 +19505,20 @@
             "evidence": [],
             "details": {},
             "layer": "private"
+          },
+          "acct-phishing-resistant-2fa": {
+            "status": "unknown",
+            "summary": "Could not count the org members who use SMS for 2FA (HTTP 404); only an org owner can",
+            "evidence": [],
+            "details": {},
+            "layer": "private"
+          },
+          "repo-org-security-config": {
+            "status": "unknown",
+            "summary": "Could not read the repository's security configuration (HTTP 404)",
+            "evidence": [],
+            "details": {},
+            "layer": "private"
           }
         },
         "findings": [
@@ -19638,13 +19652,25 @@
         "errors": ["file tree truncated: scanned root, .github and docs only"],
         "scorecard": null,
         "tier": { "id": 0, "name": "Just you" },
-        "summary": { "pass": 14, "warn": 6, "fail": 15, "info": 9, "unknown": 1, "na": 3 },
-        "api_calls": 36
+        "summary": { "pass": 14, "warn": 6, "fail": 15, "info": 9, "unknown": 3, "na": 3 },
+        "api_calls": 39
       },
       "calls": [
         ["https://api.github.com/orgs/acme", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
         [
+          "https://api.github.com/orgs/acme/code-security/configurations/defaults",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
           "https://api.github.com/orgs/acme/members?filter=2fa_disabled&per_page=100",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/orgs/acme/members?filter=2fa_insecure&per_page=100",
           "application/vnd.github+json",
           "Bearer test-token",
           "2022-11-28"
@@ -19706,6 +19732,12 @@
         ],
         [
           "https://api.github.com/repos/acme/secret/code-scanning/default-setup",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/repos/acme/secret/code-security-configuration",
           "application/vnd.github+json",
           "Bearer test-token",
           "2022-11-28"
@@ -19846,7 +19878,7 @@
       ],
       "logs": [
         "scanning acme/secret (admin token: private layer)",
-        "done: {'pass': 14, 'warn': 6, 'fail': 15, 'info': 9, 'unknown': 1, 'na': 3} (36 requests)"
+        "done: {'pass': 14, 'warn': 6, 'fail': 15, 'info': 9, 'unknown': 3, 'na': 3} (39 requests)"
       ]
     },
     "admin-org-public-layer": {
@@ -20852,13 +20884,20 @@
             "evidence": [],
             "details": {},
             "layer": "private"
+          },
+          "repo-org-security-config": {
+            "status": "na",
+            "summary": "Personal accounts have no security configurations",
+            "evidence": [],
+            "details": {},
+            "layer": "private"
           }
         },
         "findings": [],
         "errors": [],
         "scorecard": { "score": 10, "date": "", "checks": {}, "reasons": {} },
         "tier": { "id": 1, "name": "First fans" },
-        "summary": { "pass": 8, "warn": 2, "fail": 12, "info": 6, "unknown": 5, "na": 15 },
+        "summary": { "pass": 8, "warn": 2, "fail": 12, "info": 6, "unknown": 5, "na": 16 },
         "api_calls": 32
       },
       "calls": [
@@ -21032,7 +21071,7 @@
       ],
       "logs": [
         "scanning solo/tool (admin token: private layer)",
-        "done: {'pass': 8, 'warn': 2, 'fail': 12, 'info': 6, 'unknown': 5, 'na': 15} (32 requests)"
+        "done: {'pass': 8, 'warn': 2, 'fail': 12, 'info': 6, 'unknown': 5, 'na': 16} (32 requests)"
       ]
     },
     "empty-repo": {

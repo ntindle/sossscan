@@ -60,8 +60,17 @@ export async function privateLayer(
     ['admins', `/repos/${repo}/collaborators?affiliation=all&permission=admin&per_page=100`],
     ['secrets', `/repos/${repo}/actions/secrets?per_page=1`],
   ];
-  if (item(item(meta, 'owner'), 'type') === 'Organization') {
-    calls.push(['org', `/orgs/${owner}`], ['no2fa', `/orgs/${owner}/members?filter=2fa_disabled&per_page=100`]);
+  const isOrg = item(item(meta, 'owner'), 'type') === 'Organization';
+  if (isOrg) {
+    calls.push(
+      ['org', `/orgs/${owner}`],
+      ['no2fa', `/orgs/${owner}/members?filter=2fa_disabled&per_page=100`],
+      // New in 0.5.0: the members who still have SMS for 2FA (an owner-only filter), and the org's security
+      // configuration for this repo and for new ones.
+      ['sms2fa', `/orgs/${owner}/members?filter=2fa_insecure&per_page=100`],
+      ['security_config', `/repos/${repo}/code-security-configuration`],
+      ['config_defaults', `/orgs/${owner}/code-security/configurations/defaults`],
+    );
   }
   const answers = await mapLimit(calls, 8, ([, path]) => http.json(path));
   const got: Record<string, [number, any, Record<string, string>]> = Object.fromEntries(
@@ -367,4 +376,141 @@ export async function privateLayer(
       P,
     );
   }
+  if (isOrg) {
+    smsTwoFactor(got.sms2fa, res);
+    securityConfiguration(got.security_config, got.config_defaults, meta, res);
+  } else {
+    res('repo-org-security-config', 'na', 'Personal accounts have no security configurations', null, null, P);
+  }
+}
+
+/**
+ * acct-phishing-resistant-2fa (new in 0.5.0): the org members who still have SMS for 2FA, which only an org owner can
+ * list. A refusal leaves the check unknown, never passed or warned. No member on SMS is still no proof of passkeys,
+ * since GitHub counts an authenticator app as secure too, so that's info.
+ */
+export function smsTwoFactor([status, body]: [number, any, Record<string, string>], res: AddResult): void {
+  if (status !== 200 || !Array.isArray(body)) {
+    res(
+      'acct-phishing-resistant-2fa',
+      'unknown',
+      `Could not count the org members who use SMS for 2FA (HTTP ${status}); only an org owner can`,
+      null,
+      null,
+      P,
+    );
+    return;
+  }
+  const n = body.length;
+  const more = n === 100 ? '+' : '';
+  if (n) {
+    res(
+      'acct-phishing-resistant-2fa',
+      'warn',
+      `${n}${more} org member${n === 1 ? '' : 's'} still ${n === 1 ? 'has' : 'have'} SMS for 2FA; turn on "Only ` +
+        'allow secure two-factor methods" in the org\'s authentication settings',
+      null,
+      { members_with_sms: `${n}${more}` },
+      P,
+    );
+  } else {
+    res(
+      'acct-phishing-resistant-2fa',
+      'info',
+      'No org member uses SMS for 2FA. GitHub counts an authenticator app as secure too, so a passkey or security ' +
+        'key is still for each person to set up',
+      null,
+      null,
+      P,
+    );
+  }
+}
+
+/** Visibilities a default for new repositories applies to (default_for_new_repos). */
+const DEFAULT_COVERS: Record<string, string[]> = {
+  all: ['public', 'private', 'internal'],
+  public: ['public'],
+  private_and_internal: ['private', 'internal'],
+};
+
+/**
+ * repo-org-security-config (new in 0.5.0), for an org's repo: is one of the org's code security configurations
+ * attached to it, and is there a default that new repositories with its visibility get? A 204 is GitHub's answer for
+ * no configuration; a refusal (403 or 404) leaves the check unknown.
+ */
+export function securityConfiguration(
+  [status, body]: [number, any, Record<string, string>],
+  [dStatus, defaults]: [number, any, Record<string, string>],
+  meta: any,
+  res: AddResult,
+): void {
+  const name = (b: any) => {
+    const n = isDict(b) && isDict(b.configuration) ? b.configuration.name : null;
+    return typeof n === 'string' && n ? `"${n}"` : 'The security configuration';
+  };
+  if (status === 204) {
+    res('repo-org-security-config', 'fail', 'No security configuration is applied to this repository', null, null, P);
+    return;
+  }
+  if (status !== 200 || !isDict(body)) {
+    res(
+      'repo-org-security-config',
+      'unknown',
+      `Could not read the repository's security configuration (HTTP ${status})`,
+      null,
+      null,
+      P,
+    );
+    return;
+  }
+  const state = String(body.status ?? '');
+  if (['removed', 'detached', 'failed', 'removed_by_enterprise'].includes(state)) {
+    res(
+      'repo-org-security-config',
+      'warn',
+      `${name(body)} no longer manages this repository (status: ${state}), so its settings may have drifted`,
+      null,
+      { status: state },
+      P,
+    );
+    return;
+  }
+  if (state === 'attaching' || state === 'updating') {
+    res('repo-org-security-config', 'info', `GitHub is still applying ${name(body)} (status: ${state})`, null, null, P);
+    return;
+  }
+  if (state !== 'attached' && state !== 'enforced') {
+    res('repo-org-security-config', 'unknown', `Unexpected security configuration status: ${state}`, null, null, P);
+    return;
+  }
+  const visibility =
+    typeof get(meta, 'visibility') === 'string'
+      ? get(meta, 'visibility')
+      : truthy(get(meta, 'private'))
+        ? 'private'
+        : 'public';
+  if (dStatus !== 200 || !Array.isArray(defaults)) {
+    res(
+      'repo-org-security-config',
+      'unknown',
+      `${name(body)} is ${state} here, but the org's defaults for new repositories couldn't be read (HTTP ${dStatus})`,
+      null,
+      { status: state },
+      P,
+    );
+    return;
+  }
+  const covering = defaults.find(
+    (d) => isDict(d) && (DEFAULT_COVERS[String(d.default_for_new_repos)] ?? []).includes(visibility),
+  );
+  res(
+    'repo-org-security-config',
+    covering ? 'pass' : 'warn',
+    covering
+      ? `${name(body)} is ${state} here, and new ${visibility} repositories get ${name(covering)} by default`
+      : `${name(body)} is ${state} here, but new ${visibility} repositories get no configuration by default`,
+    null,
+    { status: state, visibility },
+    P,
+  );
 }

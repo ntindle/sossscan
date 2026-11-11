@@ -36,6 +36,7 @@ import { fundFromGuide } from '../lib/fund-data.ts';
 import { fundEntry, sharingResult, trainingResult } from '../lib/scanner/fund.ts';
 import { Hops } from '../lib/scanner/hops.ts';
 import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
+import { securityConfiguration, smsTwoFactor } from '../lib/scanner/private-layer.ts';
 import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
 import {
@@ -2631,6 +2632,86 @@ describe('code-memory-safety', () => {
     expect(await memory({ status: 403, json: {} }, { 'index.js': 'x' })).toBeNull();
     expect(memorySafety({ 'Unix Assembly': 10 }, [], [], true)).toBeNull();
     expect(memorySafety({ WebAssembly: 10 }, [], [], true)?.status).toBe('na');
+  });
+});
+
+describe('the admin checks of an organization (0.5.0)', () => {
+  const ORG = 'https://api.github.com/orgs/acme';
+  const SMS = `${ORG}/members?filter=2fa_insecure&per_page=100`;
+  const CONFIG = 'https://api.github.com/repos/acme/secret/code-security-configuration';
+  const DEFAULTS = `${ORG}/code-security/configurations/defaults`;
+  const pick = (rep: Report) => ({
+    sms: statusOf(rep, 'acct-phishing-resistant-2fa'),
+    config: statusOf(rep, 'repo-org-security-config'),
+  });
+
+  it('counts the members with SMS 2FA without naming them, and never reads a refusal as a count', async () => {
+    const warned = (await scanScenario('admin-org', { [SMS]: { json: [{ login: 'ada' }, { login: 'bo' }] } })).rep;
+    expect(pick(warned).sms).toEqual([
+      'warn',
+      '2 org members still have SMS for 2FA; turn on "Only allow secure two-factor methods" in the org\'s ' +
+        'authentication settings',
+    ]);
+    expect(JSON.stringify(warned.results['acct-phishing-resistant-2fa'])).not.toMatch(/ada|"bo"/);
+    expect(pick((await scanScenario('admin-org', { [SMS]: { json: [] } })).rep).sms?.[0]).toBe('info');
+    for (const refusal of [
+      { status: 422, json: { message: 'Only owners can use this filter.' } },
+      { status: 403, json: { message: 'Resource not accessible by integration' } },
+      { status: 404, json: { message: 'Not Found' } },
+      { json: { message: 'not a list' } },
+    ]) {
+      const r = pick((await scanScenario('admin-org', { [SMS]: refusal })).rep).sms;
+      expect(r?.[0]).toBe('unknown');
+    }
+    // A personal account has no members to count.
+    expect(pick((await scanScenario('assume-admin')).rep).sms).toBeNull();
+  });
+
+  it("grades the org's security configuration for the repo and for new repos", async () => {
+    const attached = { json: { status: 'attached', configuration: { name: 'GitHub recommended' } } };
+    const config = async (cfg: Route, defaults: Route = { json: [] }) =>
+      pick((await scanScenario('admin-org', { [CONFIG]: cfg, [DEFAULTS]: defaults })).rep).config;
+    expect(await config({ status: 204 })).toEqual(['fail', 'No security configuration is applied to this repository']);
+    expect(await config({ json: { status: 'removed', configuration: { name: 'Org default' } } })).toEqual([
+      'warn',
+      '"Org default" no longer manages this repository (status: removed), so its settings may have drifted',
+    ]);
+    expect(await config(attached)).toEqual([
+      'warn',
+      '"GitHub recommended" is attached here, but new private repositories get no configuration by default',
+    ]);
+    // acme/secret is private: a default for public repositories doesn't cover it.
+    const forPublic = { json: [{ default_for_new_repos: 'public', configuration: { name: 'Public' } }] };
+    expect((await config(attached, forPublic))?.[0]).toBe('warn');
+    const forAll = { json: [{ default_for_new_repos: 'private_and_internal', configuration: { name: 'Private' } }] };
+    expect(await config(attached, forAll)).toEqual([
+      'pass',
+      '"GitHub recommended" is attached here, and new private repositories get "Private" by default',
+    ]);
+    expect((await config({ status: 404, json: { message: 'Not Found' } }))?.[0]).toBe('unknown');
+    expect(await config(attached, { status: 403, json: { message: 'Forbidden' } })).toEqual([
+      'unknown',
+      '"GitHub recommended" is attached here, but the org\'s defaults for new repositories couldn\'t be read (HTTP 403)',
+    ]);
+  });
+
+  it("says a personal account has no configurations, and the public scan doesn't say anything", async () => {
+    expect(pick((await scanScenario('assume-admin')).rep).config).toEqual([
+      'na',
+      'Personal accounts have no security configurations',
+    ]);
+    const pub = (await scanScenario('admin-org-public-layer')).rep;
+    expect([pub.results['repo-org-security-config'], pub.results['acct-phishing-resistant-2fa']]).toEqual([
+      undefined,
+      undefined,
+    ]);
+    const seen: unknown[] = [];
+    smsTwoFactor([200, [{ login: 'x' }], {}], (...a) => seen.push(a.slice(0, 2)));
+    securityConfiguration([204, null, {}], [200, [], {}], {}, (...a) => seen.push(a.slice(0, 2)));
+    expect(seen).toEqual([
+      ['acct-phishing-resistant-2fa', 'warn'],
+      ['repo-org-security-config', 'fail'],
+    ]);
   });
 });
 
