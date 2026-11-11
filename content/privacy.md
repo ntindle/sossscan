@@ -32,7 +32,7 @@ You only need to sign in to use the GitHub App's checks and fixes. The sign-in i
 
 Both go into a cookie in your browser, with the app's ID and the time your sign-in ends. The cookie is encrypted and signed with a key only the server has, so its contents can't be read or changed in the browser, and the page's scripts can't read it. It lasts 7 hours, and Sign out deletes it. While you're on GitHub's sign-in page, a second cookie holds a random value for up to 15 minutes, to make sure the sign-in that comes back started in your browser. These two are the only cookies the site sets.
 
-The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. It keeps that answer in memory, with your username, the repository's name and whether the app is installed there, until the server instance stops, and reuses it for up to a minute.
+The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. When the app is installed there, it keeps that answer in memory, with your username and the repository's name, until the server instance stops, and reuses it for up to a minute.
 
 ## Checks and fixes through the app
 
@@ -65,4 +65,4 @@ The site runs on Vercel. Vercel receives every request, including your IP addres
 
 Write to [sossscan@ntindle.com](mailto:sossscan@ntindle.com), or see [Contact](/contact) for other ways to reach the maintainer. If this page and the code ever disagree, please [open an issue](https://github.com/ntindle/sossscan/issues/new).
 
-Last updated November 10, 2026.
+Last updated November 11, 2026.
