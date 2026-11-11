@@ -23,6 +23,7 @@ import path from 'node:path';
 import { diffArrays } from 'diff';
 import YAML from 'yaml';
 import { cacheDir } from './env.ts';
+import type { ErrorCode } from './http.ts';
 import { analyzeWorkflow, splitLines, stepBlock } from './scanner/index.ts';
 
 export const MAX_FILES = 6; // workflow files per fix; more get a note to run it again
@@ -31,15 +32,28 @@ const MAX_FILE_BYTES = 64_000;
 
 export type Spent = { in: number; out: number; usd: number; model: string };
 
-/** Why an agent fix stopped, in words for the person who asked. `status` is the HTTP status to answer with. */
+/**
+ * Why an agent fix stopped, in words for the person who asked: what happened, and the hint, what to do next. `status`
+ * is the HTTP status to answer with.
+ */
 export class AgentError extends Error {
   status: number;
+  hint: string;
   usage?: Spent; // what the attempt cost, recorded even when it fails
-  constructor(message: string, status = 409) {
+  constructor(message: string, hint: string, status = 409) {
     super(message);
+    this.hint = hint;
     this.status = status;
   }
+
+  /** The API's error code (lib/http.ts): the agent stopped short (409), a limit (429), or no AI service to ask. */
+  get code(): ErrorCode {
+    return this.status === 409 ? 'fix_failed' : this.status === 429 ? 'ai_limit_reached' : 'ai_unavailable';
+  }
 }
+
+/** What to do when the AI service can't help: someone's own agent can. */
+const OWN_AGENT = 'Copy the prompt and use your own agent instead.';
 
 export type AgentConfig = {
   base_url: string;
@@ -427,19 +441,24 @@ export async function postChat(c: AgentConfig, messages: unknown[]): Promise<any
       signal: AbortSignal.timeout(120_000),
     });
   } catch (e) {
-    throw new AgentError(`The AI service didn't answer (${(e as Error)?.name || 'Error'}). Try again later.`, 503);
+    throw new AgentError(
+      `The AI service didn't answer (${(e as Error)?.name || 'Error'}).`,
+      'Try again later, or copy the prompt and use your own agent.',
+      503,
+    );
   }
-  if (r.status === 429)
-    throw new AgentError('The AI service is busy or over its limit. Try again in a few minutes.', 503);
+  if (r.status === 429) {
+    throw new AgentError('The AI service is busy or over its limit.', 'Try again in a few minutes.', 503);
+  }
   if (r.status >= 400) {
     // The provider's error text stays in the server log; it can name accounts and keys.
     console.log(`agent: provider answered HTTP ${r.status}: ${(await r.text().catch(() => '')).slice(0, 500)}`);
-    throw new AgentError(`The AI service refused the request (HTTP ${r.status}).`, 502);
+    throw new AgentError(`The AI service refused the request (HTTP ${r.status}).`, OWN_AGENT, 502);
   }
   try {
     return await r.json();
   } catch {
-    throw new AgentError("The AI service sent back something that isn't JSON.", 502);
+    throw new AgentError("The AI service sent back something that isn't JSON.", OWN_AGENT, 502);
   }
 }
 
@@ -456,7 +475,7 @@ export async function run(
   progress: (text: string) => void = () => {},
 ): Promise<{ files: Record<string, string>; summary: string; notes: string; usage: Spent }> {
   const c = config();
-  if (!enabled()) throw new AgentError("AI fixes aren't set up on this site.", 404);
+  if (!enabled()) throw new AgentError("AI fixes aren't set up on this site.", OWN_AGENT, 404);
   const ws = new Workspace(itemId, originals, readMore);
   const messages: Record<string, unknown>[] = [
     { role: 'system', content: SYSTEM },
@@ -509,14 +528,10 @@ export async function run(
         return { files: changed, ...ws.result, usage: spent() };
       }
       if (used.in + used.out > c.max_tokens_fix) {
-        throw new AgentError(
-          "The agent hit this fix's token limit before it finished. Copy the prompt and use your own agent instead.",
-        );
+        throw new AgentError("The agent hit this fix's token limit before it finished.", OWN_AGENT);
       }
     }
-    throw new AgentError(
-      `The agent didn't finish in ${c.max_turns} turns. Copy the prompt and use your own agent instead.`,
-    );
+    throw new AgentError(`The agent didn't finish in ${c.max_turns} turns.`, OWN_AGENT);
   } catch (e) {
     if (e instanceof AgentError) e.usage = spent();
     throw e;
@@ -562,10 +577,7 @@ export class Usage {
     const c = config();
     const m = this.thisMonth(this.load());
     if (m.in + m.out >= c.month_tokens || (c.month_usd && m.usd >= c.month_usd)) {
-      throw new AgentError(
-        "This site has used this month's budget for AI fixes. Copy the prompt and use your own agent instead.",
-        429,
-      );
+      throw new AgentError("This site has used this month's budget for AI fixes.", OWN_AGENT, 429);
     }
   }
 

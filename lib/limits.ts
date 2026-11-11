@@ -2,8 +2,9 @@
  * Requests per visitor address, kept in memory. Public scans spend the server's GitHub quota, and the app's routes
  * spend the visitor's. On a serverless host each instance counts on its own, so these are speed bumps, not hard caps.
  */
-import { NextResponse } from 'next/server';
+import type { NextResponse } from 'next/server';
 import { onVercel } from './env.ts';
+import { errorJson, HttpError } from './http.ts';
 
 /** (window in seconds, allowed requests) per bucket. */
 const LIMITS = {
@@ -14,6 +15,32 @@ const LIMITS = {
   app: [[60, 90]],
 } as const;
 export type Bucket = keyof typeof LIMITS;
+
+/** What each bucket counts, in the words the docs use. */
+const COUNTED: Record<Bucket, string> = { scan: 'scan requests', app: 'sign-in and app requests' };
+const PER: Record<number, string> = { 60: 'a minute', 3600: 'an hour' };
+
+/** What one address may send, in words: "6 scan requests a minute and 40 an hour". */
+export function allowance(bucket: Bucket): string {
+  return LIMITS[bucket].map(([window, n], i) => `${n}${i ? '' : ` ${COUNTED[bucket]}`} ${PER[window]}`).join(' and ');
+}
+
+/** A wait in words: seconds up to two minutes, then minutes, rounded up. */
+function inWords(seconds: number): string {
+  if (seconds < 120) return seconds === 1 ? '1 second' : `${seconds} seconds`;
+  return `${Math.ceil(seconds / 60)} minutes`;
+}
+
+/** The refusal for an address over its limit, which may try again in `wait` seconds. */
+export function rateLimitError(bucket: Bucket, wait: number): HttpError {
+  return new HttpError(
+    429,
+    'rate_limited',
+    `Too many requests from your IP address, which can make ${allowance(bucket)}.`,
+    `Try again in ${inWords(wait)}.`,
+    { 'Retry-After': String(wait) },
+  );
+}
 
 const hits = new Map<string, number[]>();
 
@@ -58,14 +85,10 @@ export function limited(bucket: Bucket, ip: string, now = Date.now() / 1000): nu
   return 0;
 }
 
-/** A 429 response when this request's address is over the limit, otherwise null. */
+/** A 429 response when this request's address is over the limit, otherwise null. Nothing caches it (errorJson). */
 export function rateLimit(req: Request, bucket: Bucket): NextResponse | null {
   const wait = limited(bucket, clientIp(req.headers));
-  if (!wait) return null;
-  return NextResponse.json(
-    { detail: 'Too many requests from your address. Try again in a minute.' },
-    { status: 429, headers: { 'Retry-After': String(wait), 'Cache-Control': 'no-store' } },
-  );
+  return wait ? errorJson(rateLimitError(bucket, wait)) : null;
 }
 
 export function resetLimits(): void {

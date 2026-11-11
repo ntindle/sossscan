@@ -35,6 +35,8 @@ A result is `unknown` when the scan couldn't settle it. When its summary says it
 
 To choose what to fix first, do what the web page does. Take the checks that are `fail` or `warn` and whose tier is at or below the repository's. A check with a `high` finding comes first, then one with a `medium` finding, then the one that loses the most impact (all of its `impact` for `fail`, half for `warn`), then the one with the least `effort`. Each check's `impact`, `effort`, `tier`, steps and snippets are in [guide.json](/data/guide.json), about 700 KB, under `items`.
 
+When a request fails, the answer is JSON with `error.code`, such as `repo_not_found` or `rate_limited`, `error.message`, and `error.hint`, which says what to do next. The [API docs](/docs/api#errors) list every code.
+
 To show a person the result with every fix, link to `https://sossscan.ntindle.com/?repo=OWNER/REPO`. The [API docs](/docs/api) describe the whole report, the other endpoints and the errors.
 
 ## Private repositories and admin settings

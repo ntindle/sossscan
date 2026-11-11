@@ -35,7 +35,7 @@ export async function ghRequest(
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
-    throw new HttpError(502, "GitHub didn't answer. Try again in a minute.");
+    throw new HttpError(502, 'github_error', "GitHub didn't answer.", 'Try again in a minute.');
   }
   const text = await r.text();
   let data: any = null;

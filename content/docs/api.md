@@ -1,6 +1,6 @@
 # sossscan API
 
-The sossscan API is a few HTTP endpoints on this site, and the page itself uses the scan endpoints. There's no key and no sign-in: send a request and you get JSON back. An error comes back as JSON too, such as `{"detail": "Expected OWNER/REPO or a github.com URL"}`, with an HTTP status that says what kind of error it is.
+The sossscan API is a few HTTP endpoints on this site, and the page itself uses the scan endpoints. There's no key and no sign-in: send a request and you get JSON back. An error comes back as JSON too, with a code, a message and a hint that says what to do next (see [Errors](#errors)).
 
 The base address is `https://sossscan.ntindle.com`. The API sends no CORS headers, so a web page on another site can't read its answers. Call it from a script, a server or the command line. To scan from your own machine with your own token, use the [sossscan CLI](/docs/cli) instead.
 
@@ -141,13 +141,32 @@ A finding looks like this, with a placeholder repository and path:
 
 ## Errors
 
-| Status | When |
-|---|---|
-| 404 | The scan has no results: the repository doesn't exist, it's private, or GitHub wouldn't show it. `detail` has the scanner's words, such as `repo lookup failed: HTTP 404 (private repo? pass a token)`. |
-| 422 | The repository name or the request body isn't valid. `detail` says what's wrong, for example `Expected OWNER/REPO or a github.com URL`. |
-| 429 | Too many requests from your IP address. The `Retry-After` header says how many seconds to wait. |
-| 503 | The scanner is busy: the request waited two minutes for one of the three scans its server instance runs at once. Try again in a minute. |
-| 500 | Something went wrong on the server. Try again in a minute. |
+Every error, at any address under `/api/`, comes back as JSON in this form:
+
+```json
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Too many requests from your IP address, which can make 6 scan requests a minute and 40 an hour.",
+    "hint": "Try again in 42 seconds."
+  },
+  "detail": "Too many requests from your IP address, which can make 6 scan requests a minute and 40 an hour."
+}
+```
+
+`code` is for programs: it keeps its meaning, while the words can change. `message` says what went wrong, and `hint` says what to do next. `detail` repeats `message`, for clients written before `error` existed.
+
+| Status | Code | When |
+|---|---|---|
+| 404 | `repo_not_found` | The repository doesn't exist, or it's private. Both get the same answer, so the API never shows whether a private repository exists. The message is the scanner's words, `repo lookup failed: HTTP 404 (private repo? pass a token)`. |
+| 404 | `scan_failed` | The scan has no results for another reason: GitHub refused or rate-limited its first request, or didn't answer it. The message has the scanner's words. |
+| 404 | `not_found` | No endpoint has this address. |
+| 405 | `method_not_allowed` | The endpoint doesn't take this method. The `Allow` header lists the ones it takes. |
+| 422 | `invalid_repo` | The repository isn't given as `owner/repo` or a github.com address. |
+| 422 | `invalid_request` | The POST body isn't a JSON object, or its `repo` is missing or isn't 3 to 200 characters long. |
+| 429 | `rate_limited` | Too many requests from your IP address. The `Retry-After` header says how many seconds to wait. |
+| 500 | `internal_error` | Something went wrong on the server. |
+| 503 | `scanner_busy` | The scanner is busy: the request waited two minutes for one of the three scans its server instance runs at once. |
 
 Error responses aren't cached, and neither are scans GitHub rate-limited. A scan with results is cached even when its `errors` lists something it couldn't read. To try again sooner, POST with `refresh`.
 
@@ -157,4 +176,4 @@ Each IP address can make 6 scan requests a minute and 40 an hour. GET and POST c
 
 ## The app endpoints
 
-The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, the admin check and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts.
+The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, the admin check and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts. Their errors under `/api/app/` come in the same form, with codes of their own.

@@ -19,7 +19,7 @@ import * as agent from './agent.ts';
 import type { GuideItem, Spent } from './agent.ts';
 import { ROOT } from './env.ts';
 import type { Gh } from './github.ts';
-import { quote } from './http.ts';
+import { type ErrorCode, quote } from './http.ts';
 import { mapLimit } from './pool.ts';
 import { ECOSYSTEM_FILES, parentKeys, splitLines } from './scanner/index.ts';
 
@@ -28,15 +28,35 @@ const RAW = 'application/vnd.github.raw';
 /** A workflow GitHub Actions runs: a .yml or .yaml file right in .github/workflows. */
 const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
-/** Why a fix can't go ahead, in words for the person who asked. `status` is the HTTP status to answer with. */
+/** The API's error code (lib/http.ts) for each status a fix refuses with, unless it says otherwise. */
+const FIX_CODES: Record<number, ErrorCode> = {
+  403: 'app_permission_missing',
+  409: 'fix_failed',
+  422: 'invalid_request',
+  502: 'github_error',
+};
+
+/**
+ * Why a fix can't go ahead, in words for the person who asked: what happened, and the hint, what to do next. `status`
+ * is the HTTP status to answer with, and `code` the API's error code.
+ */
 export class FixError extends Error {
   status: number;
+  hint: string;
+  code: ErrorCode;
   usage?: Spent; // a failed AI fix still cost tokens
-  constructor(message: string, status = 409) {
+  constructor(message: string, hint: string, status = 409, code: ErrorCode = FIX_CODES[status] ?? 'fix_failed') {
     super(message);
+    this.hint = hint;
     this.status = status;
+    this.code = code;
   }
 }
+
+/** What to do when the scan's result is out of date. */
+const SCAN_AGAIN = 'Scan the repository again to update the result.';
+/** What to do when the app is missing a permission. */
+const ASK_OWNER = "The app's owner can add it in the app's settings, then accept it on the installation.";
 
 export type PrFix = {
   kind: 'file' | 'pin' | 'agent';
@@ -310,7 +330,7 @@ export function resolver(gh: Gh): (owner: string, repo: string, ref: string) => 
 async function get(gh: Gh, apiPath: string, what: string): Promise<any> {
   const { status, data } = await gh('GET', apiPath);
   if (status !== 200 || data === null || data === undefined) {
-    throw new FixError(`Couldn't read ${what} from GitHub (HTTP ${status}).`, 502);
+    throw new FixError(`Couldn't read ${what} from GitHub (HTTP ${status}).`, 'Try again in a minute.', 502);
   }
   return data;
 }
@@ -358,14 +378,23 @@ export async function plan(
   progress: (text: string) => void = () => {},
 ): Promise<Plan | { existing: { url: string; number: number } }> {
   const spec = available()[itemId];
-  if (!spec) throw new FixError("There's no one-click pull request for this check.", 422);
+  if (!spec) {
+    throw new FixError(
+      "There's no one-click pull request for this check.",
+      'Fix it with the steps in the guide, or copy the prompt for your own AI agent.',
+      422,
+    );
+  }
   const meta = await get(gh, `/repos/${repo}`, repo);
   const full: string = meta.full_name;
   const base: string = meta.default_branch;
-  if (meta.archived) throw new FixError(`${full} is archived, so it can't take pull requests.`);
+  if (meta.archived) {
+    throw new FixError(`${full} is archived, so it can't take pull requests.`, 'Unarchive it on GitHub first.');
+  }
   if (spec.public_only && meta.private) {
     throw new FixError(
       "This workflow needs a public repository (or GitHub Advanced Security), so it isn't offered for private ones.",
+      "If the repository has GitHub Advanced Security, add the workflow by hand with the guide's steps.",
     );
   }
   const head = `sosf/${itemId}`;
@@ -415,7 +444,8 @@ async function filePlan(
     const have = lower.get(alt.toLowerCase()) || (truncated && (await exists(gh, full, alt, ctx.branch)) ? alt : null);
     if (have) {
       throw new FixError(
-        `${full} already has ${have}. Edit that file instead; the steps in the guide say what it should cover.`,
+        `${full} already has ${have}.`,
+        'Edit that file instead; the steps in the guide say what it should cover.',
       );
     }
   }
@@ -440,7 +470,8 @@ async function filePlan(
     if (fillCtx.workflowCount === 0 && !ecoBlocks) {
       throw new FixError(
         `${full} has no workflows and no package manifests the template covers, so its dependabot.yml would update ` +
-          'nothing. Write one by hand for what the repository uses, such as Docker images.',
+          'nothing.',
+        'Write one by hand for what the repository uses, such as Docker images.',
       );
     }
   }
@@ -483,7 +514,7 @@ async function readWorkflows(
         .sort(byCodePoint);
     }
   }
-  if (!paths.length) throw new FixError(`${full} has no workflows in .github/workflows.`);
+  if (!paths.length) throw new FixError(`${full} has no workflows in .github/workflows.`, SCAN_AGAIN);
   const texts = await mapLimit(paths, 8, (p) => readText(gh, full, p, baseSha));
   return Object.fromEntries(paths.map((p, i) => [p, texts[i]]));
 }
@@ -518,10 +549,13 @@ async function pinPlan(gh: Gh, full: string, baseSha: string, entries: Entries, 
   }
   const pinned = changes.filter((c) => c.sha);
   const missed = changes.filter((c) => !c.sha);
-  if (!changes.length) throw new FixError('Every action in .github/workflows is already pinned to a full commit SHA.');
+  if (!changes.length) {
+    throw new FixError('Every action in .github/workflows is already pinned to a full commit SHA.', SCAN_AGAIN);
+  }
   if (!pinned.length) {
     throw new FixError(
       'None of the action versions in your workflows could be looked up on GitHub, so nothing was pinned.',
+      'Check that the actions and versions in your workflows exist on GitHub, then try again.',
     );
   }
   const notes: string[] = [];
@@ -564,7 +598,9 @@ async function agentPlan(
     if (f.length) found[p] = f;
   }
   const foundPaths = Object.keys(found);
-  if (!foundPaths.length) throw new FixError("The scan doesn't find this problem in .github/workflows any more.");
+  if (!foundPaths.length) {
+    throw new FixError("The scan doesn't find this problem in .github/workflows any more.", SCAN_AGAIN);
+  }
   const targets = Object.fromEntries(foundPaths.slice(0, agent.MAX_FILES).map((p) => [p, found[p]]));
   const item = guideItems()[itemId];
   let result;
@@ -580,7 +616,7 @@ async function agentPlan(
     );
   } catch (e) {
     if (!(e instanceof agent.AgentError)) throw e;
-    const err = new FixError(e.message, e.status);
+    const err = new FixError(e.message, e.hint, e.status, e.code);
     err.usage = e.usage;
     throw err;
   }
@@ -691,16 +727,22 @@ export function friendly(status: number, data: any, doing: string): FixError {
   if (msg.toLowerCase().includes('workflow') && [403, 404, 422].includes(status)) {
     return new FixError(
       "The app isn't allowed to change workflow files on this repository. It needs the Workflows permission.",
+      ASK_OWNER,
       403,
     );
   }
   if (status === 403 || status === 404) {
     return new FixError(
       `The app isn't allowed to ${doing} on this repository. It needs write access to contents and pull requests.`,
+      ASK_OWNER,
       403,
     );
   }
-  return new FixError(`GitHub refused to ${doing} (HTTP ${status}${msg ? `: ${msg}` : ''}).`, 502);
+  return new FixError(
+    `GitHub refused to ${doing} (HTTP ${status}${msg ? `: ${msg}` : ''}).`,
+    'Try again in a minute.',
+    502,
+  );
 }
 
 /** Create the branch, the commit and the pull request described by a plan from plan(). */
@@ -710,7 +752,8 @@ export async function apply(gh: Gh, p: Plan): Promise<{ url: string; number: num
   const now = await get(gh, `/repos/${full}/git/ref/heads/${quote(base)}`, 'the default branch');
   if (now.object.sha !== p.base_sha) {
     throw new FixError(
-      `${base} has new commits since the preview. Preview the fix again so it's built on the latest code.`,
+      `${base} has new commits since the preview.`,
+      "Preview the fix again, so it's built on the latest code.",
     );
   }
   const tree = await gh('POST', `/repos/${full}/git/trees`, {
@@ -735,7 +778,7 @@ export async function apply(gh: Gh, p: Plan): Promise<{ url: string; number: num
     }
     if (ref.status !== 422) throw friendly(ref.status, ref.data, 'create a branch');
   }
-  if (!branch) throw new FixError(`Branches named ${p.head} already exist. Delete old ones and try again.`);
+  if (!branch) throw new FixError(`Branches named ${p.head} already exist.`, 'Delete the old ones, then try again.');
   const pr = await gh('POST', `/repos/${full}/pulls`, { title: p.title, head: branch, base, body: p.body });
   if (pr.status !== 201) {
     await gh('DELETE', `/repos/${full}/git/refs/heads/${quote(branch)}`);

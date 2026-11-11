@@ -75,7 +75,14 @@ export function appConfig(): AppConfig | null {
 
 export function configOr404(): AppConfig {
   const cfg = appConfig();
-  if (!cfg) throw new HttpError(404, "Sign in with GitHub isn't available on this copy of the site.");
+  if (!cfg) {
+    throw new HttpError(
+      404,
+      'app_not_configured',
+      "Sign in with GitHub isn't available on this copy of the site.",
+      "Use the public scan, or run the CLI with an admin's token for the admin-only checks.",
+    );
+  }
   return cfg;
 }
 
@@ -177,7 +184,14 @@ export function liveSession(req: NextRequest): Session | null {
 
 export function sessionOf(req: NextRequest): Session {
   const s = liveSession(req);
-  if (!s) throw new HttpError(401, 'Sign in with GitHub first');
+  if (!s) {
+    throw new HttpError(
+      401,
+      'sign_in_required',
+      "You aren't signed in with GitHub, or your sign-in has expired.",
+      'Sign in with GitHub, then try again.',
+    );
+  }
   return s;
 }
 
@@ -194,7 +208,12 @@ export function clearSession(res: NextResponse): void {
 export async function requireAdmin(sess: Session, repo: string): Promise<void> {
   const r = await ghRequest('GET', `/repos/${repo}`, sess.token);
   if (r.status !== 200 || !r.data?.permissions?.admin) {
-    throw new HttpError(403, `@${sess.login} is not an admin of ${repo}`);
+    throw new HttpError(
+      403,
+      'not_admin',
+      `@${sess.login} is not an admin of ${repo}.`,
+      'Sign in as one of its admins, or ask one to do this.',
+    );
   }
 }
 
@@ -209,17 +228,33 @@ export async function installation(cfg: AppConfig, repo: string): Promise<Instal
   return r.status === 200 ? r.data : null;
 }
 
+function notInstalled(cfg: AppConfig, repo: string): HttpError {
+  return new HttpError(
+    404,
+    'app_not_installed',
+    `The app is not installed on ${repo}.`,
+    `Install it from ${cfg.html_url}/installations/new, then try again.`,
+  );
+}
+
 export async function installationToken(
   cfg: AppConfig,
   repo: string,
   { permissions, inst }: { permissions?: Record<string, string>; inst?: Installation | null } = {},
 ): Promise<string> {
   const found = inst || (await installation(cfg, repo));
-  if (!found) throw new HttpError(404, `The app is not installed on ${repo}. Install it first.`);
+  if (!found) throw notInstalled(cfg, repo);
   const body: Record<string, unknown> = { repositories: [repo.split('/')[1]] };
   if (permissions) body.permissions = permissions; // a token that can only do what this request needs
   const r = await ghRequest('POST', `/app/installations/${found.id}/access_tokens`, appJwt(cfg), body);
-  if (r.status !== 201) throw new HttpError(502, `Could not get an installation token (${r.status})`);
+  if (r.status !== 201) {
+    throw new HttpError(
+      502,
+      'github_error',
+      `GitHub didn't give the app a token for ${repo} (HTTP ${r.status}).`,
+      'Try again in a minute.',
+    );
+  }
   return r.data.token;
 }
 
@@ -235,11 +270,16 @@ export async function prReady(
   itemId: string,
 ): Promise<{ inst: Installation; need: Record<string, string> }> {
   if (!Object.hasOwn(available(), itemId)) {
-    throw new HttpError(422, "There's no one-click pull request for this check.");
+    throw new HttpError(
+      422,
+      'invalid_request',
+      "There's no one-click pull request for this check.",
+      'Fix it with the steps in the guide, or copy the prompt for your own AI agent.',
+    );
   }
   await requireAdmin(sess, repo);
   const inst = await installation(cfg, repo);
-  if (!inst) throw new HttpError(404, `The app is not installed on ${repo}. Install it first.`);
+  if (!inst) throw notInstalled(cfg, repo);
   const need = neededPermissions(itemId);
   const have = inst.permissions || {};
   const missing = Object.entries(need)
@@ -248,7 +288,9 @@ export async function prReady(
   if (missing.length) {
     throw new HttpError(
       403,
-      `The app on ${repo} can't open pull requests yet. It needs write access to ${missing.join(', ')}. The app's owner can add that in the app's settings, then accept it on the installation.`,
+      'app_permission_missing',
+      `The app on ${repo} can't open pull requests yet. It needs write access to ${missing.join(', ')}.`,
+      "The app's owner can add that in the app's settings, then accept it on the installation.",
     );
   }
   return { inst, need };
@@ -266,13 +308,15 @@ export function countAgentFix(sess: Session): Session {
   if (used >= c.per_day) {
     throw new HttpError(
       429,
-      `You've used today's ${c.per_day} AI fixes. Try again tomorrow, or copy the prompt and use your own agent.`,
+      'ai_limit_reached',
+      `You've used today's ${c.per_day} AI fixes.`,
+      'Try again tomorrow, or copy the prompt and use your own agent.',
     );
   }
   try {
     usage().check();
   } catch (e) {
-    if (e instanceof AgentError) throw new HttpError(e.status, e.message);
+    if (e instanceof AgentError) throw new HttpError(e.status, e.code, e.message, e.hint);
     throw e;
   }
   return { ...sess, fixes: { [day]: used + 1 } };

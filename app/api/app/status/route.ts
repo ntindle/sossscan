@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { available } from '@/lib/fixes.ts';
 import { appConfig, FIXES, liveSession } from '@/lib/github-app.ts';
-import { privateJson, route } from '@/lib/http.ts';
+import { otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
 
 /** Is there an app, who's signed in, and which fixes this site offers. */
@@ -27,3 +27,5 @@ export const GET = route(async (req: NextRequest) => {
     ),
   });
 });
+
+export const { POST, PUT, PATCH, DELETE, OPTIONS } = otherMethods('GET');

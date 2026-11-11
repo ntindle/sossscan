@@ -23,7 +23,12 @@ const MIN_SECRET_LENGTH = 32;
 function masterKey(): Buffer {
   const secret = process.env.SOSF_SECRET || '';
   if (secret.length < MIN_SECRET_LENGTH) {
-    throw new HttpError(503, "This site isn't fully set up: SOSF_SECRET is missing or too short.");
+    throw new HttpError(
+      503,
+      'server_misconfigured',
+      "This site isn't fully set up: SOSF_SECRET is missing or too short.",
+      "Public scans still work. The site's operator can set SOSF_SECRET to turn on sign-in.",
+    );
   }
   return crypto.createHash('sha256').update(secret).digest();
 }

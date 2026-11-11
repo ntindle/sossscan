@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { field, jsonBody, route } from '@/lib/http.ts';
+import { field, jsonBody, otherMethods, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
-import { parseRepo, scanOr404 } from '@/lib/public-scan.ts';
+import { parseRepo, REPO_LENGTH, scanOr404 } from '@/lib/public-scan.ts';
 
 export const maxDuration = 300;
 
@@ -10,6 +10,8 @@ export const POST = route(async (req: NextRequest) => {
   const limited = rateLimit(req, 'scan');
   if (limited) return limited;
   const body = await jsonBody(req);
-  const rep = await scanOr404(parseRepo(field(body, 'repo', { min: 3, max: 200 })), body.refresh === true);
+  const rep = await scanOr404(parseRepo(field(body, 'repo', REPO_LENGTH)), body.refresh === true);
   return NextResponse.json(rep, { headers: { 'Cache-Control': 'no-store' } });
 });
+
+export const { GET, PUT, PATCH, DELETE, OPTIONS } = otherMethods('POST');

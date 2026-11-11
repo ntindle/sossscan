@@ -12,27 +12,64 @@ import { forgetScanToken, publicScanToken } from './scan-token.ts';
 import { RATE_LIMITED, scan, type Report } from './scanner/index.ts';
 
 export const SCAN_TTL = 6 * 3600;
+/** How the CDN may keep a GET scan with results: for SCAN_TTL (app/api/scan/[owner]/[name]/route.ts). */
+export const SCAN_CACHE_CONTROL = `public, max-age=0, s-maxage=${SCAN_TTL}, stale-while-revalidate=600`;
 /** The scanner's words for a repo GitHub doesn't show the token: what every hidden repo gets (public/shared/core.js). */
 export const NOT_FOUND = 'repo lookup failed: HTTP 404 (private repo? pass a token)';
 /** How the scanner's refusal of a private repo starts (lib/scanner/scan.ts, with allowPrivate false). */
 const PRIVATE_REFUSAL = 'This is a private repository.';
 /** The scanner's words when GitHub rejects the token itself. */
 const BAD_TOKEN = 'repo lookup failed: HTTP 401';
-const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+/** An account name and a repository name, as GitHub allows them, and their longest. */
+export const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
+export const NAME_RE = /^[A-Za-z0-9._-]{1,100}$/;
+export const OWNER_MAX = 39;
+export const NAME_MAX = 100;
+/** How long a request's `repo` may be, in characters. */
+export const REPO_LENGTH = { min: 3, max: 200 };
+/** What a scan request's `repo` may be: OWNER/REPO, or a github.com URL (optionally .git, a trailing slash, a subpage). */
+export const REPO_INPUT_RE =
+  /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/)?([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:\/\S*)?$/;
 const MAX_SCANS = 3; // at once, per server instance
 const mem = new Map<string, { at: number; rep: Report }>();
 
+export function invalidRepo(): HttpError {
+  return new HttpError(
+    422,
+    'invalid_repo',
+    'Expected OWNER/REPO or a github.com URL.',
+    'Give the repository as owner/name, such as ntindle/sossscan.',
+  );
+}
+
 /** Accept exactly OWNER/REPO or a github.com repo URL (optionally .git, a trailing slash, or a subpage). */
 export function parseRepo(raw: string): string {
-  const m =
-    /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/)?([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:\/\S*)?$/.exec(
-      raw.trim(),
-    );
-  const repo = m ? `${m[1]}/${m[2]}` : '';
-  if (!REPO_RE.test(repo) || ['.', '..'].includes(repo.split('/')[1])) {
-    throw new HttpError(422, 'Expected OWNER/REPO or a github.com URL');
-  }
-  return repo;
+  const m = REPO_INPUT_RE.exec(raw.trim());
+  if (!m || !OWNER_RE.test(m[1]) || !NAME_RE.test(m[2]) || ['.', '..'].includes(m[2])) throw invalidRepo();
+  return `${m[1]}/${m[2]}`;
+}
+
+export function scannerBusy(): HttpError {
+  return new HttpError(503, 'scanner_busy', 'The scanner is busy with other scans.', 'Try again in a minute.');
+}
+
+/** What the 404 for a missing or private repo says to do: the same words for both, like its message. */
+const NOT_FOUND_HINT =
+  'Check the spelling of the owner and the name. The API scans public repositories only; to scan a private one, run the CLI with your own GitHub token (/docs/cli).';
+
+/**
+ * The 404 for a scan with no results, with the scanner's words for why. A missing repo and a private one both have
+ * exactly [NOT_FOUND] (runPublicScan), so they get the same code and hint too.
+ */
+export function noResults(errors: readonly string[]): HttpError {
+  const missing = errors.length === 1 && errors[0] === NOT_FOUND;
+  return new HttpError(
+    404,
+    missing ? 'repo_not_found' : 'scan_failed',
+    (errors.length ? errors : ['scan failed']).join('; '),
+    missing ? NOT_FOUND_HINT : 'Try again in a few minutes.',
+    { 'Cache-Control': 'no-store' },
+  );
 }
 
 let running = 0;
@@ -88,7 +125,7 @@ export async function runPublicScan(repo: string, refresh = false): Promise<Repo
       // not cached yet
     }
   }
-  if (!(await acquire(120_000))) throw new HttpError(503, 'Scanner busy, try again in a minute');
+  if (!(await acquire(120_000))) throw scannerBusy();
   let rep: Report;
   let token: string | null = null;
   try {
@@ -126,11 +163,7 @@ export async function runPublicScan(repo: string, refresh = false): Promise<Repo
  */
 export async function scanOr404(repo: string, refresh: boolean): Promise<Report & { cached: boolean }> {
   const rep = await runPublicScan(repo, refresh);
-  if (!rep.results || !Object.keys(rep.results).length) {
-    throw new HttpError(404, (rep.errors?.length ? rep.errors : ['scan failed']).join('; '), {
-      'Cache-Control': 'no-store',
-    });
-  }
+  if (!rep.results || !Object.keys(rep.results).length) throw noResults(rep.errors ?? []);
   return rep;
 }
 

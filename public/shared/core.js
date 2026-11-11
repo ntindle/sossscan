@@ -77,6 +77,15 @@ export function sanitizeReport(rep) {
   return rep && typeof rep === 'object' ? walk(rep, '') : rep;
 }
 
+// A failed request to this site's API, as an Error. The API answers {error: {code, message, hint}, detail} (lib/http.ts):
+// the Error's message is what went wrong, then what to do next. `detail` keeps the API's message alone, which
+// scanTrouble reads, and `code` its error code. An answer without `error` (an older server) still gives its detail.
+function apiError(data, status, fallback) {
+  const e = (data && data.error) || {};
+  const detail = String(e.message || (data && data.detail) || `${fallback} (${status})`);
+  return Object.assign(new Error(e.hint ? `${detail} ${e.hint}` : detail), { code: e.code ? String(e.code) : '', detail });
+}
+
 // A normal scan uses a GET address the host's CDN can cache for 6 hours; Rescan posts, which skips every cache.
 export async function scanPublic(repo, { refresh = false } = {}) {
   const [owner, name] = repo.split('/');
@@ -84,7 +93,7 @@ export async function scanPublic(repo, { refresh = false } = {}) {
     ? await fetch('/api/scan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repo, refresh: true }) })
     : await fetch(`/api/scan/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail ? String(data.detail) : `Scan failed (${res.status})`);
+  if (!res.ok) throw apiError(data, res.status, 'Scan failed');
   const rep = sanitizeReport(data);
   remember(rep);
   return rep;
@@ -105,7 +114,8 @@ export async function readReportFile(file) {
 
 // What went wrong with a scan, and what to do next: [title, next step]. `where` says where the private scan is (" below").
 export function scanTrouble(repo, err, where = '') {
-  const msg = String((err && err.message) || err || '');
+  // The API's message alone (apiError), so the words of its hint can't change which of these it is.
+  const msg = String((err && (err.detail || err.message)) || err || '');
   if (/private repositor/i.test(msg)) return [`${repo} is private, so the public scan can’t read it.`, `Use the private scan${where}. It runs on your machine with your own token, and its report stays in your browser.`];
   // Before "no such repository": a repo lookup GitHub refused for its rate limit also says "lookup failed", followed by
   // the scanner's note, "GitHub rate-limited this scan, … Try again in a few minutes." (lib/scanner/scan.ts).
@@ -114,7 +124,7 @@ export function scanTrouble(repo, err, where = '') {
   if (/\b(403|429)\b/.test(msg)) return [`GitHub is limiting requests right now, so ${repo} wasn’t scanned.`, 'Try again in a minute.'];
   if (/\b503\b|busy/i.test(msg)) return ['The scanner is busy with other scans.', 'Try again in a minute.'];
   if (/failed to fetch|network|load failed/i.test(msg)) return ['The scanner didn’t answer.', 'Check your connection, then press Scan again.'];
-  return [`Couldn’t scan ${repo}.`, msg ? `The scanner said: ${msg}` : 'Press Scan to try again.'];
+  return [`Couldn’t scan ${repo}.`, msg ? `The scanner said: ${(err && err.message) || msg}` : 'Press Scan to try again.'];
 }
 
 // Keep reports for the current tab: public in localStorage, private/app in sessionStorage only.
@@ -603,7 +613,7 @@ export const app = {
   async _post(path, body) {
     const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-requested-with': 'sosf' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail ? String(d.detail) : `Request failed (${r.status})`);
+    if (!r.ok) throw apiError(d, r.status, 'Request failed');
     return d;
   },
   async check(repo) { const rep = sanitizeReport(await this._post('/api/app/check', { repo })); remember(rep); return rep; },
@@ -1207,7 +1217,8 @@ export function renderScanPanel(opts = {}) {
         say(`Checked ${rep.repo} through the GitHub App.`);
         updateCmd(); emit();
       } catch (err) {
-        sayError('The GitHub App check didn’t finish.', `${err.message}. Check that the app is installed on this repository and that you’re signed in as one of its admins.`);
+        // The API's own hint when it sent one; otherwise (a network failure, say) the likely causes.
+        sayError('The GitHub App check didn’t finish.', err.code ? err.message : `${sentence(err.message)} Check that the app is installed on this repository and that you’re signed in as one of its admins.`);
       } finally { b.removeAttribute('aria-disabled'); }
     });
     appBox.append(b, el('a', { href: '/app/logout', class: 'sg-muted' }, 'Sign out'));
