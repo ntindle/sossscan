@@ -416,7 +416,7 @@ function buildTools(g: Guide): Tool[] {
                 type: 'string',
                 enum: ['public', 'private', 'manual'],
                 description:
-                  "Which scan can read it. `public`: the public scan. `private`: a setting only the repository's admins can see, which the CLI with an admin's token or the GitHub App checks. `manual`: no scanner can see it, so people mark it done themselves.",
+                  "Which scan can read it. `public`: the public scan. `private`: a setting only the repository's admins can see, which the CLI with an admin's token checks, and so does Deep scan on the site, through its GitHub App. `manual`: no scanner can see it, so people mark it done themselves.",
               },
               impact,
               effort,

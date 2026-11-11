@@ -26,7 +26,7 @@ The public scan runs on this site. Type owner/repo on the [home page](/) and the
 
 The private scan runs on your machine. Download the [sossscan CLI](/docs/cli), run it with Node.js and your own GitHub token, then load the JSON report it writes into the page. With a token that has admin access, it also checks settings only admins can see, such as secret scanning and Dependabot alerts. The page reads the report in your browser and doesn't upload it.
 
-The [GitHub App](https://github.com/apps/sossscan) checks the same admin settings from the site, once you install it on a repository and sign in. It can also fix some of them: nine settings in one click, and pull requests that add a missing file such as SECURITY.md or pin your actions to commit SHAs. You see each change before it's made. The app never merges anything and never pushes to an existing branch.
+Deep scan checks the same admin settings from the site, through the [GitHub App](https://github.com/apps/sossscan). It signs you in with GitHub, and if the app isn't on the repository yet, it asks you to install it there. The app can also fix some of them: nine settings in one click, and pull requests that add a missing file such as SECURITY.md or pin your actions to commit SHAs. You see each change before it's made. The app never merges anything and never pushes to an existing branch.
 
 ## Who made it
 

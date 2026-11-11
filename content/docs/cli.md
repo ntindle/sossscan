@@ -49,7 +49,7 @@ It exits with 0 when the scan produced results, even with warnings, and with 1 w
 
 ## Load the report into the page
 
-On the [home page](/), open "Three ways to scan". Under "2 · Private scan", choose "Load the report" and pick the JSON file. The page reads the file in your browser and checks that it's an `sosf-scan/1` report. It isn't uploaded. The map then shows its results, findings and fixes.
+On the [home page](/), open "Scan privately", choose "Load the report" and pick the JSON file. The page reads the file in your browser and checks that it's an `sosf-scan/1` report. It isn't uploaded. The map then shows its results, findings and fixes.
 
 A report made with admin access (`layer` is `private`) joins a public scan of the same repository, if you ran one, and the page keeps it in sessionStorage for that tab. A report made without admin access is marked as a public scan, so it takes the place of the site's public scan of that repository and is kept in localStorage, like one.
 

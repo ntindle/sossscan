@@ -14,7 +14,7 @@ Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (a 404 with the code `repo_not_found` and the message `repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
    - Results are cached for 6 hours.
 2. **Private scan**, on your own machine, with the [scanner CLI](#the-scanner-cli) and your own token. An admin token unlocks the checks only admins can see. You load its JSON report into the page, which parses it in your browser and never uploads it. A report made with an admin token is kept in `sessionStorage`; one made without is marked as a public scan and kept in `localStorage`, like one.
-3. **GitHub App.** Signed-in admins of a repo where the [app](#the-github-app) is installed can run the admin checks through it.
+3. **Deep scan**, through the [GitHub App](#the-github-app): the admin checks, run by the site for an admin of the repo. The Deep scan button signs them in with GitHub, asks them to install the app if it isn't on the repo yet, then runs the checks, all in the same tab.
 
 Reports are sanitized on the way in: markup characters are neutralized and only http(s) links are kept.
 
@@ -69,7 +69,7 @@ It speaks protocol version 2026-07-28, and 2025-11-25 and 2025-06-18 for clients
 
 ## The GitHub App
 
-The site uses one GitHub App, [`sossscan`](https://github.com/apps/sossscan). It's optional: without it, the site works except for sign-in, the app's admin check and "Fix it for me". The server holds the app's private key, so installing the app means trusting this server with the permissions below on the repositories you pick. This section describes what the code does with them. The code is `app/api/app/`, `app/app/`, `lib/github-app.ts` and `lib/fixes.ts`, and the settings fixes are listed under `app_fixes` in `build/skeleton.json`.
+The site uses one GitHub App, [`sossscan`](https://github.com/apps/sossscan). It's optional: without it, the site works except for sign-in, Deep scan and "Fix it for me". The server holds the app's private key, so installing the app means trusting this server with the permissions below on the repositories you pick. This section describes what the code does with them. The code is `app/api/app/`, `app/app/`, `lib/github-app.ts` and `lib/fixes.ts`, and the settings fixes are listed under `app_fixes` in `build/skeleton.json`.
 
 ### What its permissions are used for
 
@@ -141,7 +141,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `lib/home.ts` | The home page as Markdown: `content/index.md`, then every stage and check, listed from `public/data/guide.json`. |
 | `app/[...path]/` | Every address nothing else answers: a 404, as Markdown for requests that ask for it and as a page in the site's style otherwise. Next.js tries it after every file and route, and after `app/api/[[...path]]/` for addresses under `/api/`. |
 | `public/llms.txt`, `public/robots.txt`, `app/sitemap.ts` | For agents and crawlers: an index of the site in the llms.txt format, the crawl rules (crawlers stay out of `/api/` and `/app/`), and a sitemap dated by each page's last commit (`PAGE_DATES` in `next.config.ts`). |
-| `app/api/app/`, `app/app/` | The optional GitHub App: sign-in, the admin-settings check, settings fixes and pull request fixes. Nothing here creates or replaces the app. |
+| `app/api/app/`, `app/app/` | The optional GitHub App: sign-in, Deep scan (the admin-settings check), settings fixes and pull request fixes. Nothing here creates or replaces the app. |
 | `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), redirects retired pages, and dates each page from Git for the sitemap. |
 | `lib/scanner/` | The scanner: the server's engine and the downloadable CLI. Read-only, no dependencies. |
 | `lib/public-scan.ts`, `lib/scan-token.ts` | Public scans: which repo, the 6-hour cache, at most 3 at once, and which token. |
@@ -201,7 +201,7 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
 
 ## Known limitations
 
-- The public scan sees what anyone can see. Several checks stay `unknown` until the private scan or the app checks them.
+- The public scan sees what anyone can see. Several checks stay `unknown` until a deep scan or the private scan checks them.
 - Repo checks are heuristics (file names, workflow text). Treat `risk` findings as leads to verify.
 - The OSS Scanner check (public repos with over 1,000 stars or 200 dependents) finds a project by matching folder names in anthropics/oss-scanner against the repo's name and owner, then confirms the `repo:` URL in its project.yaml. A project enrolled under an unrelated folder name shows as not enrolled.
 - Peer adoption covers the 193 fund repos only, bucketed by stars.
