@@ -14,7 +14,7 @@
   {"id": "public", "label": "Public scan", "blurb": "Anyone can run it. Reads files, workflows and public settings. Nothing to install."},
   {"id": "private", "label": "Private scan (download)", "blurb": "Run sosf-scan.mjs on your machine with your own token. Sees admin-only settings. The report never leaves your browser."},
   {"id": "app", "label": "GitHub App", "blurb": "Install the app on a repo to check admin settings from the site and apply safe fixes with one click."},
-  {"id": "manual", "label": "Self-check", "blurb": "Things no scanner can see (training, audits, process). Tick them off yourself."}
+  {"id": "manual", "label": "Self-check", "blurb": "Things a scan can only sometimes settle, such as training, audits and process. Tick them off when they're done."}
  ],
  "stages": [
   {"id": "accounts", "label": "Accounts", "blurb": "Who can push, merge and publish"},
@@ -77,7 +77,7 @@
    "new_file": {"path": ".github/CODEOWNERS", "template": "# Changes to CI, release config and security docs need a maintainer's review.\n# Pair this with a ruleset that requires code owner review.\n# In an organization, use the team that maintains this repo (for example @org/maintainers).\n/.github/        {maintainer}\n/SECURITY.md     {maintainer}\n"}},
   "repo-signed-commits": {"title": "Require signed commits", "tier": 5, "effort": 2, "impact": 2, "layer": "public", "stage": "repo", "attacks": ["insider-social", "account-takeover"], "week": "M12", "tags": ["multi_maintainer"],
    "links": [{"label": "Rulesets", "url": "https://github.com/{owner}/{repo}/settings/rules"}]},
-  "repo-org-security-config": {"title": "Apply one security configuration to every repo", "tier": 5, "effort": 2, "impact": 4, "layer": "manual", "stage": "repo", "attacks": ["leaked-secret", "poisoned-dependency"], "week": "M6", "tags": ["org"],
+  "repo-org-security-config": {"title": "Apply one security configuration to every repo", "tier": 5, "effort": 2, "impact": 4, "layer": "private", "stage": "repo", "attacks": ["leaked-secret", "poisoned-dependency"], "week": "M6", "tags": ["org"],
    "links": [{"label": "Org security configurations", "url": "https://github.com/organizations/{owner}/settings/security_products", "when": "org"}]},
   "repo-settings-review": {"title": "Review your settings on a schedule", "tier": 4, "effort": 1, "impact": 3, "layer": "manual", "stage": "repo", "attacks": ["account-takeover"], "week": "M6", "tags": []},
   "disc-security-md": {"title": "Publish a SECURITY.md", "tier": 0, "effort": 1, "impact": 5, "layer": "public", "stage": "disclosure", "attacks": ["botched-disclosure"], "week": "W1", "tags": [],
@@ -115,7 +115,7 @@
   "ci-fork-pr-approval": {"title": "Approve first-time contributors' workflow runs", "tier": 1, "effort": 1, "impact": 3, "layer": "private", "stage": "ci", "attacks": ["pwn-request"], "week": "W1", "tags": ["actions"],
    "links": [{"label": "Actions settings (Fork pull request workflows)", "url": "https://github.com/{owner}/{repo}/settings/actions"}],
    "cli": "gh api -X PUT repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval -f approval_policy=first_time_contributors", "app_fix": ["fork-pr-approval"]},
-  "ci-untrusted-artifacts-caches": {"title": "Don't trust caches or artifacts in release jobs", "tier": 4, "effort": 2, "impact": 3, "layer": "manual", "stage": "release", "attacks": ["poisoned-dependency", "tampered-release"], "week": "W2", "tags": ["actions", "publishes"]},
+  "ci-untrusted-artifacts-caches": {"title": "Don't trust caches or artifacts in release jobs", "tier": 4, "effort": 2, "impact": 3, "layer": "public", "stage": "release", "attacks": ["poisoned-dependency", "tampered-release"], "week": "W2", "tags": ["actions", "publishes"]},
   "sast-codeql": {"title": "Run CodeQL on every pull request", "tier": 0, "effort": 1, "impact": 4, "layer": "public", "stage": "code", "attacks": ["code-bug"], "week": "W1", "tags": [],
    "links": [{"label": "Code security settings", "url": "https://github.com/{owner}/{repo}/settings/security_analysis"}],
    "cli": "gh api -X PATCH repos/{owner}/{repo}/code-scanning/default-setup -f state=configured", "app_fix": ["enable-codeql-default-setup"]},
@@ -159,7 +159,7 @@
   "rel-trusted-publishing": {"title": "Use trusted publishing for your registry", "tier": 1, "effort": 2, "impact": 5, "layer": "public", "stage": "release", "attacks": ["tampered-release", "leaked-secret", "account-takeover"], "week": "W2", "tags": ["publishes"]},
   "rel-gated-release": {"title": "Gate releases behind a protected environment", "tier": 4, "effort": 2, "impact": 4, "layer": "private", "stage": "release", "attacks": ["tampered-release", "account-takeover", "insider-social"], "week": "W2", "tags": ["publishes", "multi_maintainer"],
    "links": [{"label": "Environments", "url": "https://github.com/{owner}/{repo}/settings/environments"}]},
-  "rel-security-support": {"title": "State which versions get security fixes", "tier": 4, "effort": 2, "impact": 3, "layer": "manual", "stage": "release", "attacks": ["botched-disclosure"], "week": "W3", "tags": ["publishes"]},
+  "rel-security-support": {"title": "State which versions get security fixes", "tier": 4, "effort": 2, "impact": 3, "layer": "public", "stage": "release", "attacks": ["botched-disclosure"], "week": "W3", "tags": ["publishes"]},
   "rel-reproducible": {"title": "Make builds reproducible", "tier": 6, "effort": 5, "impact": 3, "layer": "manual", "stage": "release", "attacks": ["tampered-release", "insider-social"], "week": "M12", "tags": ["publishes"]},
   "code-untrusted-input": {"title": "Validate and sandbox untrusted input", "tier": 3, "effort": 3, "impact": 4, "layer": "manual", "stage": "code", "attacks": ["code-bug"], "week": "W2", "tags": ["parses_input"]},
   "code-secure-defaults": {"title": "Make the secure option the default", "tier": 4, "effort": 3, "impact": 3, "layer": "manual", "stage": "code", "attacks": ["code-bug"], "week": "W2", "tags": []},

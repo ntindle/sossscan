@@ -3,7 +3,7 @@
 // since say why where they're defined.
 import { re } from './py.ts';
 
-export const VERSION = '0.4.3';
+export const VERSION = '0.5.0';
 export const SCHEMA = 'sosf-scan/1';
 export const UA = `sosf-scan/${VERSION} (+security self-check)`;
 export const API = 'https://api.github.com';
@@ -57,7 +57,9 @@ export const TOOLS: [string, RegExp][] = (
       String.raw`sigstore/cosign-installer|cosign\s+sign|sigstore/gh-action-sigstore-python|\bminisign\b|gpg\s+--(detach-sign|armor|sign)|ghaction-import-gpg`,
     ],
     ['pypi_publish', String.raw`pypa/gh-action-pypi-publish|twine upload|uv publish`],
-    ['npm_publish', String.raw`\b(npm|pnpm) publish\b|yarn npm publish`],
+    // npm stage publish (staged releases, which new trusted publishers allow by default) counts too since 0.5.0. So
+    // does npm run publish, when package.json's publish script publishes; scan.ts checks that.
+    ['npm_publish', String.raw`\b(npm|pnpm) publish\b|yarn npm publish|\bnpm stage publish\b`],
     ['crates_publish', String.raw`cargo publish|rust-lang/crates-io-auth-action`],
     ['crates_trusted', String.raw`rust-lang/crates-io-auth-action`],
     ['rubygems_publish', String.raw`rubygems/release-gem|gem push\b`],

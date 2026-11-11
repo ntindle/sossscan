@@ -15,7 +15,8 @@
  * unless you pass --token, so it sees what anyone would.
  * With a token that has admin access to the repo, it also checks settings only
  * admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions,
- * fork-PR approval, rulesets, immutable releases, environments, org 2FA, open alert backlogs.
+ * fork-PR approval, rulesets, immutable releases, environments, org 2FA, the org's security
+ * configuration, open alert backlogs.
  *
  * Load the JSON report into the guide site with "Load the report" under Private scan; it is read
  * in your browser and not uploaded.

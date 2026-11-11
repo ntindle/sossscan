@@ -32,6 +32,18 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+import { fundFromGuide } from '../lib/fund-data.ts';
+import { fundEntry, sharingResult, trainingResult } from '../lib/scanner/fund.ts';
+import { Hops } from '../lib/scanner/hops.ts';
+import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
+import { securityConfiguration, smsTwoFactor } from '../lib/scanner/private-layer.ts';
+import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
+import { bestBadge } from '../lib/scanner/scan.ts';
+import { customQueries, licenseGate, memorySafety, refreshBacklog, tracedSecrets } from '../lib/scanner/self-checks.ts';
+import { covers, supportTable, targetRelease } from '../lib/scanner/versions.ts';
+import { parseYaml } from '../lib/scanner/yaml-lite.ts';
+import type { YNode } from '../lib/scanner/yaml-lite.ts';
+import YAML from 'yaml';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
 
@@ -128,7 +140,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.4.3');
+    expect(VERSION).toBe('0.5.0');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([
@@ -674,8 +686,21 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
       'ci-fork-pr-approval': unknown('Could not read the fork PR approval policy (HTTP 403)'),
       'rel-gated-release': unknown('Could not read the environment protection rules (HTTP 403)'),
       'acct-least-privilege': unknown('Could not read the accounts with admin on this repo (HTTP 403)'),
-      'ci-secrets-hygiene': unknown('Could not read the repository Actions secrets (HTTP 403)'),
+      // The app has no "Secrets: read" permission, so its 403 points to the CLI instead of a retry.
+      'ci-secrets-hygiene': unknown(
+        "The GitHub App can't read the names of Actions secrets; the CLI with an admin's token can check them",
+      ),
     });
+    // The CLI with an admin's token that GitHub refuses keeps the plain message.
+    const solo = structuredClone(routesFor('admin-denied')['https://api.github.com/repos/solo/tool']) as Route;
+    Object.assign(solo.json as object, { permissions: { admin: true } });
+    const cli = scenarios['admin-denied'];
+    stubFetch({ ...routesFor('admin-denied'), 'https://api.github.com/repos/solo/tool': solo });
+    const viaCli = await scan(cli.repo, { token: 'admin-token', ossFuzzLookup: () => [] });
+    expect([viaCli.layer, viaCli.results['ci-secrets-hygiene']]).toEqual([
+      'private',
+      unknown('Could not read the repository Actions secrets (HTTP 403)'),
+    ]);
   });
 
   it('counts an advisory without a publication date, and takes the newest date of the others', async () => {
@@ -1777,4 +1802,1314 @@ describe('CLI', () => {
       });
     },
   );
+});
+
+// --------------------------------------------------------------------------- 0.5.0: checks that were self-checks
+const TINY = 'https://api.github.com/repos/octo/tiny';
+const TINY_RAW = 'https://raw.githubusercontent.com/octo/tiny/main/';
+
+/** A small public repository on the fake GitHub: its files, more tree entries, API answers and repository fields. */
+function tiny(
+  files: Record<string, string>,
+  api: Record<string, Route | Route[]> = {},
+  { meta = {}, tree = [] as { path: string; type: string }[], truncated = false } = {},
+): Record<string, Route | Route[]> {
+  return {
+    [TINY]: {
+      json: {
+        name: 'tiny',
+        full_name: 'octo/tiny',
+        owner: { login: 'octo', type: 'User' },
+        default_branch: 'main',
+        private: false,
+        stargazers_count: 3,
+        created_at: '2025-01-01T00:00:00Z',
+        ...meta,
+      },
+    },
+    [`${TINY}/git/trees/main?recursive=1`]: {
+      json: { truncated, tree: [...Object.keys(files).map((path) => ({ path, type: 'blob' })), ...tree] },
+    },
+    ...Object.fromEntries(Object.entries(files).map(([p, text]) => [TINY_RAW + p, { text }])),
+    ...Object.fromEntries(Object.entries(api).map(([k, v]) => [k.startsWith('http') ? k : TINY + k, v])),
+  };
+}
+
+async function scanTiny(routes: Record<string, Route | Route[]>) {
+  const calls = stubFetch(routes);
+  const rep = await scan('octo/tiny', { token: 't', ossFuzzLookup: () => [] });
+  return { rep, calls };
+}
+
+/** A check's status and summary, or null when the scan left it out. */
+const statusOf = (rep: Report, id: string) =>
+  rep.results[id] ? [rep.results[id].status, rep.results[id].summary] : null;
+
+/** The release cache check over in-memory workflows (file names under .github/workflows) and other files. */
+async function cacheCheck(
+  workflows: Record<string, string[]>,
+  files: Record<string, string | null> = {},
+  extra: { unread?: { path: string; status: number }[]; treeRead?: boolean } = {},
+) {
+  const all: Record<string, string | null> = {
+    ...Object.fromEntries(Object.entries(workflows).map(([n, l]) => [`.github/workflows/${n}`, workflow(l)])),
+    ...files,
+  };
+  const read = async (p: string) => all[p] ?? null;
+  return releaseCacheCheck({
+    workflows: Object.entries(workflows).map(([n, l]) => ({ path: `.github/workflows/${n}`, text: workflow(l) })),
+    unread: extra.unread ?? [],
+    files: Object.keys(all),
+    treeRead: extra.treeRead ?? true,
+    read,
+    hops: new Hops(Object.keys(all), read),
+  });
+}
+
+describe('yaml-lite reads workflows as the yaml package does', () => {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const mine = (n: YNode | null): unknown => {
+    if (!n) return '';
+    if (n.kind === 'scalar') return norm(n.text);
+    if (n.kind === 'seq') return n.items.map(mine);
+    return Object.fromEntries(n.entries.map((e) => [e.key, mine(e.value)]));
+  };
+  const theirs = (v: unknown): unknown => {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map(theirs);
+    if (typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, theirs(x)]));
+    return norm(String(v));
+  };
+  const same = (text: string) => expect(mine(parseYaml(text))).toEqual(theirs(YAML.parse(text, { merge: true })));
+
+  it('on every workflow fixture', () => {
+    for (const w of Object.values<any>(expected.workflows)) {
+      const text = fixtureText(w.file);
+      let valid = true;
+      try {
+        YAML.parse(text);
+      } catch {
+        // A fixture that isn't valid YAML (one tests how the line reader copes) is only read without throwing.
+        valid = false;
+      }
+      if (valid) same(text);
+      else expect(() => parseYaml(text)).not.toThrow();
+    }
+  });
+
+  it('with anchors, merge keys, block scalars, flow collections, quoted keys and comments', () => {
+    same(
+      workflow([
+        "'on':",
+        '  push:',
+        '    tags: [ "v*", \'r*\' ]  # releases',
+        'x-defaults: &defaults',
+        '  runs-on: ubuntu-latest',
+        '  timeout-minutes: 5',
+        'jobs:',
+        '  a:',
+        '    <<: *defaults',
+        '    steps:',
+        '    - &checkout',
+        '      uses: actions/checkout@v4',
+        '      with: { persist-credentials: false, fetch-depth: 0 }',
+        '    - run: |-',
+        '        echo "a: b"',
+        '',
+        '        # not a comment',
+        '      env:',
+        '        LONG: "one \\',
+        '          two"',
+        '    - *checkout',
+        '    - name: >',
+        '        folded',
+        '        text',
+        '      run: echo hi # trailing',
+        '  b:',
+        '    needs:',
+        '    - a',
+        '    matrix: {',
+        '      os: [linux, macos], # a comment inside',
+        '      py: ["3.12"] }',
+      ]),
+    );
+  });
+
+  it('never throws on text that is not YAML', () => {
+    for (const bad of ['', ':', '- - -', '{[', '"unclosed', 'a: [1, 2', 'key: |\n', '\t- x\n  y: [']) {
+      expect(() => parseYaml(bad)).not.toThrow();
+    }
+  });
+
+  it('reads a commit pin with its version comment', () => {
+    const wf = readWorkflow(
+      '.github/workflows/x.yml',
+      workflow([
+        'on: push',
+        'jobs:',
+        '  a:',
+        '    steps:',
+        `      - uses: actions/setup-node@${PIN} # v5.0.0`,
+        '      - uses: actions/setup-node@v4.2.1',
+        `      - uses: astral-sh/setup-uv@${PIN}`,
+      ]),
+    );
+    expect(wf.jobs[0].steps.map(actionMajor)).toEqual([5, 4, null]);
+  });
+});
+
+describe('ci-untrusted-artifacts-caches', () => {
+  const publishJob = (steps: string[], extra: string[] = []) => [
+    'on:',
+    '  release:',
+    '    types: [published]',
+    'jobs:',
+    '  publish:',
+    '    runs-on: ubuntu-latest',
+    ...extra,
+    '    steps:',
+    ...steps,
+  ];
+
+  it('fails when the publishing job restores a cache, with the line in the findings', async () => {
+    // mockoon's release-libs.yml: npm run publish, whose package.json script runs npm publish.
+    const pkg = JSON.stringify({ scripts: { publish: 'npm publish --workspace=@octo/core --workspace=@octo/cli' } });
+    const r = await cacheCheck(
+      {
+        'release-libs.yml': [
+          'on:',
+          '  push:',
+          "    tags: ['libs-v*']",
+          'permissions:',
+          '  contents: read',
+          'jobs:',
+          '  npm-publish:',
+          '    runs-on: ubuntu-latest',
+          '    permissions:',
+          '      id-token: write',
+          '    steps:',
+          `      - uses: actions/checkout@${PIN} # v7.0.1`,
+          `      - uses: actions/setup-node@${PIN} # v7.1.0`,
+          '        with:',
+          '          node-version: "24"',
+          '          cache: npm',
+          '      - run: npm ci',
+          '      - name: NPM publish',
+          '        run: |',
+          '          npm run publish',
+        ],
+      },
+      { 'package.json': pkg },
+    );
+    expect([r.status, r.summary]).toEqual([
+      'fail',
+      'Publishing job npm-publish in .github/workflows/release-libs.yml restores a cache (actions/setup-node with cache: npm)',
+    ]);
+    expect(r.findings).toEqual([
+      {
+        severity: 'medium',
+        title: 'Restores a cache in publishing job npm-publish: actions/setup-node with cache: npm',
+        path: '.github/workflows/release-libs.yml',
+        line: 13,
+        hint: "Set cache-mode: none on the job and turn off the action's own cache input (for setup-node, package-manager-cache: false)",
+      },
+    ]);
+  });
+
+  it('follows artifacts back through one job in between, and leaves out caches in jobs that feed nothing published', async () => {
+    // aiohttp's ci-cd.yml: a cached llhttp build goes into the dists that deploy publishes; test caches pip.
+    const r = await cacheCheck({
+      'ci-cd.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  gen-llhttp:',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/cache@v6',
+        '        with:',
+        '          path: vendor/llhttp/build',
+        '          key: llhttp',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: llhttp',
+        '          path: vendor/llhttp/build',
+        '  build:',
+        '    needs: gen-llhttp',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: llhttp',
+        '      - run: python -m build',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: dist-pure',
+        '          path: dist',
+        '  test:',
+        '    needs: build',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/setup-python@v6',
+        '        with:',
+        '          cache: pip',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: coverage',
+        '          path: .coverage',
+        '  deploy:',
+        '    needs: [build, test]',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          pattern: dist-*',
+        '          merge-multiple: true',
+        '      - uses: pypa/gh-action-pypi-publish@release/v1',
+      ],
+    });
+    expect([r.status, r.summary]).toEqual([
+      'fail',
+      'Job gen-llhttp in .github/workflows/ci-cd.yml restores a cache (actions/cache) and builds artifact llhttp, ' +
+        'which goes into what deploy publishes',
+    ]);
+    expect(r.findings.map((f) => [f.path, f.line, f.severity])).toEqual([['.github/workflows/ci-cd.yml', 8, 'medium']]);
+  });
+
+  it('links a job of a local reusable workflow to the job that publishes its artifact', async () => {
+    const r = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  build:',
+        '    uses: ./.github/workflows/build.yml',
+        '  publish:',
+        '    needs: build',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: dist',
+        '      - run: gh release upload "$GITHUB_REF_NAME" dist/*',
+      ],
+      'build.yml': [
+        'on: workflow_call',
+        'jobs:',
+        '  compile:',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: Swatinem/rust-cache@v2',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: dist',
+      ],
+    });
+    expect([r.status, r.findings.map((f) => [f.path, f.line])]).toEqual(['fail', [['.github/workflows/build.yml', 6]]]);
+  });
+
+  it('reads local composite actions, and says when it could not', async () => {
+    const steps = ['      - uses: ./.github/actions/setup', '      - run: pnpm publish -r'];
+    const action = ['runs:', '  using: composite', '  steps:', '    - uses: actions/setup-node@v6', '      with:'];
+    const read = await cacheCheck(
+      { 'release.yml': publishJob(steps) },
+      { '.github/actions/setup/action.yml': workflow([...action, '        cache: pnpm']) },
+    );
+    expect([read.status, read.findings.map((f) => [f.path, f.line])]).toEqual([
+      'fail',
+      [['.github/actions/setup/action.yml', 4]],
+    ]);
+    const unreadable = await cacheCheck(
+      { 'release.yml': publishJob(steps) },
+      { '.github/actions/setup/action.yml': null },
+    );
+    expect([unreadable.status, unreadable.summary]).toEqual([
+      'info',
+      "Publishing job publish in .github/workflows/release.yml uses ./.github/actions/setup, which the scan couldn't " +
+        'read. The publishing jobs it can read restore no caches',
+    ]);
+  });
+
+  it('follows one hop into a package.json script', async () => {
+    const r = await cacheCheck(
+      {
+        'release.yml': publishJob([
+          '      - uses: actions/setup-node@v4',
+          '        with:',
+          '          cache: npm',
+          '      - run: npm run release',
+        ]),
+      },
+      { 'package.json': JSON.stringify({ scripts: { release: 'npm publish --access public' } }) },
+    );
+    expect([r.status, r.details]).toEqual([
+      'fail',
+      {
+        publishing_jobs: [
+          { workflow: '.github/workflows/release.yml', job: 'publish', why: 'npm run release, which runs npm publish' },
+        ],
+      },
+    ]);
+  });
+
+  it('warns on a cache that depends on the project or the run, and on artifacts from another run', async () => {
+    const node5 = await cacheCheck({
+      'release.yml': publishJob(['      - uses: actions/setup-node@v5', '      - run: npm stage publish']),
+    });
+    expect([node5.status, node5.findings.map((f) => f.severity)]).toEqual(['warn', ['low']]);
+    expect(node5.summary).toContain('which from v5 caches npm packages unless package-manager-cache is false');
+    // From v10, setup-uv no longer caches unless enable-cache says so.
+    const uv = (v: string) =>
+      cacheCheck({ 'release.yml': publishJob([`      - uses: astral-sh/setup-uv@${v}`, '      - run: uv publish']) });
+    expect([(await uv('v6')).status, (await uv('v10.3.3')).status]).toEqual(['warn', 'pass']);
+    const tagGuard = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/cache@v6',
+        "        if: github.ref_type != 'tag'",
+        '      - run: cargo publish',
+      ]),
+    });
+    expect(tagGuard.status).toBe('warn');
+    const otherRun = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          run-id: ${{ inputs.run_id }}',
+        '          github-token: ${{ github.token }}',
+        '      - run: twine upload dist/*',
+      ]),
+    });
+    expect([otherRun.status, otherRun.summary]).toEqual([
+      'warn',
+      'Publishing job publish in .github/workflows/release.yml downloads artifacts from another workflow run',
+    ]);
+    // In a workflow_run workflow that's ci-dangerous-triggers' to report.
+    const wr = await cacheCheck({
+      'publish.yml': [
+        'on:',
+        '  workflow_run:',
+        '    workflows: [CI]',
+        'jobs:',
+        '  publish:',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          run-id: ${{ github.event.workflow_run.id }}',
+        '      - run: npm publish',
+      ],
+    });
+    expect(wr.status).toBe('pass');
+  });
+
+  it("warns on an artifact it can't trace when another job in the run restores a cache", async () => {
+    const r = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  release:',
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - uses: actions/setup-go@v6',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: bin-${{ matrix.os }}',
+        '  publish:',
+        '    needs: build',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: ${{ inputs.artifact }}',
+        '      - run: gh release create v1 bin/*',
+      ],
+    });
+    expect([r.status, r.findings.map((f) => f.title)]).toEqual([
+      'warn',
+      ["Publishing job publish downloads an artifact the scan can't trace to the job that built it"],
+    ]);
+  });
+
+  it('passes when no publishing job restores a cache, also with cache-mode: none, unless an action ignores it', async () => {
+    const clean = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/setup-node@v6',
+        '        with:',
+        '          package-manager-cache: false',
+        '          registry-url: https://registry.npmjs.org',
+        '      - run: npm stage publish',
+      ]),
+    });
+    expect([clean.status, clean.summary]).toEqual([
+      'pass',
+      'Publishing job publish in .github/workflows/release.yml restores no cache',
+    ]);
+    const none = await cacheCheck({
+      'release.yml': publishJob(
+        ['      - uses: actions/setup-node@v6', '        with:', '          cache: npm', '      - run: npm publish'],
+        ['    cache-mode: none'],
+      ),
+    });
+    expect([none.status, none.summary]).toEqual([
+      'pass',
+      'Publishing job publish in .github/workflows/release.yml restores no cache (cache-mode: none)',
+    ]);
+    const sccache = await cacheCheck({
+      'release.yml': publishJob(
+        [
+          '      - uses: PyO3/maturin-action@v1',
+          '        with:',
+          "          sccache: 'true'",
+          '          command: upload',
+        ],
+        ['    cache-mode: none'],
+      ),
+    });
+    expect([sccache.status, sccache.findings[0].title]).toEqual([
+      'warn',
+      'May restore a cache in publishing job publish: PyO3/maturin-action with sccache: true, which may ignore cache-mode: none',
+    ]);
+  });
+
+  it("says what it can't see, and when nothing publishes", async () => {
+    const remote = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  release:',
+        '    uses: octo/shared/.github/workflows/release.yml@v1',
+      ],
+    });
+    expect([remote.status, remote.summary]).toEqual([
+      'info',
+      "Release workflow .github/workflows/release.yml calls octo/shared/.github/workflows/release.yml@v1, which the scan can't read",
+    ]);
+    const ci = await cacheCheck({
+      'ci.yml': [
+        'on: [push, pull_request]',
+        'jobs:',
+        '  test:',
+        '    steps:',
+        '      - uses: actions/setup-go@v6',
+        '      - run: go test ./...',
+      ],
+    });
+    expect([ci.status, ci.summary]).toEqual(['na', 'No publishing job or release workflow']);
+    expect(
+      (
+        await releaseCacheCheck({
+          workflows: [],
+          unread: [],
+          files: [],
+          treeRead: true,
+          read: async () => null,
+          hops: new Hops([], async () => null),
+        })
+      ).status,
+    ).toBe('na');
+    // A workflow it couldn't read, or a file list it couldn't get, may hold what it didn't find.
+    const unread = await cacheCheck(
+      { 'release.yml': publishJob(['      - run: cargo publish']) },
+      {},
+      {
+        unread: [{ path: '.github/workflows/other.yml', status: 500 }],
+      },
+    );
+    expect([unread.status, unread.summary]).toEqual([
+      'unknown',
+      'Could not read .github/workflows/other.yml (HTTP 500)',
+    ]);
+    expect((await cacheCheck({}, {}, { treeRead: false })).status).toBe('unknown');
+  });
+
+  it('knows which actions restore caches and which steps publish', () => {
+    const step = (uses: string, w: Record<string, string> = {}, comment = '') =>
+      ({
+        file: 'x',
+        line: 1,
+        usesLine: 1,
+        runLine: 1,
+        runFirst: 1,
+        uses,
+        comment,
+        with: w,
+        env: {},
+        run: null,
+        shell: null,
+        if: null,
+        all: '',
+      }) as const;
+    const level = (uses: string, w: Record<string, string> = {}, comment = '') =>
+      cacheOf(step(uses, w, comment))?.level ?? null;
+    expect([
+      level('actions/cache@v4'),
+      level('actions/cache@v4', { 'lookup-only': 'true' }),
+      level('actions/cache/save@v4'),
+      level('actions/setup-go@v5'),
+      level('actions/setup-go@v5', { cache: 'false' }),
+      level('actions/setup-node@v4'),
+      level(`actions/setup-node@${PIN}`, {}, 'v4.4.0'),
+      level(`actions/setup-node@${PIN}`),
+      level('actions/setup-node@v4', { cache: '${{ matrix.pm }}' }),
+      level('actions/setup-python@v6', { cache: 'pip' }),
+      level('ruby/setup-ruby@v1', { 'bundler-cache': 'true' }),
+      level('gradle/actions/setup-gradle@v4'),
+      level('docker/build-push-action@v6', { 'cache-from': 'type=gha' }),
+      level('docker/setup-buildx-action@v3'),
+      level('docker/setup-buildx-action@v3', { version: 'v0.23.0' }),
+      level('actions/checkout@v5'),
+    ]).toEqual(['on', null, null, 'on', null, null, null, 'maybe', 'maybe', 'on', 'on', 'on', 'on', null, 'on', null]);
+    const pub = (uses: string, w: Record<string, string> = {}) => publishOf(step(uses, w));
+    expect([
+      pub('goreleaser/goreleaser-action@v6', { args: 'release --clean' }),
+      pub('goreleaser/goreleaser-action@v6', { args: 'release --snapshot --clean' }),
+      pub('docker/build-push-action@v6', { push: 'false' }),
+      pub('docker/build-push-action@v6', { push: "${{ github.event_name != 'pull_request' }}" }),
+      pub('changesets/action@v1', { publish: 'pnpm release' }),
+      pub('changesets/action@v1', { version: 'pnpm version' }),
+      pub('PyO3/maturin-action@v1', { command: 'upload' }),
+      pub('PyO3/maturin-action@v1', { command: 'build' }),
+    ]).toEqual([
+      'goreleaser/goreleaser-action',
+      null,
+      null,
+      'docker/build-push-action with push',
+      'changesets/action with publish',
+      null,
+      'pyo3/maturin-action with command: upload',
+      null,
+    ]);
+    const runs = (run: string) => publishOf({ ...step('x'), uses: null, run });
+    expect(
+      [
+        'npm publish --dry-run',
+        'goreleaser release --snapshot',
+        'mvn -Dmaven.deploy.skip=true install',
+        'echo build',
+        '# npm publish',
+      ].map(runs),
+    ).toEqual([null, null, null, null, null]);
+    expect(
+      ['npm stage publish --tag next', 'cd pkg && npm publish', './mvnw -B deploy', 'sbt ci-release'].map(runs),
+    ).toEqual(['npm stage publish', 'npm publish', 'mvnw -B deploy', 'sbt ci-release']);
+  });
+
+  it('is a scan result with its findings, as the other workflow checks are', async () => {
+    const wf = publishJob([
+      '      - uses: actions/setup-go@v6',
+      '      - uses: goreleaser/goreleaser-action@v6',
+      '        with:',
+      '          args: release --clean',
+    ]);
+    const { rep } = await scanTiny(tiny({ '.github/workflows/release.yml': workflow(wf) }));
+    expect(statusOf(rep, 'ci-untrusted-artifacts-caches')).toEqual([
+      'fail',
+      'Publishing job publish in .github/workflows/release.yml restores a cache (actions/setup-go, which caches by default)',
+    ]);
+    expect(rep.results['ci-untrusted-artifacts-caches'].evidence).toEqual([
+      {
+        label: '.github/workflows/release.yml',
+        url: 'https://github.com/octo/tiny/blob/main/.github/workflows/release.yml',
+      },
+    ]);
+    expect(rep.findings.filter((f) => f.item_id === 'ci-untrusted-artifacts-caches').map((f) => f.url)).toEqual([
+      'https://github.com/octo/tiny/blob/main/.github/workflows/release.yml#L8',
+    ]);
+  });
+});
+
+describe('rel-security-support', () => {
+  const policy = (rows: string[], extra = '') =>
+    [
+      '# Security Policy',
+      '',
+      '## Supported Versions',
+      '',
+      '| Version | Supported |',
+      '| ------- | --------- |',
+      ...rows,
+      '',
+    ]
+      .concat(['## Reporting a Vulnerability', '', 'Email security@example.com, or use a private advisory.', extra])
+      .join('\n');
+  const releases = (...tags: (string | [string, boolean])[]) => ({
+    json: tags.map((t) =>
+      Array.isArray(t) ? { tag_name: t[0], prerelease: t[1] } : { tag_name: t, prerelease: false },
+    ),
+  });
+  const check = async (security: string | null, api: Record<string, Route> = {}) => {
+    const files: Record<string, string> = security === null ? {} : { 'SECURITY.md': security };
+    const { rep, calls } = await scanTiny(tiny(files, api));
+    return { r: statusOf(rep, 'rel-security-support'), calls };
+  };
+
+  it('passes when a supported row covers the highest stable version among the latest releases', async () => {
+    // mastodon publishes several lines at once, so the newest release can be on an old line.
+    const { r } = await check(policy(['| 4.7.x | :white_check_mark: |', '| 4.6.x | ✅ |', '| < 4.6 | :x: |']), {
+      '/releases?per_page=10': releases('v4.4.28', 'v4.7.5', 'v4.6.11', ['v4.8.0-beta.1', true], 'v4.8.0-rc.1'),
+    });
+    expect(r).toEqual(['pass', 'SECURITY.md lists 4.7.x as supported, which covers the newest release, v4.7.5']);
+  });
+
+  it('warns on a table that no longer covers the newest release, and on the unedited template', async () => {
+    const stale = await check(policy(['| 1.0.x | ✅ |', '| 0.16.x | ✅ |', '| < 0.14 | ❌ |']), {
+      '/releases?per_page=10': releases('v1.1.0', 'v1.0.9'),
+    });
+    expect(stale.r).toEqual(['warn', 'SECURITY.md lists 1.0.x, 0.16.x as supported, but the newest release is v1.1.0']);
+    const template = [
+      '# Security Policy',
+      '',
+      '## Supported Versions',
+      '',
+      'Use this section to tell people about which versions of your project are',
+      'currently being supported with security updates.',
+      '',
+      '| Version | Supported          |',
+      '| ------- | ------------------ |',
+      '| 5.1.x   | :white_check_mark: |',
+      '| 5.0.x   | :x:                |',
+      '| 4.0.x   | :white_check_mark: |',
+      '| < 4.0   | :x:                |',
+    ].join('\n');
+    expect((await check(template, { '/releases?per_page=10': releases('v5.1.2') })).r).toEqual([
+      'warn',
+      "SECURITY.md still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)",
+    ]);
+  });
+
+  it('gives info for words without a table, or for no statement, and never fails', async () => {
+    const words = ['# Security', '', '## Supported Versions', '', 'Only the latest release gets security fixes.'].join(
+      '\n',
+    );
+    expect((await check(words, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      'SECURITY.md says which versions get fixes in words, not a table: check it covers v2.3.0',
+    ]);
+    const none = 'Please report vulnerabilities privately through a GitHub security advisory. '.repeat(4);
+    expect((await check(none, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      "SECURITY.md doesn't say which versions get security fixes",
+    ]);
+    expect((await check(null, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      'No SECURITY.md to say which versions get security fixes',
+    ]);
+  });
+
+  it('compares with the tags when there are no releases, and does not apply without releases, tags or publishing', async () => {
+    const table = policy(['| 2.3.x | ✅ |']);
+    const tagged = await check(table, {
+      '/releases?per_page=10': { json: [] },
+      '/tags?per_page=100': { json: [{ name: 'v2.3.0' }, { name: 'v2.2.1' }] },
+    });
+    expect(tagged.r).toEqual(['pass', 'SECURITY.md lists 2.3.x as supported, which covers the newest release, v2.3.0']);
+    expect(tagged.calls.map(([u]) => u)).toContain(`${TINY}/tags?per_page=100`);
+    const nothing = await check(table, { '/releases?per_page=10': { json: [] }, '/tags?per_page=100': { json: [] } });
+    expect(nothing.r).toEqual(['na', 'No releases, tags or publishing workflow']);
+  });
+
+  it("says unknown when it couldn't read the releases to compare the table with", async () => {
+    const { r } = await check(policy(['| 2.3.x | ✅ |']), { '/releases?per_page=10': { status: 500, text: 'oops' } });
+    expect(r).toEqual(['unknown', 'Could not read the releases to compare with the table in SECURITY.md (HTTP 500)']);
+  });
+
+  it('reads the version cells the research found tables use', () => {
+    const v = (s: string) => s.split('.').map(Number);
+    const cases: [string, string, boolean | null][] = [
+      ['2.latest', '2.9.1', true],
+      ['0.2.x+', '0.3.1', true],
+      ['2.0.X', '2.0.7', true],
+      ['2.0.latest', '2.1.0', false],
+      ['>= 1.2', '1.10.0', true],
+      ['< 4.0', '4.0.1', false],
+      ['latest', '9.9', true],
+      ['4.28.2', '4.29.5', false],
+      // mastodon's table names each line by its first release.
+      ['4.7.0', '4.7.5', true],
+      ['4.7.0', '4.8.0', false],
+      ['3.11', '3.11.2', true],
+      ['main', '1.0', null],
+    ];
+    for (const [cell, ver, want] of cases) expect([cell, covers(cell, v(ver))]).toEqual([cell, want]);
+    const t = supportTable(
+      policy(['| [v6.x](https://example.com) | ✅ |', '| 3.20.x (LTS) | ✅ |', '| 5.x | until 2020-01-01 |']),
+    );
+    expect(t.rows).toEqual([
+      { version: 'v6.x', supported: true },
+      { version: '3.20.x', supported: true },
+      { version: '5.x', supported: false },
+    ]);
+    expect(targetRelease([{ tag: 'curl-8_11_0' }, { tag: 'curl-8_10_1' }])).toEqual({
+      tag: 'curl-8_11_0',
+      version: [8, 11, 0],
+    });
+  });
+});
+
+describe('deps-refresh', () => {
+  const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const pr = (n: number, days: number, login = 'dependabot[bot]') => ({
+    number: n,
+    created_at: ago(days),
+    user: { login },
+    html_url: `https://github.com/octo/tiny/pull/${n}`,
+  });
+  const PULLS = '/pulls?state=open&sort=created&direction=asc&per_page=100';
+  const dependabot = (limit = '') =>
+    [
+      'version: 2',
+      'updates:',
+      '  - package-ecosystem: npm',
+      '    directory: /',
+      limit,
+      '  - package-ecosystem: github-actions',
+      '    directory: /',
+    ]
+      .filter((l) => l !== '')
+      .join('\n');
+  const refresh = async (pulls: Route, yml = dependabot()) =>
+    statusOf((await scanTiny(tiny({ '.github/dependabot.yml': yml }, { [PULLS]: pulls }))).rep, 'deps-refresh');
+
+  it('warns when the oldest update pull request is over 90 days old', async () => {
+    expect(await refresh({ json: [pr(7, 3, 'octocat'), pr(3, 120), pr(9, 2)] })).toEqual([
+      'warn',
+      'The oldest open Dependabot pull request, #3, is 120 days old',
+    ]);
+    const renovate = await scanTiny(
+      tiny({ 'renovate.json': '{}' }, { [PULLS]: { json: [pr(1, 200, 'renovate[bot]')] } }),
+    );
+    expect(statusOf(renovate.rep, 'deps-refresh')).toEqual([
+      'warn',
+      'The oldest open Renovate pull request, #1, is 200 days old',
+    ]);
+  });
+
+  it('adds nothing for fresh pull requests, however many, or when they could not be listed', async () => {
+    expect(await refresh({ json: [pr(1, 10), pr(2, 40)] })).toBeNull();
+    // A queue at dependabot.yml's open-pull-requests-limit isn't a warning: security updates count toward the open
+    // pull requests but not toward that limit, so the count can't show it was reached.
+    const six = { json: [1, 2, 3, 4, 5, 6].map((n) => pr(n, n)) };
+    expect(await refresh(six, dependabot('    open-pull-requests-limit: 1'))).toBeNull();
+    expect(await refresh({ status: 403, json: { message: 'Forbidden' } })).toBeNull();
+    // A full page that has no bot pull request says nothing about the ones after it.
+    expect(refreshBacklog(Array.from({ length: 100 }, (_, i) => pr(i, 300, 'octocat')))).toBeNull();
+  });
+});
+
+describe('code-memory-safety', () => {
+  const memory = async (languages: Route, files: Record<string, string>, opts: Parameters<typeof tiny>[2] = {}) =>
+    statusOf((await scanTiny(tiny(files, { '/languages': languages }, opts))).rep, 'code-memory-safety');
+
+  it("doesn't apply when no code is in a language without memory safety", async () => {
+    expect(await memory({ json: { TypeScript: 50000, JavaScript: 1200, Shell: 90 } }, { 'src/index.ts': 'x' })).toEqual(
+      ['na', 'No C, C++ or other code without memory safety, and no submodules'],
+    );
+  });
+
+  it('adds nothing when any guard fires: native bytes, a native file, a submodule, a cut-short tree, a failed lookup', async () => {
+    // aiohttp: GitHub counts Cython and a little C, and llhttp is a submodule.
+    expect(await memory({ json: { Python: 3450007, Cython: 50039, C: 170 } }, { 'aiohttp/web.py': 'x' })).toBeNull();
+    const js = { json: { JavaScript: 1200 } };
+    expect(await memory(js, { 'index.js': 'x' }, { tree: [{ path: 'vendor/llhttp', type: 'commit' }] })).toBeNull();
+    expect(await memory(js, { 'index.js': 'x', 'third_party/zlib/inflate.c': 'x' })).toBeNull();
+    expect(await memory(js, { 'index.js': 'x' }, { truncated: true })).toBeNull();
+    expect(await memory({ status: 403, json: {} }, { 'index.js': 'x' })).toBeNull();
+    expect(memorySafety({ 'Unix Assembly': 10 }, [], [], true)).toBeNull();
+    expect(memorySafety({ WebAssembly: 10 }, [], [], true)?.status).toBe('na');
+  });
+});
+
+describe('the admin checks of an organization (0.5.0)', () => {
+  const ORG = 'https://api.github.com/orgs/acme';
+  const SMS = `${ORG}/members?filter=2fa_insecure&per_page=100`;
+  const CONFIG = 'https://api.github.com/repos/acme/secret/code-security-configuration';
+  const DEFAULTS = `${ORG}/code-security/configurations/defaults`;
+  const pick = (rep: Report) => ({
+    sms: statusOf(rep, 'acct-phishing-resistant-2fa'),
+    config: statusOf(rep, 'repo-org-security-config'),
+  });
+
+  it('counts the members with SMS 2FA without naming them, and never reads a refusal as a count', async () => {
+    const warned = (await scanScenario('admin-org', { [SMS]: { json: [{ login: 'ada' }, { login: 'bo' }] } })).rep;
+    expect(pick(warned).sms).toEqual([
+      'warn',
+      '2 org members still have SMS for 2FA; turn on "Only allow secure two-factor methods" in the org\'s ' +
+        'authentication settings',
+    ]);
+    expect(JSON.stringify(warned.results['acct-phishing-resistant-2fa'])).not.toMatch(/ada|"bo"/);
+    expect(pick((await scanScenario('admin-org', { [SMS]: { json: [] } })).rep).sms?.[0]).toBe('info');
+    for (const refusal of [
+      { status: 422, json: { message: 'Only owners can use this filter.' } },
+      { status: 403, json: { message: 'Resource not accessible by integration' } },
+      { status: 404, json: { message: 'Not Found' } },
+      { json: { message: 'not a list' } },
+    ]) {
+      const r = pick((await scanScenario('admin-org', { [SMS]: refusal })).rep).sms;
+      expect(r?.[0]).toBe('unknown');
+    }
+    // A personal account has no members to count.
+    expect(pick((await scanScenario('assume-admin')).rep).sms).toBeNull();
+  });
+
+  it("grades the org's security configuration for the repo and for new repos", async () => {
+    const attached = { json: { status: 'attached', configuration: { name: 'GitHub recommended' } } };
+    const config = async (cfg: Route, defaults: Route = { json: [] }) =>
+      pick((await scanScenario('admin-org', { [CONFIG]: cfg, [DEFAULTS]: defaults })).rep).config;
+    expect(await config({ status: 204 })).toEqual(['fail', 'No security configuration is applied to this repository']);
+    expect(await config({ json: { status: 'removed', configuration: { name: 'Org default' } } })).toEqual([
+      'warn',
+      '"Org default" no longer manages this repository (status: removed), so its settings may have drifted',
+    ]);
+    expect(await config(attached)).toEqual([
+      'warn',
+      '"GitHub recommended" is attached here, but new private repositories get no configuration by default',
+    ]);
+    // acme/secret is private: a default for public repositories doesn't cover it.
+    const forPublic = { json: [{ default_for_new_repos: 'public', configuration: { name: 'Public' } }] };
+    expect((await config(attached, forPublic))?.[0]).toBe('warn');
+    const forAll = { json: [{ default_for_new_repos: 'private_and_internal', configuration: { name: 'Private' } }] };
+    expect(await config(attached, forAll)).toEqual([
+      'pass',
+      '"GitHub recommended" is attached here, and new private repositories get "Private" by default',
+    ]);
+    expect((await config({ status: 404, json: { message: 'Not Found' } }))?.[0]).toBe('unknown');
+    expect(await config(attached, { status: 403, json: { message: 'Forbidden' } })).toEqual([
+      'unknown',
+      '"GitHub recommended" is attached here, but the org\'s defaults for new repositories couldn\'t be read (HTTP 403)',
+    ]);
+  });
+
+  it("says a personal account has no configurations, and the public scan doesn't say anything", async () => {
+    expect(pick((await scanScenario('assume-admin')).rep).config).toEqual([
+      'na',
+      'Personal accounts have no security configurations',
+    ]);
+    const pub = (await scanScenario('admin-org-public-layer')).rep;
+    expect([pub.results['repo-org-security-config'], pub.results['acct-phishing-resistant-2fa']]).toEqual([
+      undefined,
+      undefined,
+    ]);
+    const seen: unknown[] = [];
+    smsTwoFactor([200, [{ login: 'x' }], {}], (...a) => seen.push(a.slice(0, 2)));
+    securityConfiguration([204, null, {}], [200, [], {}], {}, (...a) => seen.push(a.slice(0, 2)));
+    expect(seen).toEqual([
+      ['acct-phishing-resistant-2fa', 'warn'],
+      ['repo-org-security-config', 'fail'],
+    ]);
+  });
+});
+
+describe('deps-licenses', () => {
+  const ci = (steps: string[]) =>
+    workflow(['on: pull_request', 'jobs:', '  check:', '    runs-on: ubuntu-latest', '    steps:', ...steps]);
+  const gate = async (files: Record<string, string>) => statusOf((await scanTiny(tiny(files))).rep, 'deps-licenses');
+
+  it('passes on dependency review with a license list, inline or in its config file', async () => {
+    expect(
+      await gate({
+        '.github/workflows/review.yml': ci([
+          '      - uses: actions/dependency-review-action@v4',
+          '        with:',
+          '          allow-licenses: MIT, Apache-2.0',
+        ]),
+      }),
+    ).toEqual(['pass', 'Dependency review checks the licenses of new dependencies on pull requests']);
+    expect(
+      await gate({
+        '.github/workflows/review.yml': ci([
+          '      - uses: actions/dependency-review-action@v4',
+          '        with:',
+          '          config-file: ./.github/dependency-review-config.yml',
+        ]),
+        '.github/dependency-review-config.yml': 'fail-on-severity: high\nallow-licenses:\n  - MIT\n  - BSD-3-Clause\n',
+      }),
+    ).toEqual([
+      'pass',
+      'Dependency review checks the licenses of new dependencies (.github/dependency-review-config.yml)',
+    ]);
+    // Without a license list, dependency review gates vulnerabilities only (deps-review counts it).
+    expect(
+      await gate({ '.github/workflows/review.yml': ci(['      - uses: actions/dependency-review-action@v4']) }),
+    ).toBeNull();
+  });
+
+  it("passes on cargo-deny when it checks licenses and deny.toml has an allow list, and on other checkers' allow lists", async () => {
+    const deny = '[advisories]\nyanked = "deny"\n\n[licenses]\nallow = ["MIT", "Apache-2.0"]\n';
+    expect(
+      await gate({ '.github/workflows/deny.yml': ci(['      - run: cargo deny check']), 'deny.toml': deny }),
+    ).toEqual(['pass', 'cargo-deny checks dependency licenses in CI']);
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci(['      - run: cargo deny check advisories bans']),
+        'deny.toml': deny,
+      }),
+    ).toBeNull();
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci(['      - run: cargo deny check']),
+        'deny.toml': '[advisories]\n',
+      }),
+    ).toBeNull();
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci([
+          '      - uses: EmbarkStudios/cargo-deny-action@v2',
+          '        with:',
+          '          command: check licenses',
+        ]),
+        'deny.toml': deny,
+      }),
+    ).toEqual(['pass', 'cargo-deny checks dependency licenses in CI']);
+    expect(await gate({ '.github/workflows/go.yml': ci(['      - run: go-licenses check ./...']) })).toEqual([
+      'pass',
+      'go-licenses checks dependency licenses in CI',
+    ]);
+    // One hop into package.json, as evcc's check does.
+    expect(
+      await gate({
+        '.github/workflows/ci.yml': ci(['      - run: npm run licenses']),
+        'package.json': JSON.stringify({ scripts: { licenses: 'license-checker --production --onlyAllow "MIT;ISC"' } }),
+      }),
+    ).toEqual(['pass', 'license-checker checks dependency licenses in CI']);
+    expect(await gate({ '.github/workflows/ci.yml': ci(['      - run: npx license-checker --summary']) })).toBeNull();
+    expect(licenseGate).toBeTypeOf('function');
+  });
+});
+
+describe('sast-custom-queries', () => {
+  const pack = {
+    '.github/codeql/queries/qlpack.yml': 'name: octo/tiny-queries\nversion: 0.0.1\n',
+    '.github/codeql/queries/unsafe-eval.ql': 'import javascript\nselect 1',
+  };
+  const codeql = (lines: string[]) => workflow(['on: push', 'jobs:', '  analyze:', '    steps:', ...lines]);
+  const queries = async (files: Record<string, string>) =>
+    statusOf((await scanTiny(tiny(files))).rep, 'sast-custom-queries');
+
+  it("passes when a CodeQL config, an init input or a reusable workflow runs the repository's own pack", async () => {
+    expect(
+      await queries({
+        ...pack,
+        '.github/codeql/config.yml': 'queries:\n  - uses: ./.github/codeql/queries\n  - uses: security-extended\n',
+        '.github/workflows/codeql.yml': codeql([
+          '      - uses: github/codeql-action/init@v4',
+          '        with:',
+          '          config-file: ./.github/codeql/config.yml',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (./.github/codeql/queries)"]);
+    // virtualenv passes its queries to a reusable workflow.
+    expect(
+      await queries({
+        ...pack,
+        '.github/workflows/codeql.yml': workflow([
+          'on: push',
+          'jobs:',
+          '  codeql:',
+          '    uses: tox-dev/github-workflows/.github/workflows/codeql.yaml@v1',
+          '    with:',
+          '      queries: +./.github/codeql/queries',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (./.github/codeql/queries)"]);
+    expect(
+      await queries({
+        ...pack,
+        '.github/workflows/codeql.yml': codeql([
+          '      - uses: github/codeql-action/init@v4',
+          '        with:',
+          '          packs: octo/tiny-queries',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (octo/tiny-queries)"]);
+  });
+
+  it("adds nothing for built-in suites, GitHub's packs (codeql-action/pr-diff-range too) or a vendored pack", async () => {
+    const builtIn = codeql([
+      '      - uses: github/codeql-action/init@v4',
+      '        with:',
+      '          queries: security-extended',
+      '          packs: codeql/python-queries, codeql-action/pr-diff-range',
+    ]);
+    expect(await queries({ ...pack, '.github/workflows/codeql.yml': builtIn })).toBeNull();
+    // Default setup doesn't run query files from the repo.
+    expect(await queries(pack)).toBeNull();
+    const vendored = { 'vendor/lib/qlpack.yml': 'name: x/y\n', 'vendor/lib/q.ql': 'select 1' };
+    expect(
+      await customQueries({
+        workflows: [
+          {
+            path: '.github/workflows/c.yml',
+            text: codeql([
+              '      - uses: github/codeql-action/init@v4',
+              '        with:',
+              '          queries: ./vendor/lib',
+            ]),
+          },
+        ],
+        files: Object.keys(vendored),
+        read: async (p) => vendored[p as keyof typeof vendored] ?? null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('code-secret-handling', () => {
+  it('warns on a step that traces its commands while it has a secret, with the line', async () => {
+    const text = workflow([
+      'on: push',
+      'jobs:',
+      '  deploy:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: Deploy',
+      '        env:',
+      '          TOKEN: ${{ secrets.DEPLOY_TOKEN }}',
+      '        run: |',
+      '          set -ex',
+      '          ./deploy.sh "$TOKEN"',
+      '      - name: Lint',
+      '        run: |',
+      '          set -x',
+      '          make lint',
+      '      - name: Quiet',
+      '        env:',
+      '          TOKEN: ${{ secrets.DEPLOY_TOKEN }}',
+      '        run: |',
+      '          set +x',
+      '          ./upload.sh',
+      '      - name: Traced shell',
+      '        shell: bash -x {0}',
+      '        run: echo "${{ secrets.X }}" | ./login.sh',
+    ]);
+    const { rep } = await scanTiny(tiny({ '.github/workflows/deploy.yml': text }));
+    expect(statusOf(rep, 'code-secret-handling')).toEqual([
+      'warn',
+      '2 workflow steps trace their commands with set -x while using a secret',
+    ]);
+    // The Lint step traces without a secret, as zitadel's does: that's no leak.
+    expect(rep.findings.filter((f) => f.item_id === 'code-secret-handling').map((f) => [f.line, f.severity])).toEqual([
+      [10, 'low'],
+      [24, 'low'],
+    ]);
+    expect(
+      tracedSecrets([
+        { path: 'w.yml', text: workflow(['on: push', 'jobs:', '  a:', '    steps:', '      - run: set -x']) },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('ai-assisted-security', () => {
+  it('passes on a Copilot code review rule for the default branch, and adds nothing otherwise', async () => {
+    const rules = (json: unknown) => scanTiny(tiny({}, { '/rules/branches/main': { json } }));
+    const on = (
+      await rules([
+        { type: 'pull_request', ruleset_id: 1 },
+        { type: 'copilot_code_review', ruleset_id: 9, parameters: { review_on_push: true } },
+      ])
+    ).rep;
+    expect(statusOf(on, 'ai-assisted-security')).toEqual([
+      'pass',
+      'A ruleset has Copilot review the pull requests to the default branch',
+    ]);
+    expect(on.results['ai-assisted-security'].details).toEqual({ ruleset_id: 9 });
+    expect(statusOf((await rules([{ type: 'pull_request', ruleset_id: 1 }])).rep, 'ai-assisted-security')).toBeNull();
+  });
+});
+
+describe("GitHub's Secure Open Source Fund (people-security-training, people-share-learnings)", () => {
+  const guide = JSON.parse(readFileSync(new URL('../public/data/guide.json', import.meta.url), 'utf8'));
+
+  it('ships a Fund list made from guide.json, so the two never drift', () => {
+    const shipped = JSON.parse(readFileSync(new URL('../lib/scanner/fund.json', import.meta.url), 'utf8'));
+    expect(shipped).toEqual(fundFromGuide(guide));
+    expect(shipped.repos).toHaveLength(guide.teams.length);
+  });
+
+  it('matches a repository exactly, ignoring case', () => {
+    expect(fundEntry('Actix/Actix-Web')?.repo).toBe('actix/actix-web');
+    expect(fundEntry('actix/actix-web-extras')).toBeNull();
+    expect(fundEntry('actix/actix')).toBeNull();
+    expect(fundEntry('nope/nope', 'actix/actix-web')?.repo).toBe('actix/actix-web');
+  });
+
+  it('passes training until two years after the latest session, and sharing for a team with a post', () => {
+    const entry = { repo: 'a/b', sessions: ['1-2', '3'], posts: [] };
+    expect(trainingResult(entry, new Date('2027-08-31T00:00:00Z'))?.summary).toBe(
+      'Took part in the GitHub Secure Open Source Fund (sessions 1-2 and 3), three weeks of security training with ' +
+        'GitHub Security Lab',
+    );
+    // Session 3 started in September 2025.
+    expect(trainingResult(entry, new Date('2027-09-01T00:00:00Z'))).toBeNull();
+    expect(trainingResult({ ...entry, sessions: ['9'] }, new Date('2040-01-01T00:00:00Z'))?.status).toBe('pass');
+    expect(trainingResult(null)).toBeNull();
+    expect(sharingResult(entry)).toBeNull();
+    const post = { title: 'What we changed', url: 'https://example.com/post', date: '2026-08-14' };
+    expect(sharingResult({ ...entry, posts: [post] })).toEqual({
+      status: 'pass',
+      summary: 'Wrote about its Fund work: "What we changed" (2026-08-14)',
+      evidence: [{ label: 'What we changed', url: 'https://example.com/post' }],
+      details: { posts: 1 },
+    });
+  });
+
+  it("credits a Fund repository's scan, and sends nothing anywhere to look it up", async () => {
+    const fundRepo = guide.teams.find(
+      (t: { posts: { tier: string }[]; sessions: string[] }) =>
+        t.posts.some((p) => p.tier === 'primary') && t.sessions.includes('4'),
+    );
+    const [owner, name] = fundRepo.repo.split('/');
+    const { rep, calls } = await scanTiny(
+      tiny({}, {}, { meta: { full_name: fundRepo.repo, name, owner: { login: owner, type: 'Organization' } } }),
+    );
+    expect([rep.results['people-security-training'].status, rep.results['people-share-learnings'].status]).toEqual([
+      'pass',
+      'pass',
+    ]);
+    // GitHub's own hosts: the domain itself or a subdomain of it, never a host that merely ends in its name.
+    const onGitHub = (h: string) => ['github.com', 'githubusercontent.com'].some((d) => h === d || h.endsWith(`.${d}`));
+    expect(calls.map(([u]) => new URL(u).host).filter((h) => !onGitHub(h))).toEqual([
+      'api.securityscorecards.dev',
+      'www.bestpractices.dev',
+    ]);
+    expect(statusOf((await scanTiny(tiny({}))).rep, 'people-security-training')).toBeNull();
+  });
+});
+
+describe('scanner bugs fixed in 0.5.0', () => {
+  it('reports the Best Practices badge of this repository, then the best one (bug 1)', async () => {
+    // warpgate: an old in_progress entry whose repo_url ends in .git comes first, then the passing one.
+    const warpgate = [
+      {
+        id: 10110,
+        badge_level: 'in_progress',
+        badge_percentage_0: 15,
+        repo_url: 'https://github.com/octo/demo.git',
+        updated_at: '2025-03-01',
+      },
+      {
+        id: 12773,
+        badge_level: 'passing',
+        badge_percentage_0: 100,
+        repo_url: 'https://github.com/octo/demo',
+        updated_at: '2026-05-01',
+      },
+    ];
+    expect(bestBadge(warpgate, 'octo/demo').id).toBe(12773);
+    const ohmyzsh = [
+      { id: 1, badge_level: 'in_progress', badge_percentage_0: 84, repo_url: 'https://github.com/octo/demo' },
+      { id: 2, badge_level: 'in_progress', badge_percentage_0: 87, repo_url: 'https://github.com/octo/demo' },
+    ];
+    expect(bestBadge(ohmyzsh, 'octo/demo').id).toBe(2);
+    // Another project's passing badge doesn't beat this repository's own.
+    const other = [
+      { id: 3, badge_level: 'passing', repo_url: 'https://github.com/someone/else' },
+      { id: 4, badge_level: 'in_progress', badge_percentage_0: 40, repo_url: 'http://www.github.com/Octo/Demo/' },
+    ];
+    expect(bestBadge(other, 'octo/demo').id).toBe(4);
+    const badge = 'https://www.bestpractices.dev/projects.json?url=https%3A//github.com/octo/demo';
+    const r = (await scanScenario('public', { [badge]: { json: warpgate } })).rep.results[
+      'posture-best-practices-badge'
+    ];
+    expect([r.status, r.summary, r.evidence[0].url]).toEqual([
+      'pass',
+      'OpenSSF Best Practices badge: passing',
+      'https://www.bestpractices.dev/projects/12773',
+    ]);
+  });
+
+  const publishWorkflow = (run: string) =>
+    workflow([
+      'on:',
+      '  release:',
+      'permissions:',
+      '  id-token: write',
+      'jobs:',
+      '  publish:',
+      '    steps:',
+      `      - run: ${run}`,
+    ]);
+  /** Whether the scan counts the workflow as publishing, and what rel-trusted-publishing makes of it. */
+  const publishing = async (run: string, files: Record<string, string> = {}) => {
+    const { rep } = await scanTiny(tiny({ '.github/workflows/publish.yml': publishWorkflow(run), ...files }));
+    return [rep.meta.publishes_from_ci, rep.results['rel-trusted-publishing'].status];
+  };
+  const scripts = (publish: string) => ({ 'package.json': JSON.stringify({ name: 'demo', scripts: { publish } }) });
+
+  it('counts npm stage publish as publishing (bug 5)', async () => {
+    expect(await publishing('npm stage publish --tag next')).toEqual([true, 'pass']);
+  });
+
+  it("counts npm run publish only when package.json's publish script publishes", async () => {
+    // mockoon's script: npm publish for each workspace.
+    expect(await publishing('npm run publish', scripts('npm publish --workspace=@octo/core'))).toEqual([true, 'pass']);
+    // A tool that publishes counts too, from pnpm or yarn.
+    expect(await publishing('pnpm run publish', scripts('changeset publish'))).toEqual([true, 'pass']);
+    expect(await publishing('yarn run publish', scripts('np --no-tests'))).toEqual([true, 'pass']);
+    // A script that does something else, a dry run, or no package.json to read: it doesn't count.
+    expect(await publishing('npm run publish', scripts('gh-pages -d dist'))).toEqual([false, 'na']);
+    expect(await publishing('npm run publish', scripts('npm publish --dry-run'))).toEqual([false, 'na']);
+    expect(await publishing('npm run publish')).toEqual([false, 'na']);
+    const tools = (run: string) =>
+      analyzeWorkflow('.github/workflows/x.yml', `on: push\njobs:\n  a:\n    steps:\n      - run: ${run}\n`).tools;
+    expect([tools('npm run publish'), tools('npm run publish:docs')]).toEqual([[], []]);
+  });
+
+  it('follows npm run publish into package.json for the release cache check too', async () => {
+    const release = (files: Record<string, string>) =>
+      cacheCheck(
+        {
+          'release.yml': [
+            'on:',
+            '  push:',
+            "    tags: ['v*']",
+            'jobs:',
+            '  publish:',
+            '    steps:',
+            '      - uses: actions/setup-node@v4',
+            '        with:',
+            '          cache: npm',
+            '      - run: npm run publish',
+          ],
+        },
+        files,
+      );
+    expect((await release(scripts('npm publish'))).status).toBe('fail');
+    // Not a publishing job: the release workflow runs a script that doesn't publish.
+    expect(await release(scripts('gh-pages -d dist'))).toMatchObject({
+      status: 'info',
+      summary: 'Release workflow .github/workflows/release.yml has no step the scan recognizes as publishing',
+    });
+    // Without package.json the script can't be followed, so it isn't a publishing job, and its cache is named.
+    expect(await release({})).toMatchObject({
+      status: 'info',
+      summary:
+        "Job publish in .github/workflows/release.yml runs npm run publish, which the scan couldn't follow, and a " +
+        'cache is restored on its way (actions/setup-node with cache: npm)',
+    });
+  });
+
+  it("doesn't count a dynamic workflow GitHub lists as disabled (bug 7)", async () => {
+    const list = 'https://api.github.com/repos/octo/fixes/actions/workflows?per_page=100';
+    const codeql = async (state?: string) => {
+      const json = { workflows: [{ path: 'dynamic/github-code-scanning/codeql', ...(state ? { state } : {}) }] };
+      return statusOf((await scanScenario('fixes', { [list]: { json } })).rep, 'sast-codeql');
+    };
+    expect(await codeql('active')).toEqual(['pass', 'CodeQL default setup is on']);
+    expect(await codeql()).toEqual(['pass', 'CodeQL default setup is on']);
+    for (const state of ['disabled_manually', 'disabled_inactivity', 'deleted']) {
+      expect(await codeql(state)).toEqual(['fail', 'No CodeQL code scanning found']);
+    }
+  });
+
+  it("tells the page a self-check isn't something no scanner can see", () => {
+    const st = sg.itemStatus(
+      { id: 'people-share-learnings', layer: 'manual' },
+      { repo: 'octo/tiny', results: {} },
+      'octo/tiny',
+    );
+    expect([st.status, st.summary]).toEqual(['manual', "The scan can't settle this. Tick it off when it's done."]);
+  });
 });

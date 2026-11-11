@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "ossfuzz": "node scripts/ossfuzz-refresh.ts",
+    "fund": "node scripts/fund-refresh.ts",
     "smoke": "node scripts/smoke.ts"
   },
   "dependencies": {

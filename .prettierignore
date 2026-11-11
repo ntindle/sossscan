@@ -5,6 +5,7 @@ build/
 *.md
 package-lock.json
 lib/ossfuzz.json
+lib/scanner/fund.json
 .next/
 .venv/
 .secrets/

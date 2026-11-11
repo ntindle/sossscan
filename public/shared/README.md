@@ -32,7 +32,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - `tier` (0–7: the tier at which you should do it), `effort` (1 = minutes … 5 = weeks), `impact` (1–5), `layer` (which scan layer can check it).
   - `links[] {label, url, when?}` (settings deep links with `{owner}`/`{repo}` placeholders), `cli` (a `gh` command), `app_fix[]`, `new_file {path, template}`.
   - `stats`: `teams_did`, `teams_planned`, `teams_recommend`, `repo_present`, `repo_total`, `repo_added_in_window`, `window_commit_teams`, `repo_risk`.
-  - `peer_adoption`: `{overall %, by_tier {tierId: %}}`. This is the share of the 193 Fund projects that have the control, by stars tier. It's `null` when no scanner can see the control. For `secrets-scanning`, which a scan from outside can't see, it and `stats.repo_present` count a secret scanner (gitleaks or TruffleHog) in CI instead. `peerHave(item)` gives the words for what a check's count measures, to end "n% of the 193 Fund projects …": "have this", or for that check, "run a secret scanner (gitleaks or TruffleHog) in CI".
+  - `peer_adoption`: `{overall %, by_tier {tierId: %}}`. This is the share of the 193 Fund projects that have the control, by stars tier. It's `null` when the scan of the Fund's repositories didn't measure the control. For `secrets-scanning`, which a scan from outside can't see, it and `stats.repo_present` count a secret scanner (gitleaks or TruffleHog) in CI instead. `peerHave(item)` gives the words for what a check's count measures, to end "n% of the 193 Fund projects …": "have this", or for that check, "run a secret scanner (gitleaks or TruffleHog) in CI".
   - `from_teams[]`: `{team, status, detail, quote, source_url, source_title}`, what Fund teams wrote.
   - `repo_examples[]`: `{team, repo, label, url, timing, date, added_commit}`, real files in their repos.
   - `fix_commits[]`: `{team, repo, date, msg, url}`, commits where teams fixed it.
@@ -69,7 +69,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 
 **Status and context**
 - `ctxFromReport(report, repo)` returns `{owner, repo, full, branch, ecosystems, ownerType, stars, dependents, tier, publishes, hasActions, workflowCount}`. `workflowCount` is `null` unless the report counted the workflows. `tierFor(stars, dependents, guide.tiers)`.
-- `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). `STATUS[status].label` / `.tone`.
+- `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). A self-check (layer `manual`) shows the scan's result when the report has one, which happens only on a sure sign; otherwise it's `manual`. `STATUS[status].label` / `.tone`.
 - `statusLabel(st)` is the label to show for one of those: `STATUS[status].label`, except for a check the scan couldn't read ("Could not read …"), which is "Couldn’t check, try again" from the public checks and "Couldn’t check" from the private layer, not "Needs a deeper scan".
 - `findingsFor(item, report)`, `applies(item, ctx)`, `progress(items, report, repo)` (returns `{pass, warn, fail, open, total, pct}`).
 - `checkRow(item, report, ctx, tierId)` is where one check stands, for a page that sorts and groups the checks: `{item, st, finds, bucket, lost, sev}`.

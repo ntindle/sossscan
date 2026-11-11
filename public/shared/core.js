@@ -230,7 +230,7 @@ export function itemStatus(item, report, repo) {
   const r = report && report.results ? report.results[item.id] : null;
   if (self.done && (!r || r.status !== 'pass')) return { status: 'done', summary: 'You marked this done', evidence: [], layer: 'self', source: 'self', self };
   if (r) return { ...r, source: 'scan', self };
-  if (item.layer === 'manual') return { status: 'manual', summary: 'No scanner can see this. Tick it off yourself.', evidence: [], layer: 'manual', source: 'none', self };
+  if (item.layer === 'manual') return { status: 'manual', summary: "The scan can't settle this. Tick it off when it's done.", evidence: [], layer: 'manual', source: 'none', self };
   if (!report) return { status: 'todo', summary: 'Scan your repo to check this', evidence: [], layer: item.layer, source: 'none', self };
   return { status: 'unknown', summary: item.layer === 'public' ? 'Needs the public scan' : 'Needs the private scan or the GitHub App', evidence: [], layer: item.layer, source: 'none', self };
 }
@@ -820,7 +820,7 @@ export function renderRemediation(item, opts = {}) {
   if (nf) root.append(el('details', {}, el('summary', {}, `Preview ${item.new_file.path}`), codeBlock(fill(item.new_file.template, ctx), item.new_file.path)));
   if ((item.pitfalls || []).length) root.append(el('section', {}, el('h4', {}, 'Watch out'), el('ul', {}, item.pitfalls.map((p) => el('li', {}, p)))));
 
-  // evidence from the fund's projects (never claim "0 have this" for things no scanner can see)
+  // evidence from the fund's projects (never claim "0 have this" for a control the Fund's repos weren't scanned for)
   const statsLine = evidenceSummary(item);
   if (statsLine) root.append(el('p', { class: 'sg-remedy__stats' }, statsLine));
   if ((item.from_teams || []).length) {
@@ -859,7 +859,7 @@ export function evidenceSummary(item) {
   if (s.repo_risk && !s.repo_present) {
     return `The scan flagged this risk in ${s.repo_risk} of ${s.repo_total} Fund projects' repos` + (wrote ? `; ${wrote}` : '') + '.';
   }
-  if (!item.peer_adoption) return wrote ? `${wrote}. No scanner can see this from outside a repo.` : '';
+  if (!item.peer_adoption) return wrote ? `${wrote}.` : '';
   const other = PEER_COUNTS[item.id];
   const have = `${s.repo_present ?? 0} of ${s.repo_total ?? 0} Fund projects ${other || 'have this in their repo'}` +
     (s.repo_added_in_window ? `, ${s.repo_added_in_window} added it during the program` : '');

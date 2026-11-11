@@ -35,7 +35,7 @@ With `--public` it skips all three. Without a token, GitHub allows only 60 reque
 
 ## The admin checks
 
-When the token belongs to an admin of the repository, the CLI also checks the settings only admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions, approval for fork pull requests, rulesets, immutable releases, environments, the organization's two-factor requirement, and open alert backlogs. The report's `layer` is then `private`. Most settings the token can't read come back as `unknown`, usually with the HTTP status in the summary.
+When the token belongs to an admin of the repository, the CLI also checks the settings only admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions, approval for fork pull requests, rulesets, immutable releases, environments, the organization's two-factor requirement and its members who still use SMS for it, the organization's security configuration, and open alert backlogs. The report's `layer` is then `private`. Most settings the token can't read come back as `unknown`, usually with the HTTP status in the summary.
 
 ## What it contacts
 

@@ -9,7 +9,7 @@ Scan a GitHub repository to see where it has security gaps, from your accounts t
 Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner/repo`. There are three layers, and each one sees more:
 
 1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan; `/openapi.json` describes both). AI agents can run it through the [MCP server](#the-mcp-server).
-   - It reads what anyone can see: files, workflows, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
+   - It reads what anyone can see: files, workflows, releases, open pull requests, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
    - It uses the first of these tokens (`lib/scan-token.ts`): `GITHUB_TOKEN` or `GH_TOKEN`; then a token of the site's GitHub App, once it's installed on its owner's account, limited to `metadata: read`; then none (60 requests an hour). It never borrows a `gh` CLI token.
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (a 404 with the code `repo_not_found` and the message `repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
    - Results are cached for 6 hours.
@@ -55,7 +55,7 @@ node sosf-scan.mjs OWNER/REPO [--out report.json] [--public] [--token TOKEN] [--
 - It needs Node.js 20 or newer. Build it yourself with `npm run build:cli`, which writes `public/download/sosf-scan.mjs`.
 - The token is optional: `--token`, `$GITHUB_TOKEN`, `$GH_TOKEN` or `gh auth token`.
 - It sends only GET requests: to GitHub (api.github.com, raw.githubusercontent.com, github.com) and two public score services (api.securityscorecards.dev, www.bestpractices.dev). Private repos are never looked up in Scorecard, the Best Practices badge, OSS-Fuzz or OSS Scanner.
-- With a token that has admin access, it also checks secret scanning, push protection, Dependabot alerts, Actions permissions, fork pull request approval, rulesets, immutable releases, environments, org 2FA and open alert backlogs.
+- With a token that has admin access, it also checks secret scanning, push protection, Dependabot alerts, Actions permissions, fork pull request approval, rulesets, immutable releases, environments, org 2FA (and members still on SMS), the org's security configuration and open alert backlogs.
 
 ## The MCP server
 
@@ -151,6 +151,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `lib/fixes.ts` | Pull request fixes: builds the change on the server, previews it, then opens it. |
 | `lib/agent.ts` | AI agent fixes through any OpenAI-compatible chat API. Off until configured. |
 | `lib/ossfuzz.ts`, `lib/ossfuzz.json` | Which repos have an OSS-Fuzz project. `npm run ossfuzz` refreshes the list. |
+| `lib/scanner/fund.json`, `lib/fund-data.ts` | The Fund's repositories, sessions and posts, for the training and sharing checks. Made from `guide.json`; `npm run fund` refreshes it, and a test fails until it matches. |
 | `lib/limits.ts` | Rate limits per visitor address. |
 | `public/index.html`, `public/pipeline/` | The page: the pipeline map. Its footer has the same links as the text pages' (`footerHtml` in `lib/pages.ts`; a test keeps them equal). Its HTML also lists the stages, for readers without JavaScript; a test keeps them equal to `guide.json`'s. |
 | `public/shared/` | The engine the page runs on: the scan panel, the fix panel, the AI prompts and "Fix it for me". `public/shared/README.md` is its contract. Also the text pages' styles and theme script (`text.css`, `theme.js`). |
@@ -180,6 +181,7 @@ SOSF_RESEARCH_DIR=/path/to/research python3 -I build/build_guide.py
 - `SOSF_RESEARCH_DIR` holds `data/changes/` and `data/posts_index.json` (default: `../sossscan-research`, next to this repo). The script stops with a list of what's missing.
 - It uses the Python standard library only. Action pins (`{{pin:owner/repo}}` in templates and snippets) resolve to the newest release that is at least 7 days old, as a full commit SHA, using `GITHUB_TOKEN`, `GH_TOKEN` or `gh auth token`.
 - File templates can use `{owner}`, `{repo}`, `{full}`, `{branch}`, `{maintainer}` (`@user`, or `@org/maintainers` for an organization), `{person}` and `{ecosystem_blocks}`. The page and the server fill them the same way (`fill` in `public/shared/core.js` and `lib/fixes.ts`, kept in step by a test).
+- After a rebuild, run `npm run fund` to remake `lib/scanner/fund.json` from the new `guide.json`.
 - To give a check a pull request fix, add it to `PR_FIXES` in `lib/fixes.ts`. To change the kind of AI prompt it gets, edit the `PROMPT_*` sets in `public/shared/core.js`.
 
 ## Tiers
@@ -203,6 +205,8 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
 
 - The public scan sees what anyone can see. Several checks stay `unknown` until a deep scan or the private scan checks them.
 - Repo checks are heuristics (file names, workflow text). Treat `risk` findings as leads to verify.
+- Some self-checks get a result when the scan finds a sure sign: a license check in CI, a supported-versions table in SECURITY.md, a Copilot review rule, the repository's place in the Fund. Without one, a self-check stays for you to tick off; the scan never fails one for what it didn't find.
+- The release cache check reads the workflows, the local actions they use, and one hop into package.json scripts or Makefile targets. A release made by a script or a remote reusable workflow shows as info, because the scan can't see inside it.
 - The OSS Scanner check (public repos with over 1,000 stars or 200 dependents) finds a project by matching folder names in anthropics/oss-scanner against the repo's name and owner, then confirms the `repo:` URL in its project.yaml. A project enrolled under an unrelated folder name shows as not enrolled.
 - Peer adoption covers the 193 fund repos only, bucketed by stars.
 - Fix commits are keyword-matched commit messages with false-positive filters, so expect some noise.

@@ -1,0 +1,1705 @@
+{
+ "_comment": "Made from public/data/guide.json by scripts/fund-refresh.ts (npm run fund). The GitHub Secure Open Source Fund repositories, their sessions and their primary posts, for people-security-training and people-share-learnings. Session starts are year and month.",
+ "program": "https://github.com/open-source/github-secure-open-source-fund",
+ "session_starts": {
+  "1": "2025-01",
+  "2": "2025-06",
+  "3": "2025-09",
+  "4": "2026-04",
+  "5": "2026-09",
+  "1-2": "2025-01"
+ },
+ "repos": [
+  {
+   "repo": "aipotheosis-labs/aci",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "actix/actix-web",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "How Actix strengthened its security through GitHub's Secure Open Source Fund",
+     "url": "https://www.2k36.org/en/posts/actix-secure-open-source-fund/",
+     "date": "2026-08-14"
+    }
+   ]
+  },
+  {
+   "repo": "aio-libs/aiohttp",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "How we handle security at aio-libs",
+     "url": "https://aio-libs.org/news/2026/security-at-aio-libs/",
+     "date": "2026-08-17"
+    }
+   ]
+  },
+  {
+   "repo": "airqo-platform/AirQo-api",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/airflow",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/apisix",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/solr",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/zookeeper",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "foss42/apidash",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ArduPilot/ardupilot",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "arviz-devs/arviz",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "assertj/assertj",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "asyncapi/generator",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "Significant-Gravitas/gravitasml",
+   "sessions": [
+    "1"
+   ],
+   "posts": [
+    {
+     "title": "AutoGPT Joins GitHub’s Secure Open Source Fund (SOSF) to Advance AI Security",
+     "url": "https://agpt.co/blog/autogpt-partners-with-github-for-ai-security/",
+     "date": "2025-08-28"
+    }
+   ]
+  },
+  {
+   "repo": "babel/babel",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "bevyengine/bevy",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ublue-os/bluefin",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "GitHub Open Source Fund",
+     "url": "https://docs.projectbluefin.io/blog/2025/08/29/github-oss-fund/",
+     "date": "2025-08-29"
+    }
+   ]
+  },
+  {
+   "repo": "bootc-dev/bootc",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "twbs/bootstrap",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "GitHub Secure Open Source Fund",
+     "url": "https://blog.getbootstrap.com/2025/08/10/github-secure-open-source-fund/",
+     "date": "2025-08-10"
+    }
+   ]
+  },
+  {
+   "repo": "browserslist/browserslist",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "raphw/byte-buddy",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "caddyserver/caddy",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "kovidgoyal/calibre",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "camel-ai/camel",
+   "sessions": [
+    "1"
+   ],
+   "posts": [
+    {
+     "title": "Securing the Open Source Supply Chain: CAMEL-AI Joins GitHub’s Secure Open Source Fund",
+     "url": "https://www.camel-ai.org/blogs/securing-the-open-source-supply-chain-camel-ai-joins-githubs-secure-open-source-fund",
+     "date": "2025-09-01"
+    }
+   ]
+  },
+  {
+   "repo": "Garudex-Labs/caracal",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jawah/charset_normalizer",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "cheeriojs/cheerio",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "bee-san/Ciphey",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "spf13/cobra",
+   "sessions": [
+    "1"
+   ],
+   "posts": [
+    {
+     "title": "Cobra & Viper Fortify Security as Part of Inaugural GitHub Secure Open Source Fund",
+     "url": "https://cobra.dev/blog/2025-08-11-github-opensource-fund/",
+     "date": "2025-08-11"
+    },
+    {
+     "title": "Cobra & Viper Fortify Security as Part of GitHub Secure Open Source Fund",
+     "url": "https://spf13.com/p/cobra-viper-fortify-security-as-part-of-github-secure-open-source-fund/",
+     "date": "2025-08-19"
+    },
+    {
+     "title": "LinkedIn post: Cobra and Viper in the GitHub Secure Open Source Fund",
+     "url": "https://www.linkedin.com/posts/stevefrancia_im-thrilled-to-share-that-two-of-my-open-activity-7360752916032278528-7JnP",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "cocoindex-io/cocoindex",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "CocoIndex joins the GitHub Secure Open Source Fund",
+     "url": "https://cocoindex.io/blogs/cocoindex-joins-security-github-secure-open-source-fund/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "mlco2/codecarbon",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "instavm/coderunner",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "topoteretes/cognee",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "cognee Graduates from GitHub Secure Open Source Program",
+     "url": "https://www.cognee.ai/cognee-github-secure-open-source-program",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "abiosoft/colima",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "Colima participated in the Github Secure Open Source Program",
+     "url": "https://abio.la/posts/1755005959_colimagsosf/",
+     "date": "2025-08-12"
+    }
+   ]
+  },
+  {
+   "repo": "zloirock/core-js",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "python/cpython",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "Siilwyn/css-declaration-sorter",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "cucumber/cucumber-ruby",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "Cucumber completes GitHub Secure Open Source Fund - Session 4",
+     "url": "https://cucumber.io/blog/open-source/cucumber-in-github-sosf/",
+     "date": "2026-08-13"
+    }
+   ]
+  },
+  {
+   "repo": "curl/curl",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "CycloneDX/cyclonedx-dotnet",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "cdxgen and CycloneDX .NET Join GitHub Secure Open Source Fund",
+     "url": "https://owasp.github.io/blog/2025/08/11/cyclonedx-projects-in-github-sosf",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "cdxgen/cdxgen",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "cdxgen and CycloneDX .NET Join GitHub Secure Open Source Fund",
+     "url": "https://owasp.github.io/blog/2025/08/11/cyclonedx-projects-in-github-sosf",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "CycloneDX/cyclonedx-python-lib",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "DataJourneyHQ/DataJourney",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "Security Should Not Wait for Scale",
+     "url": "https://datajourneyhq.com/blog/security-should-not-wait-for-scale/",
+     "date": "2026-08-25"
+    }
+   ]
+  },
+  {
+   "repo": "langchain-ai/deepagents",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "diesel-rs/diesel",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "egovernments/Digit-Core",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "dipy/dipy",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "arc53/DocsGPT",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "You Can't Review Every PR Anymore: How DocsGPT Strengthened Security in the GitHub Secure Open Source Fund",
+     "url": "https://www.docsgpt.cloud/blog/github-secure-open-source-fund",
+     "date": "2026-08-13"
+    }
+   ]
+  },
+  {
+   "repo": "electron/electron",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ente/ente",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "frappe/erpnext",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "etcd-io/etcd",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "evcc-io/evcc",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Strengthening Security with the GitHub Secure Open Source Fund",
+     "url": "https://docs.evcc.io/en/blog/2026/02/18/github-secure-open-source-fund/",
+     "date": "2026-02-18"
+    }
+   ]
+  },
+  {
+   "repo": "expressjs/express",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "external-secrets/external-secrets",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "fabricjs/fabric.js",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "fastapi/fastapi",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "fastify/fastify",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "How we are securing the Fastify organization",
+     "url": "https://backend.cafe/how-we-are-securing-the-fastify-organization",
+     "date": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "repo": "fluxcd/flux2",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "foundry-rs/foundry",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "typelevel/fs2",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "GitHub Secure Open Source Fund",
+     "url": "https://typelevel.org/blog/github-soss-fund-2026.html",
+     "date": "2026-08-13"
+    }
+   ]
+  },
+  {
+   "repo": "GitoxideLabs/gitoxide",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "gitoxide progress report, February 2026 (section: Our participation in the Secure Open Source Fund)",
+     "url": "https://github.com/GitoxideLabs/gitoxide/blob/main/etc/reports/26-02.md",
+     "date": "2026-02-22"
+    }
+   ]
+  },
+  {
+   "repo": "gleam-lang/gleam",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "Help from the Github Security Lab",
+     "url": "https://gleam.run/news/help-from-the-github-security-lab/",
+     "date": "2026-08-17"
+    }
+   ]
+  },
+  {
+   "repo": "golangci/golangci-lint",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "goreleaser/goreleaser",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "How GoReleaser strengthened security through GitHub's Secure Open Source Fund",
+     "url": "https://goreleaser.com/blog/github-secure-fund/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "haraka/Haraka",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "helmetjs/helmet",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "himmelblau-idm/himmelblau",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "home-assistant/core",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "hoppscotch/hoppscotch",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "bigskysoftware/htmx",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "hummingbird-project/hummingbird",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "Hummingbird at GitHub Secure Open Source Fund",
+     "url": "https://hummingbird.codes/news/github-secure-open-source-fund",
+     "date": "2026-08-13"
+    }
+   ]
+  },
+  {
+   "repo": "ImageMagick/ImageMagick",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "ImageMagick was part of the GitHub Secure Open Source Fund",
+     "url": "https://github.com/dlemstra/github-stories/blob/main/docs/2026/imagemagick-was-part-of-the-github-secure-open-source-fund/Readme.md",
+     "date": "2026-02-17"
+    },
+    {
+     "title": "How I could have compromised several millions of installations of a popular editor extension",
+     "url": "https://github.com/dlemstra/github-stories/blob/main/docs/2026/how-i-could-have-compromised-several-millions-of-installations-of-a-popular-editor-extension/Readme.md",
+     "date": "2026-03-12"
+    }
+   ]
+  },
+  {
+   "repo": "jenkinsci/jenkins",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "panva/jose",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jquery/jquery",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jreleaser/jreleaser",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jhy/jsoup",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "junit-team/junit-framework",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jupyter/notebook",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jupyter/docker-stacks",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "keycloak/keycloak",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Keycloak tightened its security with the GitHub Secure Open Source Fund",
+     "url": "https://www.keycloak.org/2026/02/github-secure-open-source-fund",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "keyshade-xyz/keyshade",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "kgateway-dev/kgateway",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Securing kgateway with the GitHub Secure Open Source Fund",
+     "url": "https://kgateway.dev/blog/github-secure-open-source/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "LadybugDB/ladybug",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "langchain-ai/langchain",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "yt-project/libyt",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "llvm/llvm-project",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/logging-log4j2",
+   "sessions": [
+    "1"
+   ],
+   "posts": [
+    {
+     "title": "Patching Trust (Securing Log4j with the GitHub Secure Open Source Fund)",
+     "url": "https://grobmeier.de/signals/github-patching-trust/",
+     "date": "2025-10-17"
+    }
+   ]
+  },
+  {
+   "repo": "aces/Loris",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "mapstruct/mapstruct",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "markdown-it/markdown-it",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "mastodon/mastodon",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "mathesar-foundation/mathesar",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "matplotlib/matplotlib",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "mautic/mautic",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "Mautic graduates from the GitHub Secure Open Source Program",
+     "url": "https://mautic.org/blog/mautic-graduates-from-the-github-secure-open-source-program/",
+     "date": "2025-08-11"
+    },
+    {
+     "title": "What graduating from GitHub's Secure Open Source Program means for Mautic - and for open source security",
+     "url": "https://silavapi.co.uk/blog/mautic/what-graduating-from-githubs-secure-open-source-program-means-for-mautic-and-for-open-source-security",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "mermaid-js/mermaid",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "messageformat/messageformat",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "gabriel-vasile/mimetype",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "mockoon/mockoon",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Securing Mockoon with GitHub's Secure Open Source Fund",
+     "url": "https://mockoon.com/blog/securing-mockoon-github-secure-open-source-fund/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "czlonkowski/n8n-mcp",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "Nasiko-Labs/nasiko",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "How We Hardened Nasiko's Software Supply Chain",
+     "url": "https://www.nasiko.com/blogs/how-we-hardened-nasikos-software-supply-chain",
+     "date": "2026-08-13"
+    },
+    {
+     "title": "How We Strengthened Agent and MCP Security in Nasiko",
+     "url": "https://www.nasiko.com/blogs/how-we-strengthened-agent-and-mcp-security",
+     "date": "2026-08-19"
+    },
+    {
+     "title": "How We Built Security Into Nasiko Before We Needed It",
+     "url": "https://www.nasiko.com/blogs/security-before-we-needed-it",
+     "date": "2026-08-24"
+    }
+   ]
+  },
+  {
+   "repo": "NativeScript/NativeScript",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "netbirdio/netbird",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "Stronger Security: NetBird + GitHub Secure Open Source Fund",
+     "url": "https://netbird.io/knowledge-hub/netbird-github-secure-open-source-fund",
+     "date": "2025-08-14"
+    }
+   ]
+  },
+  {
+   "repo": "netty/netty",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "vercel/next.js",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "NixOS/nixpkgs",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "isaacs/node-lru-cache",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "nodejs/node",
+   "sessions": [
+    "1-2",
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Securing Your Github Actions",
+     "url": "https://blog.rafaelgss.dev/securing-github-actions",
+     "date": "2025-04-14"
+    }
+   ]
+  },
+  {
+   "repo": "nuxt/nuxt",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "nvm-sh/nvm",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "oapi-codegen/oapi-codegen",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Lessons learned from `oapi-codegen`'s time in the GitHub Secure Open Source Fund",
+     "url": "https://www.jvt.me/posts/2026/02/17/oapi-codegen-github-secure/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "ruby-oauth/oauth2",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "oauthlib/oauthlib",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ohmyzsh/ohmyzsh",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ollama/ollama",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "onnx/onnx",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "openbq-org/OpenBB",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "openclaw/openclaw",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "opencv/opencv",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "OpenCV's Participation in the GitHub Secure Open Source Fund",
+     "url": "https://opencv.org/blog/opencvs-participation-in-the-github-secure-open-source-fund/",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "open-metadata/OpenMetadata",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "opensearch-project/OpenSearch",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "processing/p5.js",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "VectifyAI/PageIndex",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pandas-dev/pandas",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pillarjs/path-to-regexp",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pelias/pelias",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pgpainless/pgpainless",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "python-pillow/Pillow",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apple/pkl",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "App-vNext/Polly",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "Levelling Up Security with the GitHub Secure Open Source Fund",
+     "url": "https://blog.martincostello.com/levelling-up-security-with-the-github-secure-open-source-fund/",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "postcss/postcss",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ProyectoRespira/data_retriever",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pymc-devs/pymc",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pyodide/pyodide",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pypeit/PypeIt",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pypi/warehouse",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "fabiocaccamo/python-benedict",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ljharb/qs",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "quic-go/quic-go",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "kriasoft/react-starter-kit",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "readest/readest",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "Readest in the GitHub Secure Open Source Fund",
+     "url": "https://readest.com/blog/github-secure-open-source-fund",
+     "date": "2026-08-29"
+    }
+   ]
+  },
+  {
+   "repo": "browserify/resolve",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "isaacs/rimraf",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "alexrudall/ruby-openai",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "rustls/rustls",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "scanapi/scanapi",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "aboutcode-org/scancode-toolkit",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "Scenic-Foundation/Scenic",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "scikit-learn/scikit-learn",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "scikit-learn Completes the GitHub Secure Open Source Training",
+     "url": "https://blog.scikit-learn.org/press/gh-sosf/",
+     "date": "2025-08-16"
+    }
+   ]
+  },
+  {
+   "repo": "scipy/scipy",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "My Participation in GitHub Secure Open Source Fund",
+     "url": "https://rlucas7.github.io/posts/2026/02/blog-post-1",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "SeleniumHQ/selenium",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "GitHub Secure Open Source Fund - Session 3",
+     "url": "https://coreygoldberg.com/posts/github-secure-open-source-fund/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "oraios/serena",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "shadcn-ui/ui",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "GyulyVGC/sniffnet",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "What I learned securing Sniffnet with the GitHub Secure Open Source Fund",
+     "url": "https://sniffnet.app/news/github-secure-open-source-fund/",
+     "date": "2026-08-13"
+    }
+   ]
+  },
+  {
+   "repo": "python-social-auth/social-app-django",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "sphinx-doc/sphinx",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "spyder-ide/spyder",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "kevinburke/ssh_config",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "stackql/stackql",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "stalwartlabs/stalwart",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "Stalwart Joins GitHub's Open Source Secure Fund",
+     "url": "https://stalw.art/blog/github-ossf/",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "Kludex/starlette",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "Stirling-Tools/Stirling-PDF",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "sveltejs/svelte",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "go-task/task",
+   "sessions": [
+    "4"
+   ],
+   "posts": [
+    {
+     "title": "GitHub Secure Open Source Fund",
+     "url": "https://taskfile.dev/blog/github-secure-open-source-program",
+     "date": "2026-08-15"
+    }
+   ]
+  },
+  {
+   "repo": "termcolor/termcolor",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "termux/termux-app",
+   "sessions": [
+    "2"
+   ],
+   "posts": [
+    {
+     "title": "Termux Selected For GitHub Secure Open Source Fund Session 2",
+     "url": "https://termux.dev/en/posts/general/2025/08/11/termux-selected-for-github-secure-open-source-fund-session-2.html",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "terrapkg/packages",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "thunderbird/thunderbird-android",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "theagentplane/tokenops",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ToolJet/ToolJet",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "traceroot-ai/traceroot",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "vercel/turborepo",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "jonobr1/two.js",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Beefing up Two.js Thanks to Session 3 of Github's Secure Open Source Fund",
+     "url": "https://jonofyi.substack.com/p/beefing-up-twojs-thanks-to-session",
+     "date": "2026-02-17"
+    },
+    {
+     "title": "Github's Secure Open Source Fund: A Year Later",
+     "url": "https://jonofyi.substack.com/p/githubs-secure-open-source-fund-a",
+     "date": "2026-09-25"
+    }
+   ]
+  },
+  {
+   "repo": "faisalman/ua-parser-js",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "urllib3/urllib3",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Participating in the GitHub Secure Open Source Fund",
+     "url": "https://volochii.dev/blog/github-secure-open-source-session/",
+     "date": "2026-02-22"
+    }
+   ]
+  },
+  {
+   "repo": "vapor/vapor",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Securing Vapor for the Future - Our Experience in GitHub's Secure Open Source Fund",
+     "url": "https://blog.vapor.codes/posts/securing-vapor-for-the-future/",
+     "date": "2026-04-10"
+    }
+   ]
+  },
+  {
+   "repo": "dmno-dev/varlock",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "How Varlock Is Leveling Up Security Through the GitHub Secure Open Source Fund",
+     "url": "https://varlock.dev/blog/github-secure-open-source-fund/",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "decentralized-identity/veramo",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "spf13/viper",
+   "sessions": [
+    "1"
+   ],
+   "posts": [
+    {
+     "title": "Cobra & Viper Fortify Security as Part of Inaugural GitHub Secure Open Source Fund",
+     "url": "https://cobra.dev/blog/2025-08-11-github-opensource-fund/",
+     "date": "2025-08-11"
+    },
+    {
+     "title": "Cobra & Viper Fortify Security as Part of GitHub Secure Open Source Fund",
+     "url": "https://spf13.com/p/cobra-viper-fortify-security-as-part-of-github-secure-open-source-fund/",
+     "date": "2025-08-19"
+    },
+    {
+     "title": "LinkedIn post: Cobra and Viper in the GitHub Secure Open Source Fund",
+     "url": "https://www.linkedin.com/posts/stevefrancia_im-thrilled-to-share-that-two-of-my-open-activity-7360752916032278528-7JnP",
+     "date": "2025-08-11"
+    }
+   ]
+  },
+  {
+   "repo": "pypa/virtualenv",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "vuetifyjs/vuetify",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "wevm/wagmi",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "warp-tech/warpgate",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "go-webauthn/webauthn",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "webdriverio/webdriverio",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "webpack/webpack",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "xyflow/xyflow",
+   "sessions": [
+    "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "eemeli/yaml",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "yiisoft/yii2",
+   "sessions": [
+    "3"
+   ],
+   "posts": [
+    {
+     "title": "Security lessons Yii learned thanks to GitHub Secure Open Source Fund",
+     "url": "https://www.yiiframework.com/news/783/security-lessons-yii-learned-thanks-to-github-secure-open-source-fund",
+     "date": "2026-02-17"
+    }
+   ]
+  },
+  {
+   "repo": "yjs/yjs",
+   "sessions": [
+    "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "ml-energy/zeus",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "zitadel/zitadel",
+   "sessions": [
+    "1-2"
+   ],
+   "posts": [
+    {
+     "title": "A Leap Forward in Security: Our Journey with the GitHub Secure Open Source Fund",
+     "url": "https://zitadel.com/blog/github-secure-open-source-fund",
+     "date": "2025-08-11"
+    }
+   ]
+  }
+ ]
+}

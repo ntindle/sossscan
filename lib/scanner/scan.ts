@@ -20,6 +20,8 @@ import {
   tierFor,
   updatableFile,
 } from './constants.ts';
+import { fundEntry, sharingResult, trainingResult } from './fund.ts';
+import { Hops, PUBLISH_SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import { Http, decodeReplace } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
 import { privateLayer } from './private-layer.ts';
@@ -46,7 +48,18 @@ import {
   search,
   truthy,
 } from './py.ts';
+import { releaseCacheCheck } from './release-caches.ts';
+import {
+  copilotReview,
+  customQueries,
+  licenseGate,
+  memorySafety,
+  refreshBacklog,
+  tracedSecrets,
+} from './self-checks.ts';
+import type { Outcome } from './self-checks.ts';
 import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
+import { covers, supportProse, supportTable, targetRelease, templateRows } from './versions.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
 
 const STATUSES: Status[] = ['pass', 'warn', 'fail', 'info', 'unknown', 'na'];
@@ -211,6 +224,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const paths = entries.map((e) => e.path);
   const files = entries.filter((e) => e.file).map((e) => e.path);
+  /** Submodules: the tree lists each as a commit (a gitlink), whose files aren't in it. */
+  const gitlinks = pyIter(get(pyOr(tree, {}), 'tree', []))
+    .filter((t) => isDict(t) && get(t, 'type') === 'commit')
+    .map((t) => String(get(t, 'path')));
+  /** The whole tree came back (an empty repository's 409 included), so a file it doesn't list isn't there. */
+  const treeComplete = (treeStatus === 200 || treeStatus === 409) && !treeTruncated;
 
   /** A file on the default branch: the HTTP status, and the text unless the status isn't 200. */
   const fetchFile = async (p: string): Promise<[number, string | null]> => {
@@ -234,6 +253,17 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     return text;
   };
   const couldNotRead = (p: string) => `Could not read ${p} (HTTP ${unread.get(p)})`;
+  /** One hop from a workflow step into package.json scripts and Makefile targets, each read once. */
+  const hops = new Hops(files, read);
+  /** A detection's result: its evidence names repository files, which become links. */
+  const outcome = (itemId: string, o: Outcome) =>
+    res(
+      itemId,
+      o.status,
+      o.summary,
+      o.evidence.map((e) => (e.url.startsWith('https://') ? e : { label: e.label, url: blob(e.url) })),
+      o.details,
+    );
   /**
    * A community health file the account provides for every repo without its own: GitHub takes it from the account's
    * .github repo, which must be public, looking in its .github/ folder, then its root, then docs/. Costs two API calls
@@ -292,6 +322,18 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         `(HTTP ${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
     );
   }
+  // A workflow that runs the package.json script named publish publishes to npm only when that script does: npm's,
+  // pnpm's or yarn's publish, or a tool that publishes. Without a package.json to read, it doesn't count.
+  const runsScript = (w: WorkflowAnalysis) =>
+    !w.tools.includes('npm_publish') && search(PUBLISH_SCRIPT_RUN, wfText.get(w.path) ?? '') !== null;
+  if (wfs.some(runsScript)) {
+    const script = await hops.body('npm', 'publish');
+    if (typeof script === 'string' && publishesToNpm(script)) {
+      for (const w of wfs.filter(runsScript)) {
+        w.tools = TOOLS.map(([t]) => t).filter((t) => t === 'npm_publish' || w.tools.includes(t));
+      }
+    }
+  }
   const tools = new Map<string, string[]>();
   for (const w of wfs) {
     for (const t of w.tools) {
@@ -309,6 +351,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     ['rules', `/repos/${repo}/rules/branches/${quote(branch)}`],
     ['rulesets', `/repos/${repo}/rulesets?includes_parents=true`],
     ['release', `/repos/${repo}/releases/latest`],
+    ['releases', `/repos/${repo}/releases?per_page=10`],
+    ['languages', `/repos/${repo}/languages`],
     ['advisories', `/repos/${repo}/security-advisories?state=published&per_page=100`],
     ['workflows', `/repos/${repo}/actions/workflows?per_page=100`],
   ];
@@ -367,11 +411,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   // ---- disclosure
   const sec = find(SECURITY_MD);
+  /** The security policy GitHub shows for the repo (its own, or the account's), or why it couldn't be read. */
+  let policy: { text: string; label: string; url: string } | null = null;
+  let policyTrouble: string | null = null;
   if (sec.length) {
     const body = await read(sec[0]);
     if (body === null) {
       res('disc-security-md', 'unknown', couldNotRead(sec[0]), fileLink(sec[0]));
+      policyTrouble = couldNotRead(sec[0]);
     } else {
+      policy = { text: body, label: sec[0], url: blob(sec[0]) };
       const how = search(HOW_TO_REPORT, body) !== null;
       res(
         'disc-security-md',
@@ -392,6 +441,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         'unknown',
         `No SECURITY.md in this repository, and the account's default couldn't be checked (HTTP ${inherited.failed})`,
       );
+      policyTrouble = `Could not check the account's default SECURITY.md (HTTP ${inherited.failed})`;
     } else if (inherited.body === null) {
       res(
         'disc-security-md',
@@ -399,7 +449,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         `Could not read the account's default, ${inherited.label} (HTTP ${inherited.status})`,
         [{ label: inherited.label, url: inherited.url }],
       );
+      policyTrouble = `Could not read the account's default, ${inherited.label} (HTTP ${inherited.status})`;
     } else {
+      policy = { text: inherited.body, label: inherited.label, url: inherited.url };
       const how = search(HOW_TO_REPORT, inherited.body) !== null;
       res(
         'disc-security-md',
@@ -786,12 +838,60 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         ? 'Publishes from CI without OIDC: likely a long-lived token'
         : 'No publishing workflow detected',
   );
+  // ---- release jobs and the caches and artifacts they build from (new in 0.5.0)
+  const readable = wfs.map((w) => ({ path: w.path, text: wfText.get(w.path) ?? '' }));
+  const caches = await releaseCacheCheck({
+    workflows: readable,
+    unread: wfUnread.map((p) => ({ path: p, status: unread.get(p) ?? 0 })),
+    files,
+    treeRead: treeStatus === 200 || treeStatus === 409,
+    read,
+    hops,
+  });
+  res(
+    'ci-untrusted-artifacts-caches',
+    caches.status,
+    caches.summary,
+    caches.evidence.flatMap(fileLink),
+    caches.details,
+  );
+  for (const f of caches.findings.slice(0, 20)) {
+    finding('ci-untrusted-artifacts-caches', f.severity, f.title, f.path, f.line, f.hint);
+  }
+  const publishingJobs = (caches.details.publishing_jobs as unknown[] | undefined)?.length ?? 0;
+  // A run step that traces its commands while it has a secret prints what the secret expands into.
+  const traced = tracedSecrets(readable);
+  if (traced.length) {
+    const one = traced.length === 1;
+    res(
+      'code-secret-handling',
+      'warn',
+      `${traced.length} workflow step${one ? '' : 's'} trace${one ? 's' : ''} ${one ? 'its' : 'their'} commands ` +
+        `with set -x while using a secret`,
+      [...new Set(traced.map((t) => t.step.file))].slice(0, 5).flatMap(fileLink),
+    );
+    for (const t of traced.slice(0, 20)) {
+      finding(
+        'code-secret-handling',
+        'low',
+        'set -x prints the commands of a step that uses a secret',
+        t.step.file,
+        t.line,
+        "Drop set -x, or turn it off with set +x before the secret is used. GitHub masks a secret's exact value, " +
+          'not values made from it',
+      );
+    }
+  }
 
   // ---- code scanning
+  // A workflow GitHub lists as disabled (disabled_manually, disabled_inactivity, disabled_fork) or deleted doesn't run.
   const dyn = new Set(
-    pyIter(got.workflows[0] === 200 ? get(pyOr(got.workflows[1], {}), 'workflows', []) : []).map((w) =>
-      item(w, 'path'),
-    ),
+    pyIter(got.workflows[0] === 200 ? get(pyOr(got.workflows[1], {}), 'workflows', []) : [])
+      .filter((w) => {
+        const state = get(w, 'state');
+        return typeof state !== 'string' || !(state.startsWith('disabled') || state === 'deleted');
+      })
+      .map((w) => item(w, 'path')),
   );
   // The list shows CodeQL default setup and Dependabot's update runs, so without it neither can be ruled out.
   const dynFailed = failed('workflows');
@@ -850,6 +950,19 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     otherSast ? 'Other SAST in CI: ' + [...sastNames].join(', ') : 'No other SAST tools detected (optional)',
     otherSast ? otherSast.flatMap(fileLink) : [],
   );
+  // Custom CodeQL queries count once CI runs them; queries kept elsewhere can't be seen, so there's no result then.
+  const queries = await customQueries({ workflows: readable, files, read });
+  if (queries) outcome('sast-custom-queries', queries);
+  const copilot = got.rules[0] === 200 ? copilotReview(got.rules[1]) : null;
+  if (copilot) {
+    res(
+      'ai-assisted-security',
+      copilot.status,
+      copilot.summary,
+      [{ label: 'Rulesets', url: `https://github.com/${repo}/rules` }],
+      copilot.details,
+    );
+  }
   res(
     'secrets-scanning',
     tools.has('secret_scan') ? 'pass' : 'unknown',
@@ -911,6 +1024,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   } else {
     res('deps-update-automation', 'fail', 'No Dependabot or Renovate configuration');
   }
+  // Update pull requests left open: the first page of open pull requests, oldest first (new in 0.5.0).
+  if (dbot.length || reno.length || dynDbot) {
+    const [ps, pulls] = await http.json(`/repos/${repo}/pulls?state=open&sort=created&direction=asc&per_page=100`);
+    const backlog = ps === 200 ? refreshBacklog(pulls) : null;
+    if (backlog) res('deps-refresh', backlog.status, backlog.summary, backlog.evidence, backlog.details);
+  }
   const npmrc = files.includes('.npmrc') ? await read('.npmrc') : '';
   const pyproj = files.includes('pyproject.toml') && ecos.includes('pypi') ? await read('pyproject.toml') : '';
   cooldown = cooldown || search(NPM_COOLDOWN, npmrc || '') !== null || search(UV_COOLDOWN, pyproj || '') !== null;
@@ -964,6 +1083,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     null,
     locks,
   );
+  const licenses = await licenseGate({ workflows: readable, files, read, hops });
+  if (licenses) outcome('deps-licenses', licenses);
 
   // ---- releases
   const gr = find(GORELEASER);
@@ -1011,6 +1132,88 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     );
   }
 
+  // ---- which versions get security fixes (new in 0.5.0): the supported-versions table in SECURITY.md against the
+  // highest stable version among the latest releases, or the tags when there are no releases.
+  const relList = got.releases[0] === 200 && Array.isArray(got.releases[1]) ? got.releases[1].filter(isDict) : null;
+  let candidates: { tag: string; prerelease?: boolean }[] | null = relList
+    ? relList
+        .filter((r) => !truthy(get(r, 'draft')))
+        .map((r) => ({ tag: String(get(r, 'tag_name') ?? ''), prerelease: truthy(get(r, 'prerelease')) }))
+    : null;
+  let releasesTrouble: number | null = relList ? null : got.releases[0];
+  if (candidates && !candidates.length) {
+    const [ts, tags] = await http.json(`/repos/${repo}/tags?per_page=100`);
+    if (ts === 200 && Array.isArray(tags))
+      candidates = tags.filter(isDict).map((t) => ({ tag: String(get(t, 'name')) }));
+    else [candidates, releasesTrouble] = [null, ts];
+  }
+  const target = candidates ? targetRelease(candidates) : null;
+  const policyLink = policy ? [{ label: policy.label, url: policy.url }] : [];
+  if (candidates && !candidates.length && !publishes && !publishingJobs) {
+    res('rel-security-support', 'na', 'No releases, tags or publishing workflow');
+  } else if (!policy) {
+    res(
+      'rel-security-support',
+      policyTrouble ? 'unknown' : 'info',
+      policyTrouble ?? 'No SECURITY.md to say which versions get security fixes',
+    );
+  } else {
+    const table = supportTable(policy.text);
+    const readableRows = table.rows.filter((r) => covers(r.version, [0]) !== null);
+    const supported = readableRows.filter((r) => r.supported);
+    const covering = target ? supported.find((r) => covers(r.version, target.version)) : undefined;
+    if (table.template && templateRows(table.rows)) {
+      res(
+        'rel-security-support',
+        'warn',
+        `${policy.label} still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)`,
+        policyLink,
+      );
+    } else if (readableRows.length && target && covering) {
+      res(
+        'rel-security-support',
+        'pass',
+        `${policy.label} lists ${covering.version} as supported, which covers the newest release, ${target.tag}`,
+        policyLink,
+        { target: target.tag, supported: supported.map((r) => r.version) },
+      );
+    } else if (readableRows.length && target) {
+      const listed = supported.map((r) => r.version);
+      res(
+        'rel-security-support',
+        'warn',
+        `${policy.label} lists ` +
+          (listed.length ? `${listed.slice(0, 3).join(', ')} as supported` : 'no version as supported') +
+          `, but the newest release is ${target.tag}`,
+        policyLink,
+        { target: target.tag, supported: listed },
+      );
+    } else if (readableRows.length && releasesTrouble !== null) {
+      res(
+        'rel-security-support',
+        'unknown',
+        `Could not read the releases to compare with the table in ${policy.label} (HTTP ${releasesTrouble})`,
+        policyLink,
+      );
+    } else if (readableRows.length) {
+      res(
+        'rel-security-support',
+        'info',
+        `${policy.label} has a supported-versions table, but there's no stable release to compare it with`,
+        policyLink,
+      );
+    } else if (table.section || supportProse(policy.text)) {
+      res(
+        'rel-security-support',
+        'info',
+        `${policy.label} says which versions get fixes in words, not a table: check it covers ${target ? target.tag : 'your current release'}`,
+        policyLink,
+      );
+    } else {
+      res('rel-security-support', 'info', `${policy.label} doesn't say which versions get security fixes`, policyLink);
+    }
+  }
+
   // ---- fuzzing (folders count here: a fuzz/ folder holds fuzz targets, and .clusterfuzzlite/ is a folder)
   const fz = findAny(FUZZ_PATH).filter((p) => search(FUZZ_EXCLUDE, p) === null);
   // OSS-Fuzz builds public repositories only, so a private repo is neither looked up nor guessed at.
@@ -1040,6 +1243,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         ]
       : [],
   );
+
+  // ---- memory safety (new in 0.5.0): doesn't apply when no code is in a language without it
+  const memory = got.languages[0] === 200 ? memorySafety(got.languages[1], files, gitlinks, treeComplete) : null;
+  if (memory) res('code-memory-safety', memory.status, memory.summary, memory.evidence, memory.details);
 
   // ---- Anthropic's OSS Scanner (new in 0.4.0, so not from the Python port). No requests for a private repo, or below
   // its size cue.
@@ -1074,17 +1281,22 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       : 'Scorecard action not set up' + (rep.scorecard ? ` (public score ${pyStr(rep.scorecard.score)})` : ''),
     scorecardCi ? fileLink(scorecardCi[0]) : [],
   );
-  const bp: any[] =
-    !privateRepo && got.bestpractices[0] === 200 && Array.isArray(got.bestpractices[1]) ? got.bestpractices[1] : [];
+  const bp: Record<string, any>[] =
+    !privateRepo && got.bestpractices[0] === 200 && Array.isArray(got.bestpractices[1])
+      ? got.bestpractices[1].filter(isDict)
+      : [];
   if (privateRepo) {
     res('posture-best-practices-badge', 'na', 'The OpenSSF Best Practices badge is for open source (public) projects');
   } else if (bp.length) {
-    const lvl = pyOr(get(bp[0], 'badge_level'), get(bp[0], 'badge_percentage_0'));
+    // The lookup can return several projects (an old in_progress entry and a newer passing one): the one whose
+    // repo_url is this repo's, then the highest level, then the highest percentage, then the newest.
+    const best = bestBadge(bp, repo);
+    const lvl = pyOr(get(best, 'badge_level'), get(best, 'badge_percentage_0'));
     res(
       'posture-best-practices-badge',
-      pyIn(get(bp[0], 'badge_level'), ['passing', 'silver', 'gold']) ? 'pass' : 'warn',
+      pyIn(get(best, 'badge_level'), ['passing', 'silver', 'gold']) ? 'pass' : 'warn',
       `OpenSSF Best Practices badge: ${pyStr(lvl)}`,
-      [{ label: 'Badge', url: `https://www.bestpractices.dev/projects/${pyStr(get(bp[0], 'id'))}` }],
+      [{ label: 'Badge', url: `https://www.bestpractices.dev/projects/${pyStr(get(best, 'id'))}` }],
     );
   } else {
     res('posture-best-practices-badge', 'fail', 'No OpenSSF Best Practices badge');
@@ -1114,10 +1326,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   } else {
     res('ai-agent-instructions', 'na', 'No AI agent instruction files');
   }
+  // ---- GitHub's Secure Open Source Fund (new in 0.5.0), from the list that ships with the scanner
+  const fund = fundEntry(repo, repoArg);
+  const training = trainingResult(fund);
+  if (training) res('people-security-training', training.status, training.summary, training.evidence, training.details);
+  const sharing = sharingResult(fund);
+  if (sharing) res('people-share-learnings', sharing.status, sharing.summary, sharing.evidence, sharing.details);
 
   // ---- private layer (admin-only settings)
   if (admin) {
-    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed);
+    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed, assumeAdmin);
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);
@@ -1130,6 +1348,31 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   rep.api_calls = http.calls;
   log(`done: ${pyRepr(rep.summary)} (${http.calls} requests)`);
   return rep;
+}
+
+const BADGE_LEVELS: Record<string, number> = { gold: 4, silver: 3, passing: 2, in_progress: 1 };
+
+/** A repository URL compared by host path, without a scheme, www., .git or a trailing slash, in lower case. */
+function repoUrlKey(url: unknown): string {
+  let u = typeof url === 'string' ? url.trim().toLowerCase() : '';
+  for (const prefix of ['https://', 'http://']) if (u.startsWith(prefix)) u = u.slice(prefix.length);
+  if (u.startsWith('www.')) u = u.slice(4);
+  while (u.endsWith('/')) u = u.slice(0, -1);
+  if (u.endsWith('.git')) u = u.slice(0, -4);
+  return u;
+}
+
+/** The Best Practices project to report: this repo's own, then the best badge, then the newest. */
+export function bestBadge(projects: Record<string, any>[], repo: string): Record<string, any> {
+  const want = repoUrlKey(`https://github.com/${repo}`);
+  const own = (p: Record<string, any>) => (repoUrlKey(p.repo_url) === want ? 1 : 0);
+  const level = (p: Record<string, any>) => BADGE_LEVELS[String(p.badge_level)] ?? 0;
+  const pct = (p: Record<string, any>) => (typeof p.badge_percentage_0 === 'number' ? p.badge_percentage_0 : -1);
+  const updated = (p: Record<string, any>) => (typeof p.updated_at === 'string' ? p.updated_at : '');
+  return projects.reduce((a, b) => {
+    const d = own(b) - own(a) || level(b) - level(a) || pct(b) - pct(a);
+    return d > 0 || (d === 0 && updated(b) > updated(a)) ? b : a;
+  });
 }
 
 /** From this day GitHub gave new personal repositories (and new organizations) a read-only GITHUB_TOKEN by default. */
