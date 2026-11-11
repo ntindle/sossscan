@@ -20,6 +20,7 @@ import {
   tierFor,
   updatableFile,
 } from './constants.ts';
+import { Hops } from './hops.ts';
 import { Http, decodeReplace } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
 import { privateLayer } from './private-layer.ts';
@@ -46,6 +47,7 @@ import {
   search,
   truthy,
 } from './py.ts';
+import { releaseCacheCheck } from './release-caches.ts';
 import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
 
@@ -234,6 +236,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     return text;
   };
   const couldNotRead = (p: string) => `Could not read ${p} (HTTP ${unread.get(p)})`;
+  /** One hop from a workflow step into package.json scripts and Makefile targets, each read once. */
+  const hops = new Hops(files, read);
   /**
    * A community health file the account provides for every repo without its own: GitHub takes it from the account's
    * .github repo, which must be public, looking in its .github/ folder, then its root, then docs/. Costs two API calls
@@ -786,6 +790,26 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         ? 'Publishes from CI without OIDC: likely a long-lived token'
         : 'No publishing workflow detected',
   );
+  // ---- release jobs and the caches and artifacts they build from (new in 0.5.0)
+  const readable = wfs.map((w) => ({ path: w.path, text: wfText.get(w.path) ?? '' }));
+  const caches = await releaseCacheCheck({
+    workflows: readable,
+    unread: wfUnread.map((p) => ({ path: p, status: unread.get(p) ?? 0 })),
+    files,
+    treeRead: treeStatus === 200 || treeStatus === 409,
+    read,
+    hops,
+  });
+  res(
+    'ci-untrusted-artifacts-caches',
+    caches.status,
+    caches.summary,
+    caches.evidence.flatMap(fileLink),
+    caches.details,
+  );
+  for (const f of caches.findings.slice(0, 20)) {
+    finding('ci-untrusted-artifacts-caches', f.severity, f.title, f.path, f.line, f.hint);
+  }
 
   // ---- code scanning
   // A workflow GitHub lists as disabled (disabled_manually, disabled_inactivity, disabled_fork) or deleted doesn't run.

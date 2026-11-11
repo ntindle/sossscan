@@ -32,7 +32,13 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+import { Hops } from '../lib/scanner/hops.ts';
+import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
+import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
+import { parseYaml } from '../lib/scanner/yaml-lite.ts';
+import type { YNode } from '../lib/scanner/yaml-lite.ts';
+import YAML from 'yaml';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
 
@@ -1833,6 +1839,577 @@ async function scanTiny(routes: Record<string, Route | Route[]>) {
 /** A check's status and summary, or null when the scan left it out. */
 const statusOf = (rep: Report, id: string) =>
   rep.results[id] ? [rep.results[id].status, rep.results[id].summary] : null;
+
+/** The release cache check over in-memory workflows (file names under .github/workflows) and other files. */
+async function cacheCheck(
+  workflows: Record<string, string[]>,
+  files: Record<string, string | null> = {},
+  extra: { unread?: { path: string; status: number }[]; treeRead?: boolean } = {},
+) {
+  const all: Record<string, string | null> = {
+    ...Object.fromEntries(Object.entries(workflows).map(([n, l]) => [`.github/workflows/${n}`, workflow(l)])),
+    ...files,
+  };
+  const read = async (p: string) => all[p] ?? null;
+  return releaseCacheCheck({
+    workflows: Object.entries(workflows).map(([n, l]) => ({ path: `.github/workflows/${n}`, text: workflow(l) })),
+    unread: extra.unread ?? [],
+    files: Object.keys(all),
+    treeRead: extra.treeRead ?? true,
+    read,
+    hops: new Hops(Object.keys(all), read),
+  });
+}
+
+describe('yaml-lite reads workflows as the yaml package does', () => {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const mine = (n: YNode | null): unknown => {
+    if (!n) return '';
+    if (n.kind === 'scalar') return norm(n.text);
+    if (n.kind === 'seq') return n.items.map(mine);
+    return Object.fromEntries(n.entries.map((e) => [e.key, mine(e.value)]));
+  };
+  const theirs = (v: unknown): unknown => {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map(theirs);
+    if (typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, theirs(x)]));
+    return norm(String(v));
+  };
+  const same = (text: string) => expect(mine(parseYaml(text))).toEqual(theirs(YAML.parse(text, { merge: true })));
+
+  it('on every workflow fixture', () => {
+    for (const w of Object.values<any>(expected.workflows)) {
+      const text = fixtureText(w.file);
+      let valid = true;
+      try {
+        YAML.parse(text);
+      } catch {
+        // A fixture that isn't valid YAML (one tests how the line reader copes) is only read without throwing.
+        valid = false;
+      }
+      if (valid) same(text);
+      else expect(() => parseYaml(text)).not.toThrow();
+    }
+  });
+
+  it('with anchors, merge keys, block scalars, flow collections, quoted keys and comments', () => {
+    same(
+      workflow([
+        "'on':",
+        '  push:',
+        '    tags: [ "v*", \'r*\' ]  # releases',
+        'x-defaults: &defaults',
+        '  runs-on: ubuntu-latest',
+        '  timeout-minutes: 5',
+        'jobs:',
+        '  a:',
+        '    <<: *defaults',
+        '    steps:',
+        '    - &checkout',
+        '      uses: actions/checkout@v4',
+        '      with: { persist-credentials: false, fetch-depth: 0 }',
+        '    - run: |-',
+        '        echo "a: b"',
+        '',
+        '        # not a comment',
+        '      env:',
+        '        LONG: "one \\',
+        '          two"',
+        '    - *checkout',
+        '    - name: >',
+        '        folded',
+        '        text',
+        '      run: echo hi # trailing',
+        '  b:',
+        '    needs:',
+        '    - a',
+        '    matrix: {',
+        '      os: [linux, macos], # a comment inside',
+        '      py: ["3.12"] }',
+      ]),
+    );
+  });
+
+  it('never throws on text that is not YAML', () => {
+    for (const bad of ['', ':', '- - -', '{[', '"unclosed', 'a: [1, 2', 'key: |\n', '\t- x\n  y: [']) {
+      expect(() => parseYaml(bad)).not.toThrow();
+    }
+  });
+
+  it('reads a commit pin with its version comment', () => {
+    const wf = readWorkflow(
+      '.github/workflows/x.yml',
+      workflow([
+        'on: push',
+        'jobs:',
+        '  a:',
+        '    steps:',
+        `      - uses: actions/setup-node@${PIN} # v5.0.0`,
+        '      - uses: actions/setup-node@v4.2.1',
+        `      - uses: astral-sh/setup-uv@${PIN}`,
+      ]),
+    );
+    expect(wf.jobs[0].steps.map(actionMajor)).toEqual([5, 4, null]);
+  });
+});
+
+describe('ci-untrusted-artifacts-caches', () => {
+  const publishJob = (steps: string[], extra: string[] = []) => [
+    'on:',
+    '  release:',
+    '    types: [published]',
+    'jobs:',
+    '  publish:',
+    '    runs-on: ubuntu-latest',
+    ...extra,
+    '    steps:',
+    ...steps,
+  ];
+
+  it('fails when the publishing job restores a cache, with the line in the findings', async () => {
+    // mockoon's release-libs.yml: npm run publish, which 0.4.3 didn't recognize as publishing.
+    const r = await cacheCheck({
+      'release-libs.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['libs-v*']",
+        'permissions:',
+        '  contents: read',
+        'jobs:',
+        '  npm-publish:',
+        '    runs-on: ubuntu-latest',
+        '    permissions:',
+        '      id-token: write',
+        '    steps:',
+        `      - uses: actions/checkout@${PIN} # v7.0.1`,
+        `      - uses: actions/setup-node@${PIN} # v7.1.0`,
+        '        with:',
+        '          node-version: "24"',
+        '          cache: npm',
+        '      - run: npm ci',
+        '      - name: NPM publish',
+        '        run: |',
+        '          npm run publish',
+      ],
+    });
+    expect([r.status, r.summary]).toEqual([
+      'fail',
+      'Publishing job npm-publish in .github/workflows/release-libs.yml restores a cache (actions/setup-node with cache: npm)',
+    ]);
+    expect(r.findings).toEqual([
+      {
+        severity: 'medium',
+        title: 'Restores a cache in publishing job npm-publish: actions/setup-node with cache: npm',
+        path: '.github/workflows/release-libs.yml',
+        line: 13,
+        hint: "Set cache-mode: none on the job and turn off the action's own cache input (for setup-node, package-manager-cache: false)",
+      },
+    ]);
+  });
+
+  it('follows artifacts back through one job in between, and leaves out caches in jobs that feed nothing published', async () => {
+    // aiohttp's ci-cd.yml: a cached llhttp build goes into the dists that deploy publishes; test caches pip.
+    const r = await cacheCheck({
+      'ci-cd.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  gen-llhttp:',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/cache@v6',
+        '        with:',
+        '          path: vendor/llhttp/build',
+        '          key: llhttp',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: llhttp',
+        '          path: vendor/llhttp/build',
+        '  build:',
+        '    needs: gen-llhttp',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: llhttp',
+        '      - run: python -m build',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: dist-pure',
+        '          path: dist',
+        '  test:',
+        '    needs: build',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/setup-python@v6',
+        '        with:',
+        '          cache: pip',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: coverage',
+        '          path: .coverage',
+        '  deploy:',
+        '    needs: [build, test]',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          pattern: dist-*',
+        '          merge-multiple: true',
+        '      - uses: pypa/gh-action-pypi-publish@release/v1',
+      ],
+    });
+    expect([r.status, r.summary]).toEqual([
+      'fail',
+      'Job gen-llhttp in .github/workflows/ci-cd.yml restores a cache (actions/cache) and builds artifact llhttp, ' +
+        'which goes into what deploy publishes',
+    ]);
+    expect(r.findings.map((f) => [f.path, f.line, f.severity])).toEqual([['.github/workflows/ci-cd.yml', 8, 'medium']]);
+  });
+
+  it('links a job of a local reusable workflow to the job that publishes its artifact', async () => {
+    const r = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  build:',
+        '    uses: ./.github/workflows/build.yml',
+        '  publish:',
+        '    needs: build',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: dist',
+        '      - run: gh release upload "$GITHUB_REF_NAME" dist/*',
+      ],
+      'build.yml': [
+        'on: workflow_call',
+        'jobs:',
+        '  compile:',
+        '    runs-on: ubuntu-latest',
+        '    steps:',
+        '      - uses: Swatinem/rust-cache@v2',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: dist',
+      ],
+    });
+    expect([r.status, r.findings.map((f) => [f.path, f.line])]).toEqual(['fail', [['.github/workflows/build.yml', 6]]]);
+  });
+
+  it('reads local composite actions, and says when it could not', async () => {
+    const steps = ['      - uses: ./.github/actions/setup', '      - run: pnpm publish -r'];
+    const action = ['runs:', '  using: composite', '  steps:', '    - uses: actions/setup-node@v6', '      with:'];
+    const read = await cacheCheck(
+      { 'release.yml': publishJob(steps) },
+      { '.github/actions/setup/action.yml': workflow([...action, '        cache: pnpm']) },
+    );
+    expect([read.status, read.findings.map((f) => [f.path, f.line])]).toEqual([
+      'fail',
+      [['.github/actions/setup/action.yml', 4]],
+    ]);
+    const unreadable = await cacheCheck(
+      { 'release.yml': publishJob(steps) },
+      { '.github/actions/setup/action.yml': null },
+    );
+    expect([unreadable.status, unreadable.summary]).toEqual([
+      'info',
+      "Publishing job publish in .github/workflows/release.yml uses ./.github/actions/setup, which the scan couldn't " +
+        'read. The publishing jobs it can read restore no caches',
+    ]);
+  });
+
+  it('follows one hop into a package.json script', async () => {
+    const r = await cacheCheck(
+      {
+        'release.yml': publishJob([
+          '      - uses: actions/setup-node@v4',
+          '        with:',
+          '          cache: npm',
+          '      - run: npm run release',
+        ]),
+      },
+      { 'package.json': JSON.stringify({ scripts: { release: 'npm publish --access public' } }) },
+    );
+    expect([r.status, r.details]).toEqual([
+      'fail',
+      {
+        publishing_jobs: [
+          { workflow: '.github/workflows/release.yml', job: 'publish', why: 'npm run release, which runs npm publish' },
+        ],
+      },
+    ]);
+  });
+
+  it('warns on a cache that depends on the project or the run, and on artifacts from another run', async () => {
+    const node5 = await cacheCheck({
+      'release.yml': publishJob(['      - uses: actions/setup-node@v5', '      - run: npm stage publish']),
+    });
+    expect([node5.status, node5.findings.map((f) => f.severity)]).toEqual(['warn', ['low']]);
+    expect(node5.summary).toContain('which from v5 caches npm packages unless package-manager-cache is false');
+    // From v10, setup-uv no longer caches unless enable-cache says so.
+    const uv = (v: string) =>
+      cacheCheck({ 'release.yml': publishJob([`      - uses: astral-sh/setup-uv@${v}`, '      - run: uv publish']) });
+    expect([(await uv('v6')).status, (await uv('v10.3.3')).status]).toEqual(['warn', 'pass']);
+    const tagGuard = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/cache@v6',
+        "        if: github.ref_type != 'tag'",
+        '      - run: cargo publish',
+      ]),
+    });
+    expect(tagGuard.status).toBe('warn');
+    const otherRun = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          run-id: ${{ inputs.run_id }}',
+        '          github-token: ${{ github.token }}',
+        '      - run: twine upload dist/*',
+      ]),
+    });
+    expect([otherRun.status, otherRun.summary]).toEqual([
+      'warn',
+      'Publishing job publish in .github/workflows/release.yml downloads artifacts from another workflow run',
+    ]);
+    // In a workflow_run workflow that's ci-dangerous-triggers' to report.
+    const wr = await cacheCheck({
+      'publish.yml': [
+        'on:',
+        '  workflow_run:',
+        '    workflows: [CI]',
+        'jobs:',
+        '  publish:',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          run-id: ${{ github.event.workflow_run.id }}',
+        '      - run: npm publish',
+      ],
+    });
+    expect(wr.status).toBe('pass');
+  });
+
+  it("warns on an artifact it can't trace when another job in the run restores a cache", async () => {
+    const r = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  release:',
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - uses: actions/setup-go@v6',
+        '      - uses: actions/upload-artifact@v7',
+        '        with:',
+        '          name: bin-${{ matrix.os }}',
+        '  publish:',
+        '    needs: build',
+        '    steps:',
+        '      - uses: actions/download-artifact@v8',
+        '        with:',
+        '          name: ${{ inputs.artifact }}',
+        '      - run: gh release create v1 bin/*',
+      ],
+    });
+    expect([r.status, r.findings.map((f) => f.title)]).toEqual([
+      'warn',
+      ["Publishing job publish downloads an artifact the scan can't trace to the job that built it"],
+    ]);
+  });
+
+  it('passes when no publishing job restores a cache, also with cache-mode: none, unless an action ignores it', async () => {
+    const clean = await cacheCheck({
+      'release.yml': publishJob([
+        '      - uses: actions/setup-node@v6',
+        '        with:',
+        '          package-manager-cache: false',
+        '          registry-url: https://registry.npmjs.org',
+        '      - run: npm stage publish',
+      ]),
+    });
+    expect([clean.status, clean.summary]).toEqual([
+      'pass',
+      'Publishing job publish in .github/workflows/release.yml restores no cache',
+    ]);
+    const none = await cacheCheck({
+      'release.yml': publishJob(
+        ['      - uses: actions/setup-node@v6', '        with:', '          cache: npm', '      - run: npm publish'],
+        ['    cache-mode: none'],
+      ),
+    });
+    expect([none.status, none.summary]).toEqual([
+      'pass',
+      'Publishing job publish in .github/workflows/release.yml restores no cache (cache-mode: none)',
+    ]);
+    const sccache = await cacheCheck({
+      'release.yml': publishJob(
+        [
+          '      - uses: PyO3/maturin-action@v1',
+          '        with:',
+          "          sccache: 'true'",
+          '          command: upload',
+        ],
+        ['    cache-mode: none'],
+      ),
+    });
+    expect([sccache.status, sccache.findings[0].title]).toEqual([
+      'warn',
+      'May restore a cache in publishing job publish: PyO3/maturin-action with sccache: true, which may ignore cache-mode: none',
+    ]);
+  });
+
+  it("says what it can't see, and when nothing publishes", async () => {
+    const remote = await cacheCheck({
+      'release.yml': [
+        'on:',
+        '  push:',
+        "    tags: ['v*']",
+        'jobs:',
+        '  release:',
+        '    uses: octo/shared/.github/workflows/release.yml@v1',
+      ],
+    });
+    expect([remote.status, remote.summary]).toEqual([
+      'info',
+      "Release workflow .github/workflows/release.yml calls octo/shared/.github/workflows/release.yml@v1, which the scan can't read",
+    ]);
+    const ci = await cacheCheck({
+      'ci.yml': [
+        'on: [push, pull_request]',
+        'jobs:',
+        '  test:',
+        '    steps:',
+        '      - uses: actions/setup-go@v6',
+        '      - run: go test ./...',
+      ],
+    });
+    expect([ci.status, ci.summary]).toEqual(['na', 'No publishing job or release workflow']);
+    expect(
+      (
+        await releaseCacheCheck({
+          workflows: [],
+          unread: [],
+          files: [],
+          treeRead: true,
+          read: async () => null,
+          hops: new Hops([], async () => null),
+        })
+      ).status,
+    ).toBe('na');
+    // A workflow it couldn't read, or a file list it couldn't get, may hold what it didn't find.
+    const unread = await cacheCheck(
+      { 'release.yml': publishJob(['      - run: cargo publish']) },
+      {},
+      {
+        unread: [{ path: '.github/workflows/other.yml', status: 500 }],
+      },
+    );
+    expect([unread.status, unread.summary]).toEqual([
+      'unknown',
+      'Could not read .github/workflows/other.yml (HTTP 500)',
+    ]);
+    expect((await cacheCheck({}, {}, { treeRead: false })).status).toBe('unknown');
+  });
+
+  it('knows which actions restore caches and which steps publish', () => {
+    const step = (uses: string, w: Record<string, string> = {}, comment = '') =>
+      ({
+        file: 'x',
+        line: 1,
+        usesLine: 1,
+        runLine: 1,
+        runFirst: 1,
+        uses,
+        comment,
+        with: w,
+        env: {},
+        run: null,
+        shell: null,
+        if: null,
+        all: '',
+      }) as const;
+    const level = (uses: string, w: Record<string, string> = {}, comment = '') =>
+      cacheOf(step(uses, w, comment))?.level ?? null;
+    expect([
+      level('actions/cache@v4'),
+      level('actions/cache@v4', { 'lookup-only': 'true' }),
+      level('actions/cache/save@v4'),
+      level('actions/setup-go@v5'),
+      level('actions/setup-go@v5', { cache: 'false' }),
+      level('actions/setup-node@v4'),
+      level(`actions/setup-node@${PIN}`, {}, 'v4.4.0'),
+      level(`actions/setup-node@${PIN}`),
+      level('actions/setup-node@v4', { cache: '${{ matrix.pm }}' }),
+      level('actions/setup-python@v6', { cache: 'pip' }),
+      level('ruby/setup-ruby@v1', { 'bundler-cache': 'true' }),
+      level('gradle/actions/setup-gradle@v4'),
+      level('docker/build-push-action@v6', { 'cache-from': 'type=gha' }),
+      level('docker/setup-buildx-action@v3'),
+      level('docker/setup-buildx-action@v3', { version: 'v0.23.0' }),
+      level('actions/checkout@v5'),
+    ]).toEqual(['on', null, null, 'on', null, null, null, 'maybe', 'maybe', 'on', 'on', 'on', 'on', null, 'on', null]);
+    const pub = (uses: string, w: Record<string, string> = {}) => publishOf(step(uses, w));
+    expect([
+      pub('goreleaser/goreleaser-action@v6', { args: 'release --clean' }),
+      pub('goreleaser/goreleaser-action@v6', { args: 'release --snapshot --clean' }),
+      pub('docker/build-push-action@v6', { push: 'false' }),
+      pub('docker/build-push-action@v6', { push: "${{ github.event_name != 'pull_request' }}" }),
+      pub('changesets/action@v1', { publish: 'pnpm release' }),
+      pub('changesets/action@v1', { version: 'pnpm version' }),
+      pub('PyO3/maturin-action@v1', { command: 'upload' }),
+      pub('PyO3/maturin-action@v1', { command: 'build' }),
+    ]).toEqual([
+      'goreleaser/goreleaser-action',
+      null,
+      null,
+      'docker/build-push-action with push',
+      'changesets/action with publish',
+      null,
+      'pyo3/maturin-action with command: upload',
+      null,
+    ]);
+    const runs = (run: string) => publishOf({ ...step('x'), uses: null, run });
+    expect(
+      [
+        'npm publish --dry-run',
+        'goreleaser release --snapshot',
+        'mvn -Dmaven.deploy.skip=true install',
+        'echo build',
+        '# npm publish',
+      ].map(runs),
+    ).toEqual([null, null, null, null, null]);
+    expect(
+      ['npm stage publish --tag next', 'cd pkg && npm publish', './mvnw -B deploy', 'sbt ci-release'].map(runs),
+    ).toEqual(['npm stage publish', 'npm publish', 'mvnw -B deploy', 'sbt ci-release']);
+  });
+
+  it('is a scan result with its findings, as the other workflow checks are', async () => {
+    const wf = publishJob([
+      '      - uses: actions/setup-go@v6',
+      '      - uses: goreleaser/goreleaser-action@v6',
+      '        with:',
+      '          args: release --clean',
+    ]);
+    const { rep } = await scanTiny(tiny({ '.github/workflows/release.yml': workflow(wf) }));
+    expect(statusOf(rep, 'ci-untrusted-artifacts-caches')).toEqual([
+      'fail',
+      'Publishing job publish in .github/workflows/release.yml restores a cache (actions/setup-go, which caches by default)',
+    ]);
+    expect(rep.results['ci-untrusted-artifacts-caches'].evidence).toEqual([
+      {
+        label: '.github/workflows/release.yml',
+        url: 'https://github.com/octo/tiny/blob/main/.github/workflows/release.yml',
+      },
+    ]);
+    expect(rep.findings.filter((f) => f.item_id === 'ci-untrusted-artifacts-caches').map((f) => f.url)).toEqual([
+      'https://github.com/octo/tiny/blob/main/.github/workflows/release.yml#L8',
+    ]);
+  });
+});
 
 describe('scanner bugs fixed in 0.5.0', () => {
   it('reports the Best Practices badge of this repository, then the best one (bug 1)', async () => {
