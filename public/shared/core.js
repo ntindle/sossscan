@@ -230,7 +230,7 @@ export function itemStatus(item, report, repo) {
   const r = report && report.results ? report.results[item.id] : null;
   if (self.done && (!r || r.status !== 'pass')) return { status: 'done', summary: 'You marked this done', evidence: [], layer: 'self', source: 'self', self };
   if (r) return { ...r, source: 'scan', self };
-  if (item.layer === 'manual') return { status: 'manual', summary: 'No scanner can see this. Tick it off yourself.', evidence: [], layer: 'manual', source: 'none', self };
+  if (item.layer === 'manual') return { status: 'manual', summary: "The scan can't settle this. Tick it off when it's done.", evidence: [], layer: 'manual', source: 'none', self };
   if (!report) return { status: 'todo', summary: 'Scan your repo to check this', evidence: [], layer: item.layer, source: 'none', self };
   return { status: 'unknown', summary: item.layer === 'public' ? 'Needs the public scan' : 'Needs the private scan or the GitHub App', evidence: [], layer: item.layer, source: 'none', self };
 }

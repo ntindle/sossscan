@@ -8,11 +8,11 @@ The site has no user accounts and no database. There are no analytics, ads or tr
 
 When you scan a repository on the home page, your browser sends the repository's name to this site. The server then reads the repository on GitHub, using a token of the site's own, never yours. Its requests go to:
 
-- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, public settings and dependents;
+- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, languages, releases, open pull requests, public settings and dependents;
 - the OpenSSF Scorecard API (api.securityscorecards.dev) and the OpenSSF Best Practices badge site (www.bestpractices.dev), which receive the repository's name;
 - Anthropic's OSS Scanner project list on GitHub, only for repositories with more than 1,000 stars or 200 dependents.
 
-Whether a repository is in OSS-Fuzz is looked up in a list that ships with the site, so that check sends nothing. All of these requests come from the server and name only the repository. None of them carries your IP address or anything else about you. Private repositories are refused, with the same answer as a repository that doesn't exist.
+Whether a repository is in OSS-Fuzz, or in GitHub's Secure Open Source Fund, is looked up in lists that ship with the site, so those checks send nothing. All of these requests come from the server and name only the repository. None of them carries your IP address or anything else about you. Private repositories are refused, with the same answer as a repository that doesn't exist.
 
 ## The MCP server
 

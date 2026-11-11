@@ -6,7 +6,7 @@ sossscan is a security scanner and guide for open source maintainers. Give it a 
 
 The guide has 81 checks, in the order a change meets them on its way to your users: accounts, repository settings, code, pull requests and CI, dependencies, and build and release. Three more stages follow the way problems come back to you: disclosure, response, and the people on the project.
 
-The public scan covers 36 of the checks, using what anyone can see, and a scan with admin access covers 10 more. The other 35 are things no scanner can see, such as security training or an incident plan you've rehearsed, so you mark those done yourself.
+The public scan covers 38 of the checks, using what anyone can see, and a scan with admin access covers 11 more. The other 32 are things a scan can't settle on its own, such as security training or an incident plan you've rehearsed, so you mark those done yourself. When the scan finds a sure sign of one, such as a license check in CI, it says so.
 
 Each check also has a tier: the size of project at which it's worth doing, from "Just you" to "Critical infrastructure". Your repository's tier comes from its stars and dependents, and checks above it wait in a list called "Later, as you grow".
 

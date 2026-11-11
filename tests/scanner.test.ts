@@ -147,7 +147,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.4.3');
+    expect(VERSION).toBe('0.5.0');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([
@@ -3071,5 +3071,14 @@ describe('scanner bugs fixed in 0.5.0', () => {
     for (const state of ['disabled_manually', 'disabled_inactivity', 'deleted']) {
       expect(await codeql(state)).toEqual(['fail', 'No CodeQL code scanning found']);
     }
+  });
+
+  it("tells the page a self-check isn't something no scanner can see", () => {
+    const st = sg.itemStatus(
+      { id: 'people-share-learnings', layer: 'manual' },
+      { repo: 'octo/tiny', results: {} },
+      'octo/tiny',
+    );
+    expect([st.status, st.summary]).toEqual(['manual', "The scan can't settle this. Tick it off when it's done."]);
   });
 });
