@@ -41,7 +41,9 @@ export function statusLabel(st) {
   if (st && st.status === 'unknown' && UNREAD.test(st.summary || '')) return st.layer === 'public' ? 'Couldn’t check, try again' : 'Couldn’t check';
   return (STATUS[st && st.status] || STATUS.unknown).label;
 }
-export const LAYER_LABEL = { public: 'Public scan', private: 'Private scan', app: 'GitHub App', manual: 'Self-check', self: 'Self-check' };
+export const LAYER_LABEL = { public: 'Public scan', private: 'Private scan', app: 'Deep scan', manual: 'Self-check', self: 'Self-check' };
+// Which scan can check an item, by the item's layer: a setting only admins can see has two ways in.
+export const CHECKED_BY = { ...LAYER_LABEL, private: 'Deep scan or private scan' };
 export const EFFORT_LABEL = { 1: 'Minutes', 2: 'An hour or two', 3: 'A day', 4: 'A few days', 5: 'Weeks' };
 export const IMPACT_LABEL = { 1: 'Minor', 2: 'Low', 3: 'Medium', 4: 'High', 5: 'Critical' };
 
@@ -510,7 +512,7 @@ export function promptChoices(rows, { max = PROMPT_PICKS } = {}) {
   };
 }
 
-const SCAN_NAME = { public: 'public scan', private: 'private scan', app: 'GitHub App check' };
+const SCAN_NAME = { public: 'public scan', private: 'private scan', app: 'deep scan' };
 const stageOf = (item, guide) => ((guide && (guide.stagesById ? guide.stagesById[item.stage] : (guide.stages || []).find((s) => s.id === item.stage))) || {}).label || item.stage;
 const sentence = (t) => (t && !/[.!?…:]$/.test(t) ? `${t}.` : t);
 const pageOrigin = () => (typeof location === 'undefined' ? '' : location.origin);
@@ -618,13 +620,14 @@ export const app = {
   },
   async check(repo) { const rep = sanitizeReport(await this._post('/api/app/check', { repo })); remember(rep); return rep; },
   async fix(repo, fixId) { return this._post('/api/app/fix', { repo, fix_id: fixId }); },
-  // What the signed-in person can fix on one repo (admin? app installed? which permissions?). Cached per page load.
+  // What the signed-in person can fix on one repo (admin? app installed? which permissions?). Cached per page load;
+  // fresh asks again (Deep scan does, so an app installed since the last answer counts).
   _repos: new Map(),
   _repoValues: new Map(),
-  repo(repo) {
+  repo(repo, { fresh = false } = {}) {
     const k = repo.toLowerCase();
-    if (!this._repos.has(k)) {
-      this._repos.set(k, this._post('/api/app/repo', { repo }).catch((e) => ({ error: e.message })).then((v) => { this._repoValues.set(k, v); return v; }));
+    if (fresh || !this._repos.has(k)) {
+      this._repos.set(k, this._post('/api/app/repo', { repo }).catch((e) => ({ error: e.message, code: e.code })).then((v) => { this._repoValues.set(k, v); return v; }));
     }
     return this._repos.get(k);
   },
@@ -638,9 +641,10 @@ export const app = {
 };
 
 // After GitHub sends someone back (?app=signed-in and so on): what to tell them. Removes the parameter from the address.
+// key is the parameter as it came, and text is null when it isn't one of these.
 const APP_NOTICE = {
-  installed: 'The GitHub App is installed. Sign in with GitHub to check admin settings and fix them in one click.',
-  'signed-in': 'You’re signed in with GitHub. Fixes the app can make now have a button in their fix.',
+  installed: 'The GitHub App is installed.',
+  'signed-in': 'You’re signed in with GitHub.',
   'signed-out': 'You’re signed out of GitHub on this site.',
   'signin-cancelled': 'GitHub sign-in was cancelled, so nothing changed.',
   'signin-failed': 'GitHub sign-in didn’t finish. Try again.',
@@ -653,7 +657,66 @@ export function takeAppNotice() {
   q.delete('app');
   const rest = q.toString();
   try { history.replaceState(history.state, '', `${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`); } catch { /* sandboxed */ }
-  return APP_NOTICE[k] ? { text: APP_NOTICE[k], error: /failed|expired/.test(k) } : null;
+  return { key: k, text: Object.hasOwn(APP_NOTICE, k) ? APP_NOTICE[k] : null, error: /failed|expired/.test(k) };
+}
+
+// ------------------------------------------------------------------------- a trip to GitHub and back
+// Deep scan and "Fix it for me" may have to send someone to GitHub first: to sign in, then to install the app on the
+// repository. Before the page sends them, it saves what they asked for in sessionStorage: {repo, item, at}, where item
+// is the check whose fix they had open (null for a deep scan) and at is when they asked. When GitHub sends them back
+// with ?app=signed-in or ?app=installed, the page carries on with it, once: Deep scan runs, or that check's fix opens
+// again. Only for the repository the page comes back to, and only within 15 minutes. Every load of the page takes the
+// saved value, whether it carries on or not. Nothing here sends anyone to GitHub: only a click does.
+export const INTENT_KEY = 'sg:intent';
+export const INTENT_TTL = 15 * 60 * 1000;
+const ITEM_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const session = () => { try { return sessionStorage; } catch { return null; } };
+
+// A saved intent, checked: {repo, item, at}, or null when it isn't valid JSON, names no repository or a malformed check,
+// or is 15 minutes old (or from the future).
+export function readIntent(raw, now = Date.now()) {
+  let v = null;
+  try { v = JSON.parse(raw); } catch { return null; }
+  if (!v || typeof v !== 'object' || typeof v.repo !== 'string' || typeof v.at !== 'number') return null;
+  const repo = parseRepoInput(v.repo);
+  const item = v.item ?? null;
+  const age = now - v.at;
+  if (!repo || (item !== null && !(typeof item === 'string' && ITEM_ID.test(item))) || !(age >= 0 && age < INTENT_TTL)) return null;
+  return { repo, item, at: v.at };
+}
+
+// The intent to carry on with when the page loads, or null. app is the ?app= value GitHub sent back: only a sign-in or
+// an install that went well carries on. repo is the repository the page shows; an intent for another one doesn't.
+export function resumeIntent(raw, { app, repo, now = Date.now() } = {}) {
+  if (app !== 'signed-in' && app !== 'installed') return null;
+  const it = readIntent(raw, now);
+  return it && repo && it.repo.toLowerCase() === String(repo).toLowerCase() ? it : null;
+}
+
+export function saveIntent(repo, item = null, { store = session(), now = Date.now() } = {}) {
+  safeSet(store, INTENT_KEY, JSON.stringify({ repo, item, at: now }));
+}
+
+// Takes the saved intent out of storage and returns resumeIntent() of it: a page load uses it once at most.
+export function takeIntent({ app, repo, store = session(), now = Date.now() } = {}) {
+  const raw = safeGet(store, INTENT_KEY);
+  if (raw === null) return null;
+  safeSet(store, INTENT_KEY, null);
+  return resumeIntent(raw, { app, repo, now });
+}
+
+// This page's address showing a repository: where GitHub sends someone back to after they sign in. The server carries
+// it through GitHub in its sealed state (lib/github-app.ts), up to 300 characters, so it holds only what the page reads:
+// the repository, and the #fragment, so the page opens the same check.
+export function backTo(repo) {
+  return `${location.pathname}?${new URLSearchParams({ repo })}${location.hash}`;
+}
+
+// Before a link sends someone to GitHub: save what they asked for, and the repository the page should show when they
+// come back (an install comes back to /?app=installed, which names none).
+function leaveFor(repo, item = null) {
+  saveIntent(repo, item);
+  safeSet(localStorage, 'sg:lastRepo', repo);
 }
 
 // ------------------------------------------------------------------------------------- DOM helpers
@@ -720,7 +783,7 @@ export function renderRemediation(item, opts = {}) {
       tier ? el('span', { class: 'sg-chip', title: tier.blurb }, `From tier ${tier.id}: ${tier.name}`) : null,
       el('span', { class: 'sg-chip' }, `Effort: ${EFFORT_LABEL[item.effort]}`),
       el('span', { class: 'sg-chip' }, `Impact: ${IMPACT_LABEL[item.impact]}`),
-      el('span', { class: 'sg-chip' }, `Checked by: ${LAYER_LABEL[item.layer]}`))));
+      el('span', { class: 'sg-chip' }, `Checked by: ${CHECKED_BY[item.layer]}`))));
 
   if (st.summary) root.append(el('p', { class: `sg-remedy__status sg-tone--${STATUS[st.status].tone}` }, st.summary,
     ...(st.evidence || []).map((e) => [' ', el('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.label)])));
@@ -954,8 +1017,10 @@ export function promptDialog(choices, opts = {}) {
 
 // ------------------------------------------------------------------------- fix it for me (app)
 // One-click fixes through the GitHub App for the repo on screen: a setting changed now, or a pull request opened after a
-// preview. Says what's missing when it can't (sign-in, an admin, the app installed, a permission). Empty when the app
-// can't fix this check at all. cls lets a page pass its own button classes.
+// preview. Says what's missing when it can't (sign-in, an admin, the app installed, a permission). Signing in and
+// installing the app happen in this tab, and the page opens this check again when GitHub sends the person back (see
+// "a trip to GitHub and back"). Empty when the app can't fix this check at all. cls lets a page pass its own button
+// classes.
 export function fixItForMe(item, { ctx, report, cls = {} } = {}) {
   const B = { btn: cls.btn || 'sg-btn', primary: cls.primary || 'sg-btn sg-btn--primary' };
   const wrap = el('section', { class: 'sg-fixit', hidden: true, 'aria-label': `Fix it for me: ${item.title}` });
@@ -975,16 +1040,21 @@ export function fixItForMe(item, { ctx, report, cls = {} } = {}) {
     }
     const what = pr && settings.length ? 'change the setting or open a pull request' : pr ? 'open a pull request with the fix' : 'change the setting';
     if (!st.user) {
+      // The address to come back to is read at the click: it holds the check that's open then (#fix=…).
       show(el('p', {}, `The GitHub App can ${what} for you. You need to be an admin of ${ctx.full}.`),
-        el('a', { class: B.primary, href: app.loginUrl() }, 'Sign in with GitHub'));
+        el('a', { class: B.primary, href: app.loginUrl(backTo(ctx.full)),
+          onclick: (e) => { e.currentTarget.href = app.loginUrl(backTo(ctx.full)); leaveFor(ctx.full, item.id); } }, 'Sign in with GitHub'));
       return true;
     }
     if (!info) { show(el('p', { class: 'sg-fixit__note' }, `Checking what the GitHub App can do on ${ctx.full}…`)); return false; }
     if (info.error) { show(el('p', {}, `Couldn’t check the app on ${ctx.full}: ${info.error}`)); return true; }
-    if (!info.admin) { show(el('p', {}, `Only an admin of ${ctx.full} can use these. You’re signed in as @${st.user}.`)); return true; }
+    if (!info.admin) {
+      show(el('p', {}, `Only an admin of ${ctx.full} can use these. You’re signed in as @${st.user}. `, el('a', { href: '/app/logout' }, 'Sign out'), ' to switch accounts.'));
+      return true;
+    }
     if (!info.installed) {
-      show(el('p', {}, `The GitHub App can ${what} for you once it’s installed on ${ctx.full}.`),
-        link(info.install_url, `Install the app on ${ctx.full}`, B.primary), el('p', { class: 'sg-fixit__note' }, 'Then reload this page.'));
+      show(el('p', {}, `The GitHub App can ${what} for you once it’s installed on ${ctx.full}. GitHub shows what it can access before anything is installed.`),
+        el('a', { class: B.primary, href: info.install_url, onclick: () => leaveFor(ctx.full, item.id) }, 'Install the app on GitHub'));
       return true;
     }
     const buttons = el('div', { class: 'sg-fixit__buttons' });
@@ -1129,7 +1199,10 @@ export function promptBlock(item, { report = null, ctx = ctxFromReport(report), 
 }
 
 // ------------------------------------------------------------------------------------ scan panel
-// Repo input + the three scan layers. opts: {onReport(mergedReport), initialRepo, compact}
+// The repo box: Scan and Rescan (the public scan), Deep scan (the admin-only checks, through the GitHub App), a line
+// about signing in, and the status message. After them, the private scan (.sg-private: download the CLI, run it, load
+// its report), which a page can move into a <details> of its own. opts: {onReport(mergedReport, repo), initialRepo,
+// compact, autoScan}
 export function renderScanPanel(opts = {}) {
   const { onReport = () => {}, compact = false, autoScan = false } = opts;
   let repo = opts.initialRepo ?? initialRepo();
@@ -1138,18 +1211,25 @@ export function renderScanPanel(opts = {}) {
   const input = el('input', { class: 'sg-input', type: 'text', name: 'repo', inputmode: 'url', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', translate: 'no',
     placeholder: 'owner/repo or a GitHub URL…', value: repo, 'aria-label': 'Repository' });
   const msg = el('div', { class: 'sg-scan__msg', role: 'status' });
-  const say = (text) => { msg.classList.remove('is-error'); msg.replaceChildren(text); };
+  const say = (...kids) => { msg.classList.remove('is-error'); msg.replaceChildren(...kids); };
   // An error says what went wrong and what to do next.
-  const sayError = (title, next) => { msg.classList.add('is-error'); msg.replaceChildren(...[el('p', { class: 'sg-err__title' }, title), next ? el('p', { class: 'sg-err__next' }, next) : null].filter(Boolean)); };
+  const sayError = (title, ...next) => {
+    const rest = next.filter((x) => x !== null && x !== undefined && x !== '');
+    msg.classList.add('is-error');
+    msg.replaceChildren(el('p', { class: 'sg-err__title' }, title), ...(rest.length ? [el('p', { class: 'sg-err__next' }, ...rest)] : []));
+  };
   const scanBtn = el('button', { class: 'sg-btn sg-btn--primary', type: 'submit' }, 'Scan');
   const rescanBtn = el('button', { class: 'sg-btn', type: 'submit', 'data-refresh': '1', title: 'Ignore the 6-hour cache' }, 'Rescan');
+  // Not a submit button, so Enter in the box still runs Scan. The line under the form describes it.
+  const deepBtn = el('button', { class: 'sg-btn sg-scan__deep', type: 'button', 'aria-describedby': 'sg-deep-about' }, 'Deep scan');
+  const buttons = [scanBtn, rescanBtn, deepBtn];
+  const labels = buttons.map((b) => b.textContent);
   // aria-disabled rather than disabled: a disabled button drops keyboard focus to the page body.
   let busy = false;
-  const setBusy = (b) => {
-    busy = b;
-    root.setAttribute('aria-busy', String(b));
-    for (const btn of [scanBtn, rescanBtn]) btn.setAttribute('aria-disabled', String(b));
-    scanBtn.textContent = b ? 'Scanning…' : 'Scan';
+  const setBusy = (on, active = scanBtn) => {
+    busy = on;
+    root.setAttribute('aria-busy', String(on));
+    buttons.forEach((b, i) => { b.setAttribute('aria-disabled', String(on)); b.textContent = on && b === active ? 'Scanning…' : labels[i]; });
   };
   const emit = () => onReport(mergeReports([...reports.values()]), repo);
   // Results for one repo never mix with another's: switching repos starts from what this tab already has for the new one.
@@ -1157,15 +1237,18 @@ export function renderScanPanel(opts = {}) {
     if (r.toLowerCase() !== (repo || '').toLowerCase()) { reports.clear(); for (const x of recallReports(r)) reports.set(x.layer, x); }
     repo = r; input.value = r; safeSet(localStorage, 'sg:lastRepo', r);
   };
-  const form = el('form', { class: 'sg-scan__form', onsubmit: async (e) => {
-    e.preventDefault();
-    if (busy) return;
+  // The repository in the box, or null after saying how to enter one.
+  const repoInBox = () => {
     const r = parseRepoInput(input.value);
-    if (!r) { sayError('Enter a repository as owner/repo, or paste its GitHub URL.'); input.focus(); return; }
+    if (!r) { sayError('Enter a repository as owner/repo, or paste its GitHub URL.'); input.focus(); }
+    return r;
+  };
+
+  const publicScan = async (r, refresh = false) => {
     setBusy(true);
     say(`Scanning ${r}. This takes about 5 to 30 seconds.`);
     try {
-      const rep = await scanPublic(r, { refresh: !!(e.submitter && e.submitter.dataset.refresh === '1') });
+      const rep = await scanPublic(r, { refresh });
       switchTo(rep.repo);
       reports.set('public', rep);
       say(`Scanned ${rep.repo}.${rep.cached ? ' This public scan is from the last 6 hours; press Rescan for a fresh one.' : ''}`);
@@ -1176,8 +1259,29 @@ export function renderScanPanel(opts = {}) {
       sayError(...scanTrouble(r, err));
       input.focus();
     } finally { setBusy(false); }
-  } }, input, scanBtn, rescanBtn);
+  };
+  const form = el('form', { class: 'sg-scan__form', onsubmit: (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const r = repoInBox();
+    if (r) publicScan(r, !!(e.submitter && e.submitter.dataset.refresh === '1'));
+  } }, input, el('span', { class: 'sg-scan__buttons' }, scanBtn, rescanBtn, deepBtn));
 
+  // Who's signed in, under the form. Its two texts share one place, which keeps the height of the longer one, so the box
+  // doesn't move when the app's status arrives. Both are hidden until then.
+  const about = el('span', { class: 'is-off', id: 'sg-deep-about' }, 'Deep scan signs in with GitHub to check the settings only a repo’s admins can see.');
+  const user = el('span', { class: 'is-off' });
+  const who = el('p', { class: 'sg-scan__who' }, about, user);
+  const showWho = (st) => {
+    const login = st && st.configured && st.user;
+    user.replaceChildren(...(login ? ['Signed in as ', el('span', { translate: 'no' }, `@${login}`),
+      el('span', { 'aria-hidden': 'true' }, ' · '), el('span', { class: 'sg-sr' }, '. '), el('a', { href: '/app/logout' }, 'Sign out')] : []));
+    about.classList.toggle('is-off', !!login);
+    user.classList.toggle('is-off', !login);
+  };
+  app.status().then(showWho);
+
+  // The private scan: the CLI, run on the person's machine with their own token, and its report, read in the browser.
   const cmd = el('code', { translate: 'no' });
   const updateCmd = () => { cmd.textContent = `node sosf-scan.mjs ${repo || 'OWNER/REPO'}`; };
   updateCmd();
@@ -1192,36 +1296,74 @@ export function renderScanPanel(opts = {}) {
       updateCmd(); emit();
     } catch (err) { sayError('Couldn’t load that report.', `${err.message}. Load the JSON file that sosf-scan.mjs wrote, named like sosf-report-owner-repo.json.`); }
   } });
+  const priv = el('div', { class: 'sg-private' },
+    el('p', {}, 'Run the scanner on your own machine with your own GitHub token and Node.js 20 or newer; its report stays in your browser.'),
+    el('a', { class: 'sg-btn', href: '/download/sosf-scan.mjs', download: 'sosf-scan.mjs' }, 'Download sosf-scan.mjs'),
+    el('div', { class: 'sg-cmd' }, cmd, copyButton(() => cmd.textContent)),
+    el('label', { class: 'sg-btn' }, 'Load the report', file));
+  // A link to the private scan from a message: opens the <details> the page put it in, if there is one.
+  const showPrivate = () => {
+    const d = priv.closest('details');
+    if (d) d.open = true;
+    const to = (d && d.querySelector(':scope > summary')) || priv;
+    to.scrollIntoView({ block: 'nearest' });
+    if (d) to.focus();
+  };
 
-  // A hidden stand-in the size of the usual final box, so the layers don't grow when the answer arrives.
-  const appBox = el('div', { class: 'sg-layer__body' }, el('p', { class: 'sg-sr' }, 'Checking the app…'),
-    el('p', { class: 'sg-placeholder', 'aria-hidden': 'true' }, 'Install the app on your repo and sign in. It checks the admin-only settings and can fix them in one click, or open a pull request with the fix.'),
-    el('span', { class: 'sg-btn sg-placeholder', 'aria-hidden': 'true' }, 'Install the app ↗'), el('span', { class: 'sg-btn sg-placeholder', 'aria-hidden': 'true' }, 'Sign in with GitHub'));
-  app.status().then((st) => {
-    appBox.replaceChildren();
-    if (!st.configured) { appBox.append(el('p', {}, 'Sign in with GitHub isn’t available on this copy of the site.')); return; }
-    appBox.append(el('p', {}, 'Install the app on your repo and sign in. It checks the admin-only settings and can fix them in one click, or open a pull request with the fix.'),
-      el('a', { class: 'sg-btn', href: st.install_url, target: '_blank', rel: 'noopener' }, 'Install the app ↗'));
-    if (!st.user) { appBox.append(el('a', { class: 'sg-btn', href: app.loginUrl() }, 'Sign in with GitHub')); return; }
-    const b = el('button', { class: 'sg-btn sg-btn--primary', type: 'button' }, `Check settings as @${st.user}`);
-    b.addEventListener('click', async () => {
-      if (b.getAttribute('aria-disabled') === 'true') return;
-      const r = parseRepoInput(input.value);
-      if (!r) { sayError('Enter a repository first.'); input.focus(); return; }
-      b.setAttribute('aria-disabled', 'true');
-      say(`Checking ${r} through the GitHub App.`);
-      try {
-        const rep = await app.check(r);
-        switchTo(rep.repo);
-        reports.set('app', rep);
-        say(`Checked ${rep.repo} through the GitHub App.`);
-        updateCmd(); emit();
-      } catch (err) {
-        // The API's own hint when it sent one; otherwise (a network failure, say) the likely causes.
-        sayError('The GitHub App check didn’t finish.', err.code ? err.message : `${sentence(err.message)} Check that the app is installed on this repository and that you’re signed in as one of its admins.`);
-      } finally { b.removeAttribute('aria-disabled'); }
-    });
-    appBox.append(b, el('a', { href: '/app/logout', class: 'sg-muted' }, 'Sign out'));
+  // Deep scan: the admin-only checks through the GitHub App, which needs a sign-in with GitHub and the app installed on
+  // the repository. Each step that needs GitHub sends the person there only from a click; auto is set when the page
+  // carries on after GitHub sent them back, and then it doesn't send them again.
+  let away = false; // Deep scan sent this tab to GitHub to sign in, and stays busy until the page goes
+  const unavailable = () => sayError('Deep scan isn’t available on this copy of the site.',
+    'Use ', el('button', { type: 'button', class: 'sg-link', onclick: showPrivate }, 'Scan privately'), ' instead, with an admin’s GitHub token.');
+  const notAdmin = (r, login) => sayError(`Deep scan needs an admin of ${r}.`,
+    login ? `You’re signed in as @${login}. ` : '', el('a', { href: '/app/logout' }, 'Sign out'), ' to switch accounts.');
+  const needsApp = (r, url) => say(
+    el('p', {}, `Deep scan needs the GitHub App on ${r}. GitHub shows what it can access before anything is installed.`),
+    el('a', { class: 'sg-btn sg-btn--primary', href: url || (app._statusValue || {}).install_url, onclick: () => leaveFor(r) }, 'Install the app on GitHub'));
+  const deepScan = async (r, { auto = false } = {}) => {
+    setBusy(true, deepBtn);
+    say(`Checking your access to ${r}…`);
+    try {
+      const st = await app.status();
+      if (!st.configured) return unavailable();
+      // A press asks afresh (the app may have been installed since this page asked); carrying on, this page just loaded.
+      const info = st.user ? await app.repo(r, { fresh: !auto }) : null;
+      if (!info || info.code === 'sign_in_required') {
+        if (auto) return sayError('GitHub sign-in didn’t finish.', 'Press Deep scan to try again.');
+        away = true;
+        leaveFor(r);
+        say('Opening GitHub to sign in…');
+        return location.assign(app.loginUrl(backTo(r)));
+      }
+      if (info.error) return sayError(`Couldn’t check ${r} with the GitHub App.`, sentence(info.error));
+      if (!info.admin) return notAdmin(r, st.user);
+      if (!info.installed) return needsApp(r, info.install_url);
+      say(`Scanning ${r} with the GitHub App. This can take a minute.`);
+      const rep = await app.check(r);
+      switchTo(rep.repo);
+      reports.set('app', rep);
+      say(`Deep scanned ${rep.repo}.`);
+      updateCmd(); emit();
+    } catch (err) {
+      // The check asks GitHub again, so it can refuse for a reason that turned up since the answer above.
+      const st = app._statusValue || {};
+      if (err.code === 'not_admin') return notAdmin(r, st.user);
+      if (err.code === 'app_not_installed') return needsApp(r, st.install_url);
+      // The API's own hint when it sent one; otherwise (a network failure, say) what to do.
+      sayError('The deep scan didn’t finish.', err.code ? err.message : `${sentence(err.message)} Press Deep scan to try again.`);
+    } finally { if (!away) setBusy(false); }
+  };
+  deepBtn.addEventListener('click', () => {
+    if (busy) return;
+    const r = repoInBox();
+    if (r) deepScan(r);
+  });
+  // The Back button can bring the page back from GitHub as it was, mid-trip. The trip is off, and so is what was asked for.
+  addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    safeSet(session(), INTENT_KEY, null);
+    if (away) { away = false; setBusy(false); say(); }
   });
 
   // A report produced elsewhere on the page (for example the app's re-check after a one-click fix) joins this panel's set.
@@ -1233,21 +1375,25 @@ export function renderScanPanel(opts = {}) {
     updateCmd(); emit();
   });
 
-  root.append(form, msg, el('div', { class: 'sg-layers' },
-    el('div', { class: 'sg-layer' }, el('h3', {}, '1 · Public scan'), el('div', { class: 'sg-layer__body' },
-      el('p', {}, 'Reads your files, workflows and public settings, the same things anyone can see. Use the box above.'))),
-    el('div', { class: 'sg-layer' }, el('h3', {}, '2 · Private scan'), el('div', { class: 'sg-layer__body' },
-      el('p', {}, 'Run it on your machine with your own token to check admin-only settings. It’s read-only and needs only Node.js 20 or newer; its report stays in your browser.'),
-      el('a', { class: 'sg-btn', href: '/download/sosf-scan.mjs', download: 'sosf-scan.mjs' }, 'Download sosf-scan.mjs'),
-      el('div', { class: 'sg-cmd' }, cmd, copyButton(() => cmd.textContent)),
-      el('label', { class: 'sg-btn' }, 'Load the report', file))),
-    el('div', { class: 'sg-layer' }, el('h3', {}, '3 · GitHub App'), appBox)));
+  root.append(form, who, msg, priv);
   const notice = takeAppNotice();
-  if (notice) (notice.error ? sayError(notice.text) : say(notice.text));
+  const resume = takeIntent({ app: notice && notice.key, repo });
+  if (notice && notice.text) (notice.error ? sayError(notice.text) : say(notice.text));
   if (reports.size) queueMicrotask(emit);
-  // A shared link (?repo=owner/name) with no scan of that repo in this browser scans straight away.
-  if (autoScan && !reports.has('public') && parseRepoInput(new URLSearchParams(location.search).get('repo') || '')) {
-    queueMicrotask(() => form.requestSubmit());
+  if (resume && resume.item) {
+    // Back from GitHub to a check's fix: the page opens the check its address names (#fix=…), so name this one.
+    if (new URLSearchParams(location.hash.slice(1)).get('fix') !== resume.item) {
+      try { history.replaceState(history.state, '', `${location.pathname}${location.search}#fix=${resume.item}`); } catch { /* sandboxed */ }
+    }
+  } else if (resume) {
+    // Back from GitHub after Deep scan: carry on. Busy from here, so the page can tell that a scan is on its way.
+    setBusy(true, deepBtn);
+    queueMicrotask(() => deepScan(resume.repo, { auto: true }));
+  } else if (autoScan && !notice && !reports.has('public') && parseRepoInput(new URLSearchParams(location.search).get('repo') || '')) {
+    // A shared link (?repo=owner/name) with no scan of that repo in this browser scans straight away. A page that GitHub
+    // sent someone back to isn't a shared link.
+    setBusy(true);
+    queueMicrotask(() => publicScan(repo));
   }
   return root;
 }

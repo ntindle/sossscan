@@ -224,6 +224,32 @@ describe('the facts on the pages', () => {
     );
   });
 
+  it("lists everything the home page keeps in the browser, as the page's code names it", () => {
+    const code = [
+      'public/shared/core.js',
+      'public/pipeline/pipeline.js',
+      'public/shared/theme.js',
+      'public/index.html',
+    ].map(read);
+    const names = new Set(
+      code.flatMap((text) => [...text.matchAll(/["'`]((?:sg|pl):[A-Za-z-]+:?)/g)].map((m) => m[1])),
+    );
+    // The page's own events, which nothing stores.
+    const events = ['sg:report', 'sg:progress'];
+    // Each storage key (one ending in ":" is one per repository) and what the privacy page calls what it holds.
+    const kept: Record<string, string[]> = {
+      'pl:theme': ['your theme'],
+      'sg:lastRepo': ['the last repository you looked at'],
+      'sg:report:': ['the latest public scan of each repository', 'reports from deep scans', 'reports from the CLI'],
+      'sg:progress:': ['the checks you marked done'],
+      'sg:intent': ['the repository to deep scan, or the check whose fix you had open', 'after 15 minutes'],
+    };
+    expect([...names].filter((n) => !events.includes(n)).sort()).toEqual(Object.keys(kept).sort());
+    const privacy = pageMarkdown('/privacy');
+    for (const phrase of Object.values(kept).flat()) expect(privacy).toContain(phrase);
+    expect(read('public/shared/core.js')).toContain('export const INTENT_TTL = 15 * 60 * 1000;');
+  });
+
   it('documents every option the CLI has', () => {
     const options = /const OPTIONS = \{([\s\S]*?)\} as const;/.exec(read('lib/scanner/cli.ts'))![1];
     const names = [...options.matchAll(/^\s*(\w+): \{/gm)].map((m) => m[1]);

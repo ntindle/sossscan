@@ -370,7 +370,8 @@ describe("the site's page", () => {
     expect(err?.message).toBe(
       "You aren't signed in with GitHub, or your sign-in has expired. Sign in with GitHub, then try again.",
     );
-    expect(await sg.app.repo('octo/demo')).toEqual({ error: err?.message });
+    // With its code, so Deep scan can tell a sign-in that has expired from other trouble.
+    expect(await sg.app.repo('octo/demo')).toEqual({ error: err?.message, code: 'sign_in_required' });
   });
 });
 

@@ -49,7 +49,9 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 The page saves a few things in your browser's storage, on your device:
 
 - in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done, with any pull request the app opened for them;
-- in sessionStorage: reports from the GitHub App, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
+- in sessionStorage: reports from deep scans, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
+
+While you sign in with GitHub or install the app, sessionStorage also holds what you asked for: the repository to deep scan, or the check whose fix you had open, with its repository and the time. The page deletes it the next time it loads, and after 15 minutes it isn't used.
 
 A report from the CLI without admin access is marked as a public scan, so the page keeps it in localStorage in place of the public scan of that repository. Clearing this site's data in your browser removes all of it. The prompts for AI coding agents are built in the page too, and copying one sends nothing.
 

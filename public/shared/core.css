@@ -63,8 +63,20 @@
 .sg-hint { color: var(--sg-muted); font-size: .9em; }
 .sg-remedy code { font-family: var(--sg-mono); font-size: .9em; overflow-wrap: anywhere; }
 
-.sg-scan { font: 15px/1.5 var(--sg-font); color: var(--sg-fg); }
+/* The form is one row where it fits; in a narrow box the repo gets a row of its own, and the three buttons share the next.
+   The box measures itself (a container), so it works wherever a page puts it. */
+.sg-scan { font: 15px/1.5 var(--sg-font); color: var(--sg-fg); container-type: inline-size; }
 .sg-scan__form { display: flex; gap: 8px; flex-wrap: wrap; }
+.sg-scan__buttons { display: flex; gap: 8px; }
+@container (max-width: 31rem) {
+  .sg-scan__form > .sg-input { flex-basis: 100%; }
+  .sg-scan__buttons { flex: 1 1 100%; }
+  .sg-scan__buttons > .sg-btn { flex: 1 1 0; justify-content: center; }
+}
+/* Who's signed in: its two texts share one grid cell, so the line keeps the height of the longer one. */
+.sg-scan__who { display: grid; margin: 6px 0 0; color: var(--sg-muted); font-size: .9em; }
+.sg-scan__who > * { grid-area: 1 / 1; }
+.sg-scan__who > .is-off { visibility: hidden; }
 .sg-scan__msg { min-height: 1.5em; margin: 8px 0; color: var(--sg-muted); }
 .sg-scan__msg p { margin: 0; }
 .sg-scan__msg.is-error { padding: 9px 12px; border: 1px solid var(--sg-fail); border-left-width: 4px; border-radius: calc(var(--sg-radius) - 4px);
@@ -72,12 +84,13 @@
 .sg-err__title { font-weight: 600; }
 .sg-err__next { margin-top: 2px; }
 .sg-btn[aria-disabled="true"] { opacity: .6; cursor: progress; }
-.sg-layers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sg-gap); }
-.sg-scan--compact .sg-layers { display: none; }
-.sg-layer { border: 1px solid var(--sg-border); border-radius: var(--sg-radius); padding: 12px; background: var(--sg-surface); }
-.sg-layer h3 { margin: 0 0 6px; font-size: .95em; }
-.sg-layer p { margin: 0 0 8px; font-size: .9em; }
-.sg-layer__body { display: grid; gap: 8px; justify-items: start; }
+.sg-scan__msg > .sg-btn { margin-top: 8px; }
+/* A button that reads as a link, inside a sentence. */
+.sg-link { padding: 0; border: 0; background: none; color: var(--sg-accent); font: inherit; text-decoration: underline; cursor: pointer; }
+/* The private scan: a sentence, then the download, the command and the report, in that order. */
+.sg-private { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sg-private > p { flex: 1 1 100%; margin: 0; font-size: .9em; }
+.sg-scan--compact .sg-private { display: none; }
 .sg-cmd { display: flex; gap: 6px; align-items: center; max-width: 100%; }
 .sg-cmd code { font: 12px var(--sg-mono); background: var(--sg-code-bg); padding: 3px 6px; border-radius: 4px; overflow-wrap: anywhere; }
 /* Visually hidden but still focusable, so the "Load the report" label works from the keyboard. */
@@ -138,8 +151,6 @@ pre.sg-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sg-picker .sg-btn[disabled] { cursor: not-allowed; }
 /* On phones the two actions share a row: the list needs the height more than the buttons need the width. */
 @media (max-width: 480px) { .sg-picker .sg-dialog__actions .sg-btn { flex: 1 1 0; } .sg-picker__presets .sg-btn { min-height: 36px; } }
-
-.sg-placeholder { visibility: hidden; }
 
 /* The hidden attribute must win over component display rules. */
 [hidden] { display: none !important; }
