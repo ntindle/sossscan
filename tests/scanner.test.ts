@@ -32,10 +32,21 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+import { fundFromGuide } from '../lib/fund-data.ts';
+import { fundEntry, sharingResult, trainingResult } from '../lib/scanner/fund.ts';
 import { Hops } from '../lib/scanner/hops.ts';
 import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
 import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
+import {
+  customQueries,
+  dependabotLimit,
+  licenseGate,
+  memorySafety,
+  refreshBacklog,
+  tracedSecrets,
+} from '../lib/scanner/self-checks.ts';
+import { covers, supportTable, targetRelease } from '../lib/scanner/versions.ts';
 import { parseYaml } from '../lib/scanner/yaml-lite.ts';
 import type { YNode } from '../lib/scanner/yaml-lite.ts';
 import YAML from 'yaml';
@@ -2408,6 +2419,494 @@ describe('ci-untrusted-artifacts-caches', () => {
     expect(rep.findings.filter((f) => f.item_id === 'ci-untrusted-artifacts-caches').map((f) => f.url)).toEqual([
       'https://github.com/octo/tiny/blob/main/.github/workflows/release.yml#L8',
     ]);
+  });
+});
+
+describe('rel-security-support', () => {
+  const policy = (rows: string[], extra = '') =>
+    [
+      '# Security Policy',
+      '',
+      '## Supported Versions',
+      '',
+      '| Version | Supported |',
+      '| ------- | --------- |',
+      ...rows,
+      '',
+    ]
+      .concat(['## Reporting a Vulnerability', '', 'Email security@example.com, or use a private advisory.', extra])
+      .join('\n');
+  const releases = (...tags: (string | [string, boolean])[]) => ({
+    json: tags.map((t) =>
+      Array.isArray(t) ? { tag_name: t[0], prerelease: t[1] } : { tag_name: t, prerelease: false },
+    ),
+  });
+  const check = async (security: string | null, api: Record<string, Route> = {}) => {
+    const files: Record<string, string> = security === null ? {} : { 'SECURITY.md': security };
+    const { rep, calls } = await scanTiny(tiny(files, api));
+    return { r: statusOf(rep, 'rel-security-support'), calls };
+  };
+
+  it('passes when a supported row covers the highest stable version among the latest releases', async () => {
+    // mastodon publishes several lines at once, so the newest release can be on an old line.
+    const { r } = await check(policy(['| 4.7.x | :white_check_mark: |', '| 4.6.x | ✅ |', '| < 4.6 | :x: |']), {
+      '/releases?per_page=10': releases('v4.4.28', 'v4.7.5', 'v4.6.11', ['v4.8.0-beta.1', true], 'v4.8.0-rc.1'),
+    });
+    expect(r).toEqual(['pass', 'SECURITY.md lists 4.7.x as supported, which covers the newest release, v4.7.5']);
+  });
+
+  it('warns on a table that no longer covers the newest release, and on the unedited template', async () => {
+    const stale = await check(policy(['| 1.0.x | ✅ |', '| 0.16.x | ✅ |', '| < 0.14 | ❌ |']), {
+      '/releases?per_page=10': releases('v1.1.0', 'v1.0.9'),
+    });
+    expect(stale.r).toEqual(['warn', 'SECURITY.md lists 1.0.x, 0.16.x as supported, but the newest release is v1.1.0']);
+    const template = [
+      '# Security Policy',
+      '',
+      '## Supported Versions',
+      '',
+      'Use this section to tell people about which versions of your project are',
+      'currently being supported with security updates.',
+      '',
+      '| Version | Supported          |',
+      '| ------- | ------------------ |',
+      '| 5.1.x   | :white_check_mark: |',
+      '| 5.0.x   | :x:                |',
+      '| 4.0.x   | :white_check_mark: |',
+      '| < 4.0   | :x:                |',
+    ].join('\n');
+    expect((await check(template, { '/releases?per_page=10': releases('v5.1.2') })).r).toEqual([
+      'warn',
+      "SECURITY.md still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)",
+    ]);
+  });
+
+  it('gives info for words without a table, or for no statement, and never fails', async () => {
+    const words = ['# Security', '', '## Supported Versions', '', 'Only the latest release gets security fixes.'].join(
+      '\n',
+    );
+    expect((await check(words, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      'SECURITY.md says which versions get fixes in words, not a table: check it covers v2.3.0',
+    ]);
+    const none = 'Please report vulnerabilities privately through a GitHub security advisory. '.repeat(4);
+    expect((await check(none, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      "SECURITY.md doesn't say which versions get security fixes",
+    ]);
+    expect((await check(null, { '/releases?per_page=10': releases('v2.3.0') })).r).toEqual([
+      'info',
+      'No SECURITY.md to say which versions get security fixes',
+    ]);
+  });
+
+  it('compares with the tags when there are no releases, and does not apply without releases, tags or publishing', async () => {
+    const table = policy(['| 2.3.x | ✅ |']);
+    const tagged = await check(table, {
+      '/releases?per_page=10': { json: [] },
+      '/tags?per_page=100': { json: [{ name: 'v2.3.0' }, { name: 'v2.2.1' }] },
+    });
+    expect(tagged.r).toEqual(['pass', 'SECURITY.md lists 2.3.x as supported, which covers the newest release, v2.3.0']);
+    expect(tagged.calls.map(([u]) => u)).toContain(`${TINY}/tags?per_page=100`);
+    const nothing = await check(table, { '/releases?per_page=10': { json: [] }, '/tags?per_page=100': { json: [] } });
+    expect(nothing.r).toEqual(['na', 'No releases, tags or publishing workflow']);
+  });
+
+  it("says unknown when it couldn't read the releases to compare the table with", async () => {
+    const { r } = await check(policy(['| 2.3.x | ✅ |']), { '/releases?per_page=10': { status: 500, text: 'oops' } });
+    expect(r).toEqual(['unknown', 'Could not read the releases to compare with the table in SECURITY.md (HTTP 500)']);
+  });
+
+  it('reads the version cells the research found tables use', () => {
+    const v = (s: string) => s.split('.').map(Number);
+    const cases: [string, string, boolean | null][] = [
+      ['2.latest', '2.9.1', true],
+      ['0.2.x+', '0.3.1', true],
+      ['2.0.X', '2.0.7', true],
+      ['2.0.latest', '2.1.0', false],
+      ['>= 1.2', '1.10.0', true],
+      ['< 4.0', '4.0.1', false],
+      ['latest', '9.9', true],
+      ['4.28.2', '4.29.5', false],
+      // mastodon's table names each line by its first release.
+      ['4.7.0', '4.7.5', true],
+      ['4.7.0', '4.8.0', false],
+      ['3.11', '3.11.2', true],
+      ['main', '1.0', null],
+    ];
+    for (const [cell, ver, want] of cases) expect([cell, covers(cell, v(ver))]).toEqual([cell, want]);
+    const t = supportTable(
+      policy(['| [v6.x](https://example.com) | ✅ |', '| 3.20.x (LTS) | ✅ |', '| 5.x | until 2020-01-01 |']),
+    );
+    expect(t.rows).toEqual([
+      { version: 'v6.x', supported: true },
+      { version: '3.20.x', supported: true },
+      { version: '5.x', supported: false },
+    ]);
+    expect(targetRelease([{ tag: 'curl-8_11_0' }, { tag: 'curl-8_10_1' }])).toEqual({
+      tag: 'curl-8_11_0',
+      version: [8, 11, 0],
+    });
+  });
+});
+
+describe('deps-refresh', () => {
+  const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const pr = (n: number, days: number, login = 'dependabot[bot]') => ({
+    number: n,
+    created_at: ago(days),
+    user: { login },
+    html_url: `https://github.com/octo/tiny/pull/${n}`,
+  });
+  const PULLS = '/pulls?state=open&sort=created&direction=asc&per_page=100';
+  const dependabot = (limit = '') =>
+    [
+      'version: 2',
+      'updates:',
+      '  - package-ecosystem: npm',
+      '    directory: /',
+      limit,
+      '  - package-ecosystem: github-actions',
+      '    directory: /',
+    ]
+      .filter((l) => l !== '')
+      .join('\n');
+  const refresh = async (pulls: Route, yml = dependabot()) =>
+    statusOf((await scanTiny(tiny({ '.github/dependabot.yml': yml }, { [PULLS]: pulls }))).rep, 'deps-refresh');
+
+  it('warns when the oldest update pull request is over 90 days old', async () => {
+    expect(await refresh({ json: [pr(7, 3, 'octocat'), pr(3, 120), pr(9, 2)] })).toEqual([
+      'warn',
+      'The oldest open Dependabot pull request, #3, is 120 days old',
+    ]);
+    const renovate = await scanTiny(
+      tiny({ 'renovate.json': '{}' }, { [PULLS]: { json: [pr(1, 200, 'renovate[bot]')] } }),
+    );
+    expect(statusOf(renovate.rep, 'deps-refresh')).toEqual([
+      'warn',
+      'The oldest open Renovate pull request, #1, is 200 days old',
+    ]);
+  });
+
+  it('warns when as many Dependabot pull requests are open as dependabot.yml allows', async () => {
+    // open-pull-requests-limit: 1 for npm, and the default 5 for github-actions.
+    const six = { json: [1, 2, 3, 4, 5, 6].map((n) => pr(n, n)) };
+    expect(await refresh(six, dependabot('    open-pull-requests-limit: 1'))).toEqual([
+      'warn',
+      'Dependabot has 6 pull requests open, as many as dependabot.yml allows at once, so new updates wait',
+    ]);
+    expect(dependabotLimit(dependabot('    open-pull-requests-limit: 0'))).toBe(5);
+  });
+
+  it('adds nothing for a short, fresh queue, or when the pull requests could not be listed', async () => {
+    expect(await refresh({ json: [pr(1, 10), pr(2, 40)] })).toBeNull();
+    expect(await refresh({ status: 403, json: { message: 'Forbidden' } })).toBeNull();
+    // A full page that has no bot pull request says nothing about the ones after it.
+    expect(
+      refreshBacklog(
+        Array.from({ length: 100 }, (_, i) => pr(i, 300, 'octocat')),
+        5,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('code-memory-safety', () => {
+  const memory = async (languages: Route, files: Record<string, string>, opts: Parameters<typeof tiny>[2] = {}) =>
+    statusOf((await scanTiny(tiny(files, { '/languages': languages }, opts))).rep, 'code-memory-safety');
+
+  it("doesn't apply when no code is in a language without memory safety", async () => {
+    expect(await memory({ json: { TypeScript: 50000, JavaScript: 1200, Shell: 90 } }, { 'src/index.ts': 'x' })).toEqual(
+      ['na', 'No C, C++ or other code without memory safety, and no submodules'],
+    );
+  });
+
+  it('adds nothing when any guard fires: native bytes, a native file, a submodule, a cut-short tree, a failed lookup', async () => {
+    // aiohttp: GitHub counts Cython and a little C, and llhttp is a submodule.
+    expect(await memory({ json: { Python: 3450007, Cython: 50039, C: 170 } }, { 'aiohttp/web.py': 'x' })).toBeNull();
+    const js = { json: { JavaScript: 1200 } };
+    expect(await memory(js, { 'index.js': 'x' }, { tree: [{ path: 'vendor/llhttp', type: 'commit' }] })).toBeNull();
+    expect(await memory(js, { 'index.js': 'x', 'third_party/zlib/inflate.c': 'x' })).toBeNull();
+    expect(await memory(js, { 'index.js': 'x' }, { truncated: true })).toBeNull();
+    expect(await memory({ status: 403, json: {} }, { 'index.js': 'x' })).toBeNull();
+    expect(memorySafety({ 'Unix Assembly': 10 }, [], [], true)).toBeNull();
+    expect(memorySafety({ WebAssembly: 10 }, [], [], true)?.status).toBe('na');
+  });
+});
+
+describe('deps-licenses', () => {
+  const ci = (steps: string[]) =>
+    workflow(['on: pull_request', 'jobs:', '  check:', '    runs-on: ubuntu-latest', '    steps:', ...steps]);
+  const gate = async (files: Record<string, string>) => statusOf((await scanTiny(tiny(files))).rep, 'deps-licenses');
+
+  it('passes on dependency review with a license list, inline or in its config file', async () => {
+    expect(
+      await gate({
+        '.github/workflows/review.yml': ci([
+          '      - uses: actions/dependency-review-action@v4',
+          '        with:',
+          '          allow-licenses: MIT, Apache-2.0',
+        ]),
+      }),
+    ).toEqual(['pass', 'Dependency review checks the licenses of new dependencies on pull requests']);
+    expect(
+      await gate({
+        '.github/workflows/review.yml': ci([
+          '      - uses: actions/dependency-review-action@v4',
+          '        with:',
+          '          config-file: ./.github/dependency-review-config.yml',
+        ]),
+        '.github/dependency-review-config.yml': 'fail-on-severity: high\nallow-licenses:\n  - MIT\n  - BSD-3-Clause\n',
+      }),
+    ).toEqual([
+      'pass',
+      'Dependency review checks the licenses of new dependencies (.github/dependency-review-config.yml)',
+    ]);
+    // Without a license list, dependency review gates vulnerabilities only (deps-review counts it).
+    expect(
+      await gate({ '.github/workflows/review.yml': ci(['      - uses: actions/dependency-review-action@v4']) }),
+    ).toBeNull();
+  });
+
+  it("passes on cargo-deny when it checks licenses and deny.toml has an allow list, and on other checkers' allow lists", async () => {
+    const deny = '[advisories]\nyanked = "deny"\n\n[licenses]\nallow = ["MIT", "Apache-2.0"]\n';
+    expect(
+      await gate({ '.github/workflows/deny.yml': ci(['      - run: cargo deny check']), 'deny.toml': deny }),
+    ).toEqual(['pass', 'cargo-deny checks dependency licenses in CI']);
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci(['      - run: cargo deny check advisories bans']),
+        'deny.toml': deny,
+      }),
+    ).toBeNull();
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci(['      - run: cargo deny check']),
+        'deny.toml': '[advisories]\n',
+      }),
+    ).toBeNull();
+    expect(
+      await gate({
+        '.github/workflows/deny.yml': ci([
+          '      - uses: EmbarkStudios/cargo-deny-action@v2',
+          '        with:',
+          '          command: check licenses',
+        ]),
+        'deny.toml': deny,
+      }),
+    ).toEqual(['pass', 'cargo-deny checks dependency licenses in CI']);
+    expect(await gate({ '.github/workflows/go.yml': ci(['      - run: go-licenses check ./...']) })).toEqual([
+      'pass',
+      'go-licenses checks dependency licenses in CI',
+    ]);
+    // One hop into package.json, as evcc's check does.
+    expect(
+      await gate({
+        '.github/workflows/ci.yml': ci(['      - run: npm run licenses']),
+        'package.json': JSON.stringify({ scripts: { licenses: 'license-checker --production --onlyAllow "MIT;ISC"' } }),
+      }),
+    ).toEqual(['pass', 'license-checker checks dependency licenses in CI']);
+    expect(await gate({ '.github/workflows/ci.yml': ci(['      - run: npx license-checker --summary']) })).toBeNull();
+    expect(licenseGate).toBeTypeOf('function');
+  });
+});
+
+describe('sast-custom-queries', () => {
+  const pack = {
+    '.github/codeql/queries/qlpack.yml': 'name: octo/tiny-queries\nversion: 0.0.1\n',
+    '.github/codeql/queries/unsafe-eval.ql': 'import javascript\nselect 1',
+  };
+  const codeql = (lines: string[]) => workflow(['on: push', 'jobs:', '  analyze:', '    steps:', ...lines]);
+  const queries = async (files: Record<string, string>) =>
+    statusOf((await scanTiny(tiny(files))).rep, 'sast-custom-queries');
+
+  it("passes when a CodeQL config, an init input or a reusable workflow runs the repository's own pack", async () => {
+    expect(
+      await queries({
+        ...pack,
+        '.github/codeql/config.yml': 'queries:\n  - uses: ./.github/codeql/queries\n  - uses: security-extended\n',
+        '.github/workflows/codeql.yml': codeql([
+          '      - uses: github/codeql-action/init@v4',
+          '        with:',
+          '          config-file: ./.github/codeql/config.yml',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (./.github/codeql/queries)"]);
+    // virtualenv passes its queries to a reusable workflow.
+    expect(
+      await queries({
+        ...pack,
+        '.github/workflows/codeql.yml': workflow([
+          'on: push',
+          'jobs:',
+          '  codeql:',
+          '    uses: tox-dev/github-workflows/.github/workflows/codeql.yaml@v1',
+          '    with:',
+          '      queries: +./.github/codeql/queries',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (./.github/codeql/queries)"]);
+    expect(
+      await queries({
+        ...pack,
+        '.github/workflows/codeql.yml': codeql([
+          '      - uses: github/codeql-action/init@v4',
+          '        with:',
+          '          packs: octo/tiny-queries',
+        ]),
+      }),
+    ).toEqual(['pass', "CI runs this repository's own CodeQL queries (octo/tiny-queries)"]);
+  });
+
+  it("adds nothing for built-in suites, GitHub's packs (codeql-action/pr-diff-range too) or a vendored pack", async () => {
+    const builtIn = codeql([
+      '      - uses: github/codeql-action/init@v4',
+      '        with:',
+      '          queries: security-extended',
+      '          packs: codeql/python-queries, codeql-action/pr-diff-range',
+    ]);
+    expect(await queries({ ...pack, '.github/workflows/codeql.yml': builtIn })).toBeNull();
+    // Default setup doesn't run query files from the repo.
+    expect(await queries(pack)).toBeNull();
+    const vendored = { 'vendor/lib/qlpack.yml': 'name: x/y\n', 'vendor/lib/q.ql': 'select 1' };
+    expect(
+      await customQueries({
+        workflows: [
+          {
+            path: '.github/workflows/c.yml',
+            text: codeql([
+              '      - uses: github/codeql-action/init@v4',
+              '        with:',
+              '          queries: ./vendor/lib',
+            ]),
+          },
+        ],
+        files: Object.keys(vendored),
+        read: async (p) => vendored[p as keyof typeof vendored] ?? null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('code-secret-handling', () => {
+  it('warns on a step that traces its commands while it has a secret, with the line', async () => {
+    const text = workflow([
+      'on: push',
+      'jobs:',
+      '  deploy:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: Deploy',
+      '        env:',
+      '          TOKEN: ${{ secrets.DEPLOY_TOKEN }}',
+      '        run: |',
+      '          set -ex',
+      '          ./deploy.sh "$TOKEN"',
+      '      - name: Lint',
+      '        run: |',
+      '          set -x',
+      '          make lint',
+      '      - name: Quiet',
+      '        env:',
+      '          TOKEN: ${{ secrets.DEPLOY_TOKEN }}',
+      '        run: |',
+      '          set +x',
+      '          ./upload.sh',
+      '      - name: Traced shell',
+      '        shell: bash -x {0}',
+      '        run: echo "${{ secrets.X }}" | ./login.sh',
+    ]);
+    const { rep } = await scanTiny(tiny({ '.github/workflows/deploy.yml': text }));
+    expect(statusOf(rep, 'code-secret-handling')).toEqual([
+      'warn',
+      '2 workflow steps trace their commands with set -x while using a secret',
+    ]);
+    // The Lint step traces without a secret, as zitadel's does: that's no leak.
+    expect(rep.findings.filter((f) => f.item_id === 'code-secret-handling').map((f) => [f.line, f.severity])).toEqual([
+      [10, 'low'],
+      [24, 'low'],
+    ]);
+    expect(
+      tracedSecrets([
+        { path: 'w.yml', text: workflow(['on: push', 'jobs:', '  a:', '    steps:', '      - run: set -x']) },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('ai-assisted-security', () => {
+  it('passes on a Copilot code review rule for the default branch, and adds nothing otherwise', async () => {
+    const rules = (json: unknown) => scanTiny(tiny({}, { '/rules/branches/main': { json } }));
+    const on = (
+      await rules([
+        { type: 'pull_request', ruleset_id: 1 },
+        { type: 'copilot_code_review', ruleset_id: 9, parameters: { review_on_push: true } },
+      ])
+    ).rep;
+    expect(statusOf(on, 'ai-assisted-security')).toEqual([
+      'pass',
+      'A ruleset has Copilot review the pull requests to the default branch',
+    ]);
+    expect(on.results['ai-assisted-security'].details).toEqual({ ruleset_id: 9 });
+    expect(statusOf((await rules([{ type: 'pull_request', ruleset_id: 1 }])).rep, 'ai-assisted-security')).toBeNull();
+  });
+});
+
+describe("GitHub's Secure Open Source Fund (people-security-training, people-share-learnings)", () => {
+  const guide = JSON.parse(readFileSync(new URL('../public/data/guide.json', import.meta.url), 'utf8'));
+
+  it('ships a Fund list made from guide.json, so the two never drift', () => {
+    const shipped = JSON.parse(readFileSync(new URL('../lib/scanner/fund.json', import.meta.url), 'utf8'));
+    expect(shipped).toEqual(fundFromGuide(guide));
+    expect(shipped.repos).toHaveLength(guide.teams.length);
+  });
+
+  it('matches a repository exactly, ignoring case', () => {
+    expect(fundEntry('Actix/Actix-Web')?.repo).toBe('actix/actix-web');
+    expect(fundEntry('actix/actix-web-extras')).toBeNull();
+    expect(fundEntry('actix/actix')).toBeNull();
+    expect(fundEntry('nope/nope', 'actix/actix-web')?.repo).toBe('actix/actix-web');
+  });
+
+  it('passes training until two years after the latest session, and sharing for a team with a post', () => {
+    const entry = { repo: 'a/b', sessions: ['1-2', '3'], posts: [] };
+    expect(trainingResult(entry, new Date('2027-08-31T00:00:00Z'))?.summary).toBe(
+      'Took part in the GitHub Secure Open Source Fund (sessions 1-2 and 3), three weeks of security training with ' +
+        'GitHub Security Lab',
+    );
+    // Session 3 started in September 2025.
+    expect(trainingResult(entry, new Date('2027-09-01T00:00:00Z'))).toBeNull();
+    expect(trainingResult({ ...entry, sessions: ['9'] }, new Date('2040-01-01T00:00:00Z'))?.status).toBe('pass');
+    expect(trainingResult(null)).toBeNull();
+    expect(sharingResult(entry)).toBeNull();
+    const post = { title: 'What we changed', url: 'https://example.com/post', date: '2026-08-14' };
+    expect(sharingResult({ ...entry, posts: [post] })).toEqual({
+      status: 'pass',
+      summary: 'Wrote about its Fund work: "What we changed" (2026-08-14)',
+      evidence: [{ label: 'What we changed', url: 'https://example.com/post' }],
+      details: { posts: 1 },
+    });
+  });
+
+  it("credits a Fund repository's scan, and sends nothing anywhere to look it up", async () => {
+    const fundRepo = guide.teams.find(
+      (t: { posts: { tier: string }[]; sessions: string[] }) =>
+        t.posts.some((p) => p.tier === 'primary') && t.sessions.includes('4'),
+    );
+    const [owner, name] = fundRepo.repo.split('/');
+    const { rep, calls } = await scanTiny(
+      tiny({}, {}, { meta: { full_name: fundRepo.repo, name, owner: { login: owner, type: 'Organization' } } }),
+    );
+    expect([rep.results['people-security-training'].status, rep.results['people-share-learnings'].status]).toEqual([
+      'pass',
+      'pass',
+    ]);
+    expect(
+      calls
+        .map(([u]) => new URL(u).host)
+        .filter((h) => !h.endsWith('github.com') && !h.endsWith('githubusercontent.com')),
+    ).toEqual(['api.securityscorecards.dev', 'www.bestpractices.dev']);
+    expect(statusOf((await scanTiny(tiny({}))).rep, 'people-security-training')).toBeNull();
   });
 });
 
