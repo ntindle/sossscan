@@ -29,6 +29,7 @@ const P = 'private';
  * noBlock: the findings for workflows without a permissions block. Their token gets the repository's default, which
  * the public layer could only guess at; they're reworded here once the default is read. rulesetsFailed: the HTTP status
  * of the public layer's rulesets lookup if GitHub didn't answer it, which leaves unknown whether a tag ruleset exists.
+ * app: the token is the GitHub App's installation token, whose permissions are the app's, not an admin's.
  */
 export async function privateLayer(
   http: Http,
@@ -41,6 +42,7 @@ export async function privateLayer(
   finding: AddFinding,
   noBlock: Finding[],
   rulesetsFailed: number | null,
+  app = false,
 ): Promise<void> {
   const calls: [string, string][] = [
     ['vuln_alerts', `/repos/${repo}/vulnerability-alerts`],
@@ -320,6 +322,16 @@ export async function privateLayer(
       'ci-secrets-hygiene',
       'info',
       `${pyStr(get(got.secrets[1], 'total_count', 0))} repository Actions secret(s); prefer environment secrets and OIDC`,
+      null,
+      null,
+      P,
+    );
+  } else if (app && got.secrets[0] === 403) {
+    // The app has no "Secrets: read" permission. The call stays, so it works once an owner grants that.
+    res(
+      'ci-secrets-hygiene',
+      'unknown',
+      "The GitHub App can't read the names of Actions secrets; the CLI with an admin's token can check them",
       null,
       null,
       P,

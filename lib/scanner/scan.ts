@@ -788,11 +788,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   );
 
   // ---- code scanning
+  // A workflow GitHub lists as disabled (disabled_manually, disabled_inactivity, disabled_fork) or deleted doesn't run.
   const dyn = new Set(
-    pyIter(got.workflows[0] === 200 ? get(pyOr(got.workflows[1], {}), 'workflows', []) : []).map((w) =>
-      item(w, 'path'),
-    ),
+    pyIter(got.workflows[0] === 200 ? get(pyOr(got.workflows[1], {}), 'workflows', []) : [])
+      .filter((w) => {
+        const state = get(w, 'state');
+        return typeof state !== 'string' || !(state.startsWith('disabled') || state === 'deleted');
+      })
+      .map((w) => item(w, 'path')),
   );
+
   // The list shows CodeQL default setup and Dependabot's update runs, so without it neither can be ruled out.
   const dynFailed = failed('workflows');
   const codeqlDefault = dyn.has('dynamic/github-code-scanning/codeql');
@@ -1074,17 +1079,22 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       : 'Scorecard action not set up' + (rep.scorecard ? ` (public score ${pyStr(rep.scorecard.score)})` : ''),
     scorecardCi ? fileLink(scorecardCi[0]) : [],
   );
-  const bp: any[] =
-    !privateRepo && got.bestpractices[0] === 200 && Array.isArray(got.bestpractices[1]) ? got.bestpractices[1] : [];
+  const bp: Record<string, any>[] =
+    !privateRepo && got.bestpractices[0] === 200 && Array.isArray(got.bestpractices[1])
+      ? got.bestpractices[1].filter(isDict)
+      : [];
   if (privateRepo) {
     res('posture-best-practices-badge', 'na', 'The OpenSSF Best Practices badge is for open source (public) projects');
   } else if (bp.length) {
-    const lvl = pyOr(get(bp[0], 'badge_level'), get(bp[0], 'badge_percentage_0'));
+    // The lookup can return several projects (an old in_progress entry and a newer passing one): the one whose
+    // repo_url is this repo's, then the highest level, then the highest percentage, then the newest.
+    const best = bestBadge(bp, repo);
+    const lvl = pyOr(get(best, 'badge_level'), get(best, 'badge_percentage_0'));
     res(
       'posture-best-practices-badge',
-      pyIn(get(bp[0], 'badge_level'), ['passing', 'silver', 'gold']) ? 'pass' : 'warn',
+      pyIn(get(best, 'badge_level'), ['passing', 'silver', 'gold']) ? 'pass' : 'warn',
       `OpenSSF Best Practices badge: ${pyStr(lvl)}`,
-      [{ label: 'Badge', url: `https://www.bestpractices.dev/projects/${pyStr(get(bp[0], 'id'))}` }],
+      [{ label: 'Badge', url: `https://www.bestpractices.dev/projects/${pyStr(get(best, 'id'))}` }],
     );
   } else {
     res('posture-best-practices-badge', 'fail', 'No OpenSSF Best Practices badge');
@@ -1117,7 +1127,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   // ---- private layer (admin-only settings)
   if (admin) {
-    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed);
+    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed, assumeAdmin);
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);
@@ -1130,6 +1140,31 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   rep.api_calls = http.calls;
   log(`done: ${pyRepr(rep.summary)} (${http.calls} requests)`);
   return rep;
+}
+
+const BADGE_LEVELS: Record<string, number> = { gold: 4, silver: 3, passing: 2, in_progress: 1 };
+
+/** A repository URL compared by host path, without a scheme, www., .git or a trailing slash, in lower case. */
+function repoUrlKey(url: unknown): string {
+  let u = typeof url === 'string' ? url.trim().toLowerCase() : '';
+  for (const prefix of ['https://', 'http://']) if (u.startsWith(prefix)) u = u.slice(prefix.length);
+  if (u.startsWith('www.')) u = u.slice(4);
+  while (u.endsWith('/')) u = u.slice(0, -1);
+  if (u.endsWith('.git')) u = u.slice(0, -4);
+  return u;
+}
+
+/** The Best Practices project to report: this repo's own, then the best badge, then the newest. */
+export function bestBadge(projects: Record<string, any>[], repo: string): Record<string, any> {
+  const want = repoUrlKey(`https://github.com/${repo}`);
+  const own = (p: Record<string, any>) => (repoUrlKey(p.repo_url) === want ? 1 : 0);
+  const level = (p: Record<string, any>) => BADGE_LEVELS[String(p.badge_level)] ?? 0;
+  const pct = (p: Record<string, any>) => (typeof p.badge_percentage_0 === 'number' ? p.badge_percentage_0 : -1);
+  const updated = (p: Record<string, any>) => (typeof p.updated_at === 'string' ? p.updated_at : '');
+  return projects.reduce((a, b) => {
+    const d = own(b) - own(a) || level(b) - level(a) || pct(b) - pct(a);
+    return d > 0 || (d === 0 && updated(b) > updated(a)) ? b : a;
+  });
 }
 
 /** From this day GitHub gave new personal repositories (and new organizations) a read-only GITHUB_TOKEN by default. */

@@ -32,6 +32,7 @@ import {
 } from '../lib/scanner/index.ts';
 import type { Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
+import { bestBadge } from '../lib/scanner/scan.ts';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
 
@@ -674,8 +675,21 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
       'ci-fork-pr-approval': unknown('Could not read the fork PR approval policy (HTTP 403)'),
       'rel-gated-release': unknown('Could not read the environment protection rules (HTTP 403)'),
       'acct-least-privilege': unknown('Could not read the accounts with admin on this repo (HTTP 403)'),
-      'ci-secrets-hygiene': unknown('Could not read the repository Actions secrets (HTTP 403)'),
+      // The app has no "Secrets: read" permission, so its 403 points to the CLI instead of a retry.
+      'ci-secrets-hygiene': unknown(
+        "The GitHub App can't read the names of Actions secrets; the CLI with an admin's token can check them",
+      ),
     });
+    // The CLI with an admin's token that GitHub refuses keeps the plain message.
+    const solo = structuredClone(routesFor('admin-denied')['https://api.github.com/repos/solo/tool']) as Route;
+    Object.assign(solo.json as object, { permissions: { admin: true } });
+    const cli = scenarios['admin-denied'];
+    stubFetch({ ...routesFor('admin-denied'), 'https://api.github.com/repos/solo/tool': solo });
+    const viaCli = await scan(cli.repo, { token: 'admin-token', ossFuzzLookup: () => [] });
+    expect([viaCli.layer, viaCli.results['ci-secrets-hygiene']]).toEqual([
+      'private',
+      unknown('Could not read the repository Actions secrets (HTTP 403)'),
+    ]);
   });
 
   it('counts an advisory without a publication date, and takes the newest date of the others', async () => {
@@ -1777,4 +1791,128 @@ describe('CLI', () => {
       });
     },
   );
+});
+
+// --------------------------------------------------------------------------- 0.5.0: checks that were self-checks
+const TINY = 'https://api.github.com/repos/octo/tiny';
+const TINY_RAW = 'https://raw.githubusercontent.com/octo/tiny/main/';
+
+/** A small public repository on the fake GitHub: its files, more tree entries, API answers and repository fields. */
+function tiny(
+  files: Record<string, string>,
+  api: Record<string, Route | Route[]> = {},
+  { meta = {}, tree = [] as { path: string; type: string }[], truncated = false } = {},
+): Record<string, Route | Route[]> {
+  return {
+    [TINY]: {
+      json: {
+        name: 'tiny',
+        full_name: 'octo/tiny',
+        owner: { login: 'octo', type: 'User' },
+        default_branch: 'main',
+        private: false,
+        stargazers_count: 3,
+        created_at: '2025-01-01T00:00:00Z',
+        ...meta,
+      },
+    },
+    [`${TINY}/git/trees/main?recursive=1`]: {
+      json: { truncated, tree: [...Object.keys(files).map((path) => ({ path, type: 'blob' })), ...tree] },
+    },
+    ...Object.fromEntries(Object.entries(files).map(([p, text]) => [TINY_RAW + p, { text }])),
+    ...Object.fromEntries(Object.entries(api).map(([k, v]) => [k.startsWith('http') ? k : TINY + k, v])),
+  };
+}
+
+async function scanTiny(routes: Record<string, Route | Route[]>) {
+  const calls = stubFetch(routes);
+  const rep = await scan('octo/tiny', { token: 't', ossFuzzLookup: () => [] });
+  return { rep, calls };
+}
+
+/** A check's status and summary, or null when the scan left it out. */
+const statusOf = (rep: Report, id: string) =>
+  rep.results[id] ? [rep.results[id].status, rep.results[id].summary] : null;
+
+describe('scanner bugs fixed in 0.5.0', () => {
+  it('reports the Best Practices badge of this repository, then the best one (bug 1)', async () => {
+    // warpgate: an old in_progress entry whose repo_url ends in .git comes first, then the passing one.
+    const warpgate = [
+      {
+        id: 10110,
+        badge_level: 'in_progress',
+        badge_percentage_0: 15,
+        repo_url: 'https://github.com/octo/demo.git',
+        updated_at: '2025-03-01',
+      },
+      {
+        id: 12773,
+        badge_level: 'passing',
+        badge_percentage_0: 100,
+        repo_url: 'https://github.com/octo/demo',
+        updated_at: '2026-05-01',
+      },
+    ];
+    expect(bestBadge(warpgate, 'octo/demo').id).toBe(12773);
+    const ohmyzsh = [
+      { id: 1, badge_level: 'in_progress', badge_percentage_0: 84, repo_url: 'https://github.com/octo/demo' },
+      { id: 2, badge_level: 'in_progress', badge_percentage_0: 87, repo_url: 'https://github.com/octo/demo' },
+    ];
+    expect(bestBadge(ohmyzsh, 'octo/demo').id).toBe(2);
+    // Another project's passing badge doesn't beat this repository's own.
+    const other = [
+      { id: 3, badge_level: 'passing', repo_url: 'https://github.com/someone/else' },
+      { id: 4, badge_level: 'in_progress', badge_percentage_0: 40, repo_url: 'http://www.github.com/Octo/Demo/' },
+    ];
+    expect(bestBadge(other, 'octo/demo').id).toBe(4);
+    const badge = 'https://www.bestpractices.dev/projects.json?url=https%3A//github.com/octo/demo';
+    const r = (await scanScenario('public', { [badge]: { json: warpgate } })).rep.results[
+      'posture-best-practices-badge'
+    ];
+    expect([r.status, r.summary, r.evidence[0].url]).toEqual([
+      'pass',
+      'OpenSSF Best Practices badge: passing',
+      'https://www.bestpractices.dev/projects/12773',
+    ]);
+  });
+
+  it('counts npm stage publish and npm run publish as publishing (bug 5)', async () => {
+    for (const run of ['npm stage publish --tag next', 'npm run publish']) {
+      const text = workflow([
+        'on:',
+        '  release:',
+        'permissions:',
+        '  id-token: write',
+        'jobs:',
+        '  publish:',
+        '    steps:',
+        `      - run: ${run}`,
+      ]);
+      const { rep } = await scanTiny(tiny({ '.github/workflows/publish.yml': text }));
+      expect([run, rep.meta.publishes_from_ci, rep.results['rel-trusted-publishing'].status]).toEqual([
+        run,
+        true,
+        'pass',
+      ]);
+    }
+    expect(
+      analyzeWorkflow(
+        '.github/workflows/x.yml',
+        'on: push\njobs:\n  a:\n    steps:\n      - run: npm run publish:docs\n',
+      ).tools,
+    ).not.toContain('npm_publish');
+  });
+
+  it("doesn't count a dynamic workflow GitHub lists as disabled (bug 7)", async () => {
+    const list = 'https://api.github.com/repos/octo/fixes/actions/workflows?per_page=100';
+    const codeql = async (state?: string) => {
+      const json = { workflows: [{ path: 'dynamic/github-code-scanning/codeql', ...(state ? { state } : {}) }] };
+      return statusOf((await scanScenario('fixes', { [list]: { json } })).rep, 'sast-codeql');
+    };
+    expect(await codeql('active')).toEqual(['pass', 'CodeQL default setup is on']);
+    expect(await codeql()).toEqual(['pass', 'CodeQL default setup is on']);
+    for (const state of ['disabled_manually', 'disabled_inactivity', 'deleted']) {
+      expect(await codeql(state)).toEqual(['fail', 'No CodeQL code scanning found']);
+    }
+  });
 });
