@@ -148,5 +148,20 @@ check(
     wrongMethod.headers.get('allow') === 'GET, HEAD, OPTIONS',
   `${wrongMethod.status} ${wrongMethod.headers.get('allow')} ${JSON.stringify(wrongBody)}`,
 );
+const spec = await get('/openapi.json');
+const specDoc = spec.status === 200 ? await spec.json().catch(() => ({})) : {};
+check(
+  '/openapi.json is the API in OpenAPI 3.1',
+  spec.headers.get('content-type') === 'application/json' &&
+    /^3\.1\./.test(String(specDoc.openapi)) &&
+    Boolean(specDoc.paths?.['/api/scan/{owner}/{name}']),
+  `${spec.status} ${spec.headers.get('content-type')}`,
+);
+check(
+  'API answers link to /openapi.json',
+  (health.headers.get('link') || '').includes('</openapi.json>; rel="service-desc"'),
+  health.headers.get('link') || '',
+);
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

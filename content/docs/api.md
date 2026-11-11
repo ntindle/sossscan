@@ -2,7 +2,7 @@
 
 The sossscan API is a few HTTP endpoints on this site, and the page itself uses the scan endpoints. There's no key and no sign-in: send a request and you get JSON back. An error comes back as JSON too, with a code, a message and a hint that says what to do next (see [Errors](#errors)).
 
-The base address is `https://sossscan.ntindle.com`. The API sends no CORS headers, so a web page on another site can't read its answers. Call it from a script, a server or the command line. To scan from your own machine with your own token, use the [sossscan CLI](/docs/cli) instead.
+The base address is `https://sossscan.ntindle.com`. [openapi.json](/openapi.json) describes the API in OpenAPI 3.1, for tools and agents: each endpoint and its parameters, the report's schema and the error codes. The API sends no CORS headers, so a web page on another site can't read its answers. Call it from a script, a server or the command line. To scan from your own machine with your own token, use the [sossscan CLI](/docs/cli) instead.
 
 ## Scan a public repository
 
@@ -176,4 +176,4 @@ Each IP address can make 6 scan requests a minute and 40 an hour. GET and POST c
 
 ## The app endpoints
 
-The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, the admin check and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts. Their errors under `/api/app/` come in the same form, with codes of their own.
+The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, the admin check and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts, and openapi.json leaves them out. Their errors under `/api/app/` come in the same form, with codes of their own.

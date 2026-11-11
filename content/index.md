@@ -7,7 +7,7 @@ This is the home page as Markdown. The web page at https://sossscan.ntindle.com/
 ## Scan a repository
 
 - In a browser, open `https://sossscan.ntindle.com/?repo=OWNER/REPO`. A github.com address of the repository works too. The page runs the public scan and shows the results.
-- From a script or an agent, `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report as JSON, with no key or sign-in. The [API docs](/docs/api) describe the report.
+- From a script or an agent, `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report as JSON, with no key or sign-in. The [API docs](/docs/api) describe the report, and [openapi.json](/openapi.json) is the API's OpenAPI 3.1 description.
 - For a private repository, or for settings only admins can see, run the [sossscan CLI](/docs/cli) on your own machine with your own GitHub token.
 
 [sossscan for AI agents](/agents) says when sossscan fits a task, which parts of a report matter and what the limits are.

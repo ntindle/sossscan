@@ -107,8 +107,8 @@ describe('the text pages', () => {
   it('only links to pages and files that exist, and to sections that exist', () => {
     const pages = new Map(PAGES.map((p) => [p.path, pageHtml(p.path)]));
     pages.set('/', INDEX);
-    // Routes that aren't pages: each page's Markdown twin, and the sitemap.
-    const routes = new Set([...[...pages.keys()].map(markdownPath), '/sitemap.xml']);
+    // Routes that aren't pages: each page's Markdown twin, the sitemap and the API's description.
+    const routes = new Set([...[...pages.keys()].map(markdownPath), '/sitemap.xml', '/openapi.json']);
     for (const [from, html] of pages) {
       for (const [, target] of html.matchAll(/\b(?:href|src)="((?:\/|#)[^"]*)"/g)) {
         const [where, section] = target.split('#');

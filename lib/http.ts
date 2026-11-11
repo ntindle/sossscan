@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 
 /**
  * What went wrong, as a code a program can branch on, with what it means. A code keeps its meaning, and a new kind of
- * error gets a new code. The first group is what the public API returns; the rest come from the GitHub App's
- * endpoints under /api/app/, which only the site's page calls.
+ * error gets a new code. The first group is what the public API returns (lib/openapi.ts lists them in its Error
+ * schema); the rest come from the GitHub App's endpoints under /api/app/, which only the site's page calls.
  */
 export const ERROR_CODES = {
   invalid_request: "The request body isn't a JSON object, or a field in it is missing or the wrong length.",
@@ -100,7 +100,7 @@ export function noEndpoint(): HttpError {
     404,
     'not_found',
     "There's no API endpoint at this address.",
-    'Use one of the endpoints listed at /docs/api.',
+    'Use one of the endpoints listed at /openapi.json.',
   );
 }
 

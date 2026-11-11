@@ -20,7 +20,10 @@ export const NOT_FOUND = 'repo lookup failed: HTTP 404 (private repo? pass a tok
 const PRIVATE_REFUSAL = 'This is a private repository.';
 /** The scanner's words when GitHub rejects the token itself. */
 const BAD_TOKEN = 'repo lookup failed: HTTP 401';
-/** An account name and a repository name, as GitHub allows them, and their longest. */
+/**
+ * An account name and a repository name, as GitHub allows them, and their longest. lib/openapi.ts gives the API's
+ * parameters the same patterns and limits.
+ */
 export const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 export const NAME_RE = /^[A-Za-z0-9._-]{1,100}$/;
 export const OWNER_MAX = 39;
@@ -30,7 +33,7 @@ export const REPO_LENGTH = { min: 3, max: 200 };
 /** What a scan request's `repo` may be: OWNER/REPO, or a github.com URL (optionally .git, a trailing slash, a subpage). */
 export const REPO_INPUT_RE =
   /^(?:(?:https?:\/\/)?(?:www\.)?github\.com\/)?([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:\/\S*)?$/;
-const MAX_SCANS = 3; // at once, per server instance
+export const MAX_SCANS = 3; // at once, per server instance
 const mem = new Map<string, { at: number; rep: Report }>();
 
 export function invalidRepo(): HttpError {

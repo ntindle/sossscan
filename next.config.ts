@@ -77,6 +77,15 @@ export const NEGOTIATION_HEADERS = NEGOTIATED.flatMap(({ page, markdown }) => [
   },
 ]);
 
+/**
+ * Every answer under /api/, errors included, says where the API is described (RFC 8631): its OpenAPI document
+ * (app/openapi.json/route.ts) and the docs page.
+ */
+export const API_HEADERS = {
+  source: '/api/:path*',
+  headers: [{ key: 'Link', value: '</openapi.json>; rel="service-desc", </docs/api>; rel="service-doc"' }],
+};
+
 /*
  * When each page's content last changed, for the sitemap's <lastmod> (app/sitemap.ts): the last commit that touched
  * the files it comes from. git runs here, when the site builds, and the dates reach the prerendered sitemap through
@@ -150,7 +159,7 @@ const config: NextConfig = {
   },
   // These reach the CDN's copies of public/ on Vercel too, so every page and file gets them.
   async headers() {
-    return [{ source: '/:path*', headers: SECURITY_HEADERS }, ...NEGOTIATION_HEADERS];
+    return [{ source: '/:path*', headers: SECURITY_HEADERS }, API_HEADERS, ...NEGOTIATION_HEADERS];
   },
   // Files the server reads at run time, which the deployment must include: the guide's templates for pull request
   // fixes, and the Markdown each text page and twin renders from on its first request (the home page's Markdown also

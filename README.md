@@ -8,7 +8,7 @@ Scan a GitHub repository to see where it has security gaps, from your accounts t
 
 Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner/repo`. There are three layers, and each one sees more:
 
-1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan).
+1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan; `/openapi.json` describes both).
    - It reads what anyone can see: files, workflows, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
    - It uses the first of these tokens (`lib/scan-token.ts`): `GITHUB_TOKEN` or `GH_TOKEN`; then a token of the site's GitHub App, once it's installed on its owner's account, limited to `metadata: read`; then none (60 requests an hour). It never borrows a `gh` CLI token.
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (a 404 with the code `repo_not_found` and the message `repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
@@ -124,6 +124,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `app/api/scan/`, `app/api/health/` | The public scan API and a health check. |
 | `lib/http.ts` | The route handlers' helpers. Every error under `/api/` is JSON with a code, a message and a hint (`ERROR_CODES`), and each route answers the methods it doesn't take with a JSON 405 and `Allow` (`otherMethods`). |
 | `app/api/[[...path]]/` | Every address under `/api/` that no route answers: a 404 in the same JSON form, never the site's 404 page. |
+| `app/openapi.json/`, `lib/openapi.ts` | `/openapi.json`, the API's description in OpenAPI 3.1, built when the site builds. It leaves out the GitHub App's endpoints. Its JSON Schemas (the report, the error, the scan request) are plain objects that other code can reuse. |
 | `content/` | The text pages' Markdown, one file per page at its address: `/docs/api` is `content/docs/api.md`. `content/index.md` starts the home page's Markdown. |
 | `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/`, `app/docs/` and `app/agents/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
 | `proxy.ts`, `lib/negotiate.ts` | Markdown content negotiation (acceptmarkdown.com) for the home page and the text pages: a request whose `Accept` header prefers Markdown is rewritten to the page's Markdown twin (`app/about.md/`, `app/index.md/` and the rest), and one that rules out both HTML and Markdown gets 406. Every answer carries `Vary: Accept`: the page and twin routes set it themselves and render per request, because Vercel replaces a prerendered route's `Vary` with its own, while `next.config.ts` adds it to the home page's HTML file. |

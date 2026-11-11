@@ -209,6 +209,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs\/api\.md$/, () => import('@/app/docs/api.md/route.ts')],
   [/^\/docs\/cli\.md$/, () => import('@/app/docs/cli.md/route.ts')],
   [/^\/agents\.md$/, () => import('@/app/agents.md/route.ts')],
+  [/^\/openapi\.json$/, () => import('@/app/openapi.json/route.ts')],
   // After the API's own routes: every other address under /api/, and /api itself.
   [/^\/api(?:\/.*)?$/, () => import('@/app/api/[[...path]]/route.ts')],
   // Last, as in Next.js: every address no file in public/ and no other route answers.
