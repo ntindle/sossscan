@@ -1,6 +1,7 @@
 /**
  * Requests per visitor address, kept in memory. Public scans spend the server's GitHub quota, and the app's routes
- * spend the visitor's. On a serverless host each instance counts on its own, so these are speed bumps, not hard caps.
+ * spend the visitor's. The MCP server (lib/mcp.ts) counts every message it's sent, and a scan through it also counts as
+ * a scan request. On a serverless host each instance counts on its own, so these are speed bumps, not hard caps.
  */
 import type { NextResponse } from 'next/server';
 import { onVercel } from './env.ts';
@@ -13,11 +14,16 @@ const LIMITS = {
     [3600, 40],
   ],
   app: [[60, 90]],
+  mcp: [[60, 120]],
 } as const;
 export type Bucket = keyof typeof LIMITS;
 
 /** What each bucket counts, in the words the docs use. */
-const COUNTED: Record<Bucket, string> = { scan: 'scan requests', app: 'sign-in and app requests' };
+const COUNTED: Record<Bucket, string> = {
+  scan: 'scan requests',
+  app: 'sign-in and app requests',
+  mcp: 'MCP requests',
+};
 const PER: Record<number, string> = { 60: 'a minute', 3600: 'an hour' };
 
 /** What one address may send, in words: "6 scan requests a minute and 40 an hour". */

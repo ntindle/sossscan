@@ -33,5 +33,5 @@ export function proxy(request: NextRequest): Response {
 
 /** The home page and every page in PAGES (lib/pages.ts); a test keeps them in step. Next.js needs a literal list. */
 export const config = {
-  matcher: ['/', '/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli', '/agents'],
+  matcher: ['/', '/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli', '/docs/mcp', '/agents'],
 };

@@ -2,7 +2,7 @@
 
 The sossscan API is a few HTTP endpoints on this site, and the page itself uses the scan endpoints. There's no key and no sign-in: send a request and you get JSON back. An error comes back as JSON too, with a code, a message and a hint that says what to do next (see [Errors](#errors)).
 
-The base address is `https://sossscan.ntindle.com`. [openapi.json](/openapi.json) describes the API in OpenAPI 3.1, for tools and agents: each endpoint and its parameters, the report's schema and the error codes. The API sends no CORS headers, so a web page on another site can't read its answers. Call it from a script, a server or the command line. To scan from your own machine with your own token, use the [sossscan CLI](/docs/cli) instead.
+The base address is `https://sossscan.ntindle.com`. [openapi.json](/openapi.json) describes the API in OpenAPI 3.1, for tools and agents: each endpoint and its parameters, the report's schema and the error codes. The API sends no CORS headers, so a web page on another site can't read its answers. Call it from a script, a server or the command line. To scan from your own machine with your own token, use the [sossscan CLI](/docs/cli) instead. AI agents can run the same scan through the [sossscan MCP server](/docs/mcp).
 
 ## Scan a public repository
 

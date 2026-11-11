@@ -200,6 +200,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs$/, () => import('@/app/docs/route.ts')],
   [/^\/docs\/api$/, () => import('@/app/docs/api/route.ts')],
   [/^\/docs\/cli$/, () => import('@/app/docs/cli/route.ts')],
+  [/^\/docs\/mcp$/, () => import('@/app/docs/mcp/route.ts')],
   [/^\/agents$/, () => import('@/app/agents/route.ts')],
   [/^\/index\.md$/, () => import('@/app/index.md/route.ts')],
   [/^\/about\.md$/, () => import('@/app/about.md/route.ts')],
@@ -208,8 +209,12 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/docs\.md$/, () => import('@/app/docs.md/route.ts')],
   [/^\/docs\/api\.md$/, () => import('@/app/docs/api.md/route.ts')],
   [/^\/docs\/cli\.md$/, () => import('@/app/docs/cli.md/route.ts')],
+  [/^\/docs\/mcp\.md$/, () => import('@/app/docs/mcp.md/route.ts')],
   [/^\/agents\.md$/, () => import('@/app/agents.md/route.ts')],
   [/^\/openapi\.json$/, () => import('@/app/openapi.json/route.ts')],
+  [/^\/mcp$/, () => import('@/app/mcp/route.ts')],
+  [/^\/mcp\/server-card$/, () => import('@/app/mcp/server-card/route.ts')],
+  [/^\/\.well-known\/ai-catalog\.json$/, () => import('@/app/.well-known/ai-catalog.json/route.ts')],
   // After the API's own routes: every other address under /api/, and /api itself.
   [/^\/api(?:\/.*)?$/, () => import('@/app/api/[[...path]]/route.ts')],
   // Last, as in Next.js: every address no file in public/ and no other route answers.

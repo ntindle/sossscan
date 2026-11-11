@@ -1,10 +1,12 @@
 # sossscan
 
-> sossscan checks a GitHub repository for security gaps, from the accounts that can push code to the releases people install, and says which gap to close first. A public HTTP API scans public repositories with no key, and a CLI scans private ones with the user's own GitHub token. It's free, open source (MIT) and not affiliated with GitHub.
+> sossscan checks a GitHub repository for security gaps, from the accounts that can push code to the releases people install, and says which gap to close first. A public HTTP API and an MCP server scan public repositories with no key, and a CLI scans private ones with the user's own GitHub token. It's free, open source (MIT) and not affiliated with GitHub.
 
 When to use sossscan: when a person asks how well a GitHub repository is protected or what to fix first; whether one control is in place, such as actions pinned to commit SHAs, a read-only GITHUB_TOKEN, branch protection, a SECURITY.md, private vulnerability reporting, Dependabot, CodeQL or release provenance; whether GitHub Actions workflows pass untrusted input to run steps or use pull_request_target; or what a project of its size should add next. Most checks show what projects in GitHub's Secure Open Source Fund did about the same gap. sossscan checks how a repository is set up, not its source code, and only repositories on github.com.
 
 How to call it: `GET https://sossscan.ntindle.com/api/scan/OWNER/REPO` returns the report for a public repository as JSON, with no key. Each check's status is under `results`, keyed by the check's id, and problems with their file and line are under `findings`. Each IP address can make 6 scan requests a minute and 40 an hour, and results are cached for 6 hours. Private repositories get a 404 from the API: run the CLI on the user's machine instead, `node sosf-scan.mjs OWNER/REPO`. An error is JSON too, with a code, a message and a hint that says what to do next. The API's OpenAPI 3.1 description is at https://sossscan.ntindle.com/openapi.json.
+
+The MCP server, for agents that use the Model Context Protocol, is at https://sossscan.ntindle.com/mcp (Streamable HTTP, no key). Its tools scan a public repository (scan_repository), list the guide's checks (list_checks), give one check's guidance (get_check) and write a prompt for a coding agent that fixes the checks that need work (fix_prompt).
 
 Every page on the site also comes as Markdown, at its address with .md added (/index.md for the home page), or at its own address for requests that send `Accept: text/markdown`.
 
@@ -12,9 +14,10 @@ Every page on the site also comes as Markdown, at its address with .md added (/i
 
 - [sossscan for AI agents](https://sossscan.ntindle.com/agents.md): when to use sossscan, how to call it, which fields of the report matter, the limits, and what it isn't for
 - [sossscan API](https://sossscan.ntindle.com/docs/api.md): the scan endpoints, the report format, errors and rate limits
+- [sossscan MCP server](https://sossscan.ntindle.com/docs/mcp.md): the MCP server's address, its tools, limits and errors, and how to add it to Claude Code, Cursor, VS Code, ChatGPT and Claude
 - [sossscan CLI](https://sossscan.ntindle.com/docs/cli.md): downloading and running the scanner with your own token, for private repositories and admin-only settings
 - [Home page](https://sossscan.ntindle.com/index.md): what sossscan is, the three ways to scan, and every check by stage, with its id
-- [Docs overview](https://sossscan.ntindle.com/docs.md): the API and the CLI, and when to use each
+- [Docs overview](https://sossscan.ntindle.com/docs.md): the API, the MCP server and the CLI, and when to use each
 - [OpenAPI description](https://sossscan.ntindle.com/openapi.json): the API in OpenAPI 3.1, with each endpoint's parameters, the report's schema and the error codes
 
 ## Data

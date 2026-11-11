@@ -8,7 +8,7 @@ Scan a GitHub repository to see where it has security gaps, from your accounts t
 
 Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner/repo`. There are three layers, and each one sees more:
 
-1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan; `/openapi.json` describes both).
+1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan; `/openapi.json` describes both). AI agents can run it through the [MCP server](#the-mcp-server).
    - It reads what anyone can see: files, workflows, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
    - It uses the first of these tokens (`lib/scan-token.ts`): `GITHUB_TOKEN` or `GH_TOKEN`; then a token of the site's GitHub App, once it's installed on its owner's account, limited to `metadata: read`; then none (60 requests an hour). It never borrows a `gh` CLI token.
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (a 404 with the code `repo_not_found` and the message `repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
@@ -56,6 +56,16 @@ node sosf-scan.mjs OWNER/REPO [--out report.json] [--public] [--token TOKEN] [--
 - The token is optional: `--token`, `$GITHUB_TOKEN`, `$GH_TOKEN` or `gh auth token`.
 - It sends only GET requests: to GitHub (api.github.com, raw.githubusercontent.com, github.com) and two public score services (api.securityscorecards.dev, www.bestpractices.dev). Private repos are never looked up in Scorecard, the Best Practices badge, OSS-Fuzz or OSS Scanner.
 - With a token that has admin access, it also checks secret scanning, push protection, Dependabot alerts, Actions permissions, fork pull request approval, rulesets, immutable releases, environments, org 2FA and open alert backlogs.
+
+## The MCP server
+
+AI agents can use sossscan through its MCP server at `https://sossscan.ntindle.com/mcp`, with no key. [Its docs](https://sossscan.ntindle.com/docs/mcp) say how to add it to Claude Code, Cursor, VS Code, ChatGPT and Claude. It has four tools, all read-only:
+
+- `scan_repository`: the public scan, through the same code, cache and per-address limit as `GET /api/scan/{owner}/{repo}`. It returns the tier, the counts and the checks that need work, most urgent first, with their findings, and the whole report when asked. A private repository gets the same answer as a missing one.
+- `list_checks` and `get_check`: the guide's checks, and one check's guidance with what Fund projects did.
+- `fix_prompt`: the page's "Prompt to fix", built by the page's own code (`public/shared/core.js`).
+
+It speaks protocol version 2026-07-28, and 2025-11-25 and 2025-06-18 for clients that start with `initialize`, over the Streamable HTTP transport: one POST per message, one JSON answer, no sessions and no event stream. It's written for this site (`lib/mcp.ts`, `lib/mcp-tools.ts`) rather than built on the official TypeScript SDK, which has 17 dependencies of its own. A request from a web page on another site gets 403, each address can send 120 messages a minute, a body can be up to 64 KiB, and batches are refused. An [AI Catalog](https://ai-catalog.io) at `/.well-known/ai-catalog.json` points to the server's MCP Server Card at `/mcp/server-card`.
 
 ## The GitHub App
 
@@ -135,6 +145,8 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), redirects retired pages, and dates each page from Git for the sitemap. |
 | `lib/scanner/` | The scanner: the server's engine and the downloadable CLI. Read-only, no dependencies. |
 | `lib/public-scan.ts`, `lib/scan-token.ts` | Public scans: which repo, the 6-hour cache, at most 3 at once, and which token. |
+| `app/mcp/`, `lib/mcp.ts`, `lib/mcp-tools.ts` | The MCP server: the protocol and the transport, its tools, and its Server Card (`app/mcp/server-card/`). |
+| `app/.well-known/ai-catalog.json/` | The AI Catalog, whose one entry is the MCP server's card. |
 | `lib/github-app.ts`, `lib/sealed.ts`, `lib/github.ts` | The app's credentials (environment only), sealed sign-ins and previews, and GitHub API calls. |
 | `lib/fixes.ts` | Pull request fixes: builds the change on the server, previews it, then opens it. |
 | `lib/agent.ts` | AI agent fixes through any OpenAI-compatible chat API. Off until configured. |

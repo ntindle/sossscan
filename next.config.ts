@@ -43,7 +43,7 @@ export const SECURITY_HEADERS = [
 export const RETIRED = ['/ui/:path+', '/variants', '/variants/:path+', '/wizard', '/wizard/:path+', '/pipeline'];
 
 /** The text pages (lib/pages.ts PAGES), whose route handlers read their Markdown from content/. */
-export const TEXT_PAGES = ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli', '/agents'];
+export const TEXT_PAGES = ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli', '/docs/mcp', '/agents'];
 
 const SITE = 'https://sossscan.ntindle.com';
 
@@ -84,6 +84,12 @@ export const NEGOTIATION_HEADERS = NEGOTIATED.flatMap(({ page, markdown }) => [
 export const API_HEADERS = {
   source: '/api/:path*',
   headers: [{ key: 'Link', value: '</openapi.json>; rel="service-desc", </docs/api>; rel="service-doc"' }],
+};
+
+/** Every answer from the MCP server says where it's documented (RFC 8631), for a person who opens its address. */
+export const MCP_HEADERS = {
+  source: '/mcp',
+  headers: [{ key: 'Link', value: '</docs/mcp>; rel="service-doc"' }],
 };
 
 /*
@@ -159,13 +165,14 @@ const config: NextConfig = {
   },
   // These reach the CDN's copies of public/ on Vercel too, so every page and file gets them.
   async headers() {
-    return [{ source: '/:path*', headers: SECURITY_HEADERS }, API_HEADERS, ...NEGOTIATION_HEADERS];
+    return [{ source: '/:path*', headers: SECURITY_HEADERS }, API_HEADERS, MCP_HEADERS, ...NEGOTIATION_HEADERS];
   },
   // Files the server reads at run time, which the deployment must include: the guide's templates for pull request
-  // fixes, and the Markdown each text page and twin renders from on its first request (the home page's Markdown also
-  // lists the guide's checks).
+  // fixes, the guide the MCP server's tools read, and the Markdown each text page and twin renders from on its first
+  // request (the home page's Markdown also lists the guide's checks).
   outputFileTracingIncludes: {
     '/api/app/pr/preview': ['./public/data/guide.json'],
+    '/mcp': ['./public/data/guide.json'],
     ...Object.fromEntries(TEXT_PAGES.map((page) => [page, ['./content/**/*.md']])),
     ...Object.fromEntries(
       NEGOTIATED.map(({ page, markdown }) => [

@@ -70,7 +70,7 @@ export const PAGES: readonly Page[] = [
     path: '/docs',
     type: 'WebPage',
     description:
-      'Developer docs for sossscan: the HTTP API for scanning public repositories, and the CLI for scanning from your own machine.',
+      'Developer docs for sossscan: the HTTP API and the MCP server for scanning public repositories, and the CLI for scanning from your own machine.',
   },
   {
     path: '/docs/api',
@@ -83,6 +83,12 @@ export const PAGES: readonly Page[] = [
     type: 'WebPage',
     description:
       'The sossscan CLI: scan a GitHub repository from your own machine with your own token, including private repositories and admin-only settings.',
+  },
+  {
+    path: '/docs/mcp',
+    type: 'WebPage',
+    description:
+      'The sossscan MCP server: let an AI agent scan public GitHub repositories and read the guide over the Model Context Protocol. Its address, tools, limits and setup for common clients.',
   },
   {
     path: '/agents',

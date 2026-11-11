@@ -14,13 +14,17 @@ When you scan a repository on the home page, your browser sends the repository's
 
 Whether a repository is in OSS-Fuzz is looked up in a list that ships with the site, so that check sends nothing. All of these requests come from the server and name only the repository. None of them carries your IP address or anything else about you. Private repositories are refused, with the same answer as a repository that doesn't exist.
 
+## The MCP server
+
+AI agents can call the site's [MCP server](/docs/mcp). A call sends the server a repository's name or a check's id, along with what the client says about itself, such as its name and version. The server uses them to answer and keeps none of it: there's no session and no log of who called which tool. A scan through the MCP server is the same public scan as on the home page, and its result is cached the same way.
+
 ## Caching
 
 So that a repeat scan doesn't go back to GitHub, the server reuses each public scan's result for 6 hours. It keeps the result in memory and in a cache folder on its disk until a newer scan replaces it or the server instance stops. The CDN in front of the site keeps the answer from /api/scan/owner/repo for 6 hours too, and for up to 10 minutes longer while it fetches a fresh one. A cached scan describes a public repository and is the same for everyone who asks. Nothing about who asked is stored with it. Rescan skips both caches. Error responses, private repositories and scans that GitHub rate-limited are never cached.
 
 ## Rate limits
 
-So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scan requests a minute and 40 an hour, and 90 sign-in and app requests a minute. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in and app requests) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
+So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scan requests a minute and 40 an hour, and 90 sign-in and app requests a minute. Requests to the MCP server count too: 120 a minute, and each scan it runs counts as a scan request. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in, app and MCP requests) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
 
 ## Signing in with GitHub
 

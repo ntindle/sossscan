@@ -74,6 +74,7 @@ describe('the text pages', () => {
   it.each([
     ['/docs/api', 'sossscan API'],
     ['/docs/cli', 'sossscan CLI'],
+    ['/docs/mcp', 'sossscan MCP server'],
   ])('names the product and the tool in the title and heading of %s', (urlPath, name) => {
     const html = pageHtml(urlPath);
     expect(/<title>([^<]*)<\/title>/.exec(html)?.[1]).toContain(name);
@@ -88,6 +89,7 @@ describe('the text pages', () => {
       'sossscan docs',
       'sossscan API',
       'sossscan CLI',
+      'sossscan MCP server',
       'sossscan for AI agents',
     ]);
     for (const page of PAGES) {
@@ -107,8 +109,15 @@ describe('the text pages', () => {
   it('only links to pages and files that exist, and to sections that exist', () => {
     const pages = new Map(PAGES.map((p) => [p.path, pageHtml(p.path)]));
     pages.set('/', INDEX);
-    // Routes that aren't pages: each page's Markdown twin, the sitemap and the API's description.
-    const routes = new Set([...[...pages.keys()].map(markdownPath), '/sitemap.xml', '/openapi.json']);
+    // Routes that aren't pages: each page's Markdown twin, the sitemap, the API's description and the MCP server's
+    // discovery documents.
+    const routes = new Set([
+      ...[...pages.keys()].map(markdownPath),
+      '/sitemap.xml',
+      '/openapi.json',
+      '/mcp/server-card',
+      '/.well-known/ai-catalog.json',
+    ]);
     for (const [from, html] of pages) {
       for (const [, target] of html.matchAll(/\b(?:href|src)="((?:\/|#)[^"]*)"/g)) {
         const [where, section] = target.split('#');
