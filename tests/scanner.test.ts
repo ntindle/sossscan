@@ -160,7 +160,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.5.1');
+    expect(VERSION).toBe('0.5.2');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([

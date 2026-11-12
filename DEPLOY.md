@@ -78,7 +78,7 @@ In case it ever has to be made again by hand (github.com/settings/apps/new), the
 | Webhook | Off (**Active** unchecked), and no events |
 | Where can it be installed | Any account (public) |
 
-Its permissions. Write access is only used for a fix that a signed-in admin of the repo clicks: administration for the one-click settings, contents, pull requests and workflows for pull requests, and code scanning alerts to turn on CodeQL default setup. The rest are read-only, for the admin-settings check.
+Its permissions. Write access is only used for a fix that a signed-in admin of the repo clicks: administration for the one-click settings, contents, pull requests and workflows for pull requests, and code scanning alerts to turn on CodeQL default setup. The rest are read-only, for the admin-settings check (Deep scan).
 | Permission | Kind | API name | Access |
 |---|---|---|---|
 | Administration | Repository | `administration` | Read and write |
@@ -90,9 +90,26 @@ Its permissions. Write access is only used for a fix that a signed-in admin of t
 | Dependabot alerts | Repository | `vulnerability_alerts` | Read-only |
 | Actions | Repository | `actions` | Read-only |
 | Environments | Repository | `environments` | Read-only |
+| Secrets | Repository | `secrets` | Read-only. Deep scan counts the repository's Actions secrets for `ci-secrets-hygiene`. GitHub never returns a secret's value; it returns names and dates, and the scan reports only the count. |
+| Repository security advisories | Repository | `repository_advisories` | Read-only. See below. |
 | Metadata | Repository | `metadata` | Read-only (always on; public scans use only this) |
 | Members | Organization | `members` | Read-only |
 | Administration | Organization | `organization_administration` | Read-only |
+
+Repository security advisories is the one to think about before asking for it: with it, a token can read every unpublished advisory in an installed repository, including private vulnerability reports other people sent. Deep scan reads three lists of one repository with it (the reports in triage, the drafts and the closed advisories), and the published advisories a public scan reads too. It keeps only these numbers and dates:
+- the reports in triage: how many have waited over 14 days with no comment, and the age of the oldest (`disc-triage-sla`);
+- the closed advisories: the date the latest one titled DRILL was closed (`plan-irp-exercise`);
+- the drafts, closed and published advisories: how many brought in collaborators besides the reporter, or have a temporary private fork (`disc-coordinated-disclosure`).
+
+Nothing else of an unpublished advisory is read into a result or stored: no title, description, reporter, identifier, severity or weakness. The server keeps nothing between requests, and a test (`tests/scanner.test.ts`, "keeps nothing of an unpublished advisory") fails if any other field reaches a report.
+
+### Adding a permission
+1. In the app's settings on GitHub (github.com/settings/apps/sossscan), open **Permissions & events** and set the permission, for example **Secrets** to **Read-only**.
+2. Under **Add a note to users**, say what it's for (the table above has the words), then click **Save changes**.
+3. GitHub emails the owner of each account the app is installed on. An installation keeps its old permissions until its owner approves the new ones on the installation's settings page: under the account's (or organization's) settings, **GitHub Apps**, then **Configure** next to sossscan.
+4. Until then, Deep scan says the app hasn't been given that access: `ci-secrets-hygiene` does, and so does `disc-triage-sla` when SECURITY.md gives no response time. The drill and disclosure checks stay self-checks. The CLI with an admin's token checks all of them.
+
+Removing a permission takes effect at once, without approval.
 
 ### Rotating the private key
 1. In the app's settings on GitHub (github.com/settings/apps/sossscan), under **Private keys**, click **Generate a private key**. GitHub downloads a `.pem` file.

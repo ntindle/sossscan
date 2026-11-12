@@ -3,7 +3,7 @@
 // since say why where they're defined.
 import { re } from './py.ts';
 
-export const VERSION = '0.5.1';
+export const VERSION = '0.5.2';
 export const SCHEMA = 'sosf-scan/1';
 export const UA = `sosf-scan/${VERSION} (+security self-check)`;
 export const API = 'https://api.github.com';

@@ -37,6 +37,8 @@ With `--public` it skips all three. Without a token, GitHub allows only 60 reque
 
 When the token belongs to an admin of the repository, the CLI also checks the settings only admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions, approval for fork pull requests, rulesets, immutable releases, environments, the organization's two-factor requirement and its members who still use SMS for it, the organization's security configuration, and open alert backlogs. The report's `layer` is then `private`. Most settings the token can't read come back as `unknown`, usually with the HTTP status in the summary.
 
+It also reads the repository's unpublished security advisories, for counts and dates only: how many private vulnerability reports have waited over 14 days with no comment, and how old the oldest is; when the last advisory titled DRILL was closed; and how many advisories brought in collaborators or have a temporary private fork. No title, description, reporter or severity goes into the report. A classic token needs the `repo` scope for this, which `gh auth token` has. GitHub gives a token that can't read them an empty list, so with a fine-grained token, whose permissions the CLI can't see, an empty list gives no result.
+
 ## What it contacts
 
 The CLI talks to GitHub: api.github.com, raw.githubusercontent.com and github.com. For a public repository it also asks two OpenSSF services about it, the Scorecard API (api.securityscorecards.dev) and the Best Practices badge (www.bestpractices.dev). A private repository's name is never sent to them, and never looked up in OSS-Fuzz or OSS Scanner. Nothing is sent to sossscan.ntindle.com.
