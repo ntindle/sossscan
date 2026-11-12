@@ -90,13 +90,17 @@ export const RESULT_SCHEMA: Json = {
   required: ['status', 'summary', 'evidence', 'details', 'layer'],
   properties: {
     status: STATUS_SCHEMA,
-    summary: { type: 'string', description: 'What the scan saw, in one sentence.', examples: ['SECURITY.md found'] },
+    summary: {
+      type: 'string',
+      description: 'What the scan saw, in one sentence.',
+      examples: ["SECURITY.md found; it says to report through GitHub's private vulnerability reporting"],
+    },
     evidence: { type: 'array', items: EVIDENCE_SCHEMA, description: 'Links to what the result is based on.' },
     details: {
       type: 'object',
       additionalProperties: true,
       description: "Facts that belong to this check, such as a file's path and length. Often empty.",
-      examples: [{ path: 'SECURITY.md', length: 1293 }],
+      examples: [{ path: 'SECURITY.md', length: 1293, report: ['github'] }],
     },
     layer: {
       type: 'string',
@@ -450,9 +454,9 @@ const EXAMPLE_REPORT = {
   results: {
     'disc-security-md': {
       status: 'pass',
-      summary: 'SECURITY.md found',
+      summary: "SECURITY.md found; it says to report through GitHub's private vulnerability reporting",
       evidence: [{ label: 'SECURITY.md', url: 'https://github.com/ntindle/sossscan/blob/main/SECURITY.md' }],
-      details: { path: 'SECURITY.md', length: 1293 },
+      details: { path: 'SECURITY.md', length: 1293, report: ['github'] },
       layer: 'public',
     },
     'plan-irp': {

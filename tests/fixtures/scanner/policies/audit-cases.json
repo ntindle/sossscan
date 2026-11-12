@@ -1,0 +1,749 @@
+[
+  {
+    "id": "D01 do-not-email-open-issue",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not email us about security problems. Open a GitHub issue instead.",
+    "disc": "warn"
+  },
+  {
+    "id": "D02 dont-open-issue-email",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open a public issue. Email security@acme-widgets.org instead.",
+    "disc": "pass"
+  },
+  {
+    "id": "D03 curly-dont-public-issue-noaddr",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease don’t open a public issue. Report it privately to the maintainers by email.",
+    "disc": "warn",
+    "note": "message should not claim public issues"
+  },
+  {
+    "id": "D04 curly-dont-email-open-issue",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDon’t email us. Open a GitHub issue.",
+    "disc": "warn"
+  },
+  {
+    "id": "D05 email-after-colon-nospace",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail:security@acme-widgets.org",
+    "disc": "pass"
+  },
+  {
+    "id": "D06 contact-colon-nospace",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nContact:alice@acme-widgets.org (please do not open an issue)",
+    "disc": "pass"
+  },
+  {
+    "id": "D07 obfuscated-across-linebreak",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not open an issue. Instead, email the lead developer __alice [at] acme\n[dot] org__ and you will hear back.",
+    "disc": "pass"
+  },
+  {
+    "id": "D08 obfuscated-in-underscore-emphasis",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail the lead developer __alice [at] acme [dot] org__ and you will hear back.",
+    "disc": "pass"
+  },
+  {
+    "id": "D09 obfuscated-parens",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nWrite to alice(at)acme-widgets(dot)org.",
+    "disc": "pass"
+  },
+  {
+    "id": "D10 spelled-at-dot",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSend a report to alice at acme-widgets dot org.",
+    "disc": "pass"
+  },
+  {
+    "id": "D11 caps-AT-DOT",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSend reports to security AT acme-widgets DOT org",
+    "disc": "pass"
+  },
+  {
+    "id": "D12 mailto-display-name",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease [email the security team](mailto:Security%20Team%20%3Csecurity@acme-widgets.org%3E).",
+    "disc": "pass",
+    "note": "check label"
+  },
+  {
+    "id": "D13 mailto-percent-encoded",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\n<a href=\"mailto:%73%65%63%75%72%69%74%79%40acme-widgets.org\">email us</a>",
+    "disc": "pass",
+    "note": "check label"
+  },
+  {
+    "id": "D14 non-security-mailing-list",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nFor questions, join our mailing list users@lists.acme-widgets.org. Report bugs, including security bugs, on GitHub issues.",
+    "disc": "warn",
+    "note": "mailing list is for questions; reports go to public issues"
+  },
+  {
+    "id": "D15 public-mailing-list-report",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport vulnerabilities to our public mailing list dev@lists.acme-widgets.org, where everyone can see them.",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D16 discord-invite",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport security issues in our Discord server: https://discord.gg/abc123",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D17 discord-dm-named",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease DM @alice on our Discord server (https://discord.gg/abc123). Do not post in public channels.",
+    "disc": "pass"
+  },
+  {
+    "id": "D18 telegram-channel",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport via our Telegram channel [@acmewidgets](https://t.me/acmewidgets), where the whole community can help.",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D19 slack-public-channel",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport it in the #security channel of our Slack workspace https://acme.slack.com",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D20 github-discussions",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease post security reports in GitHub Discussions.",
+    "disc": "warn"
+  },
+  {
+    "id": "D21 no-bug-bounty-open-issue",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nWe do not have a bug bounty program. Please open an issue describing the problem.",
+    "disc": "warn"
+  },
+  {
+    "id": "D22 we-will-draft-advisory-noaddr",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease email the maintainers. Once we confirm the problem, we will create a draft security advisory on GitHub.",
+    "disc": "warn",
+    "note": "no address; advisory is the maintainers action"
+  },
+  {
+    "id": "D23 send-private-report-noaddr",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSend a private report to the maintainers.",
+    "disc": "warn"
+  },
+  {
+    "id": "D24 security-page-website",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSee the security page on our website for how to report vulnerabilities.",
+    "disc": "info|warn"
+  },
+  {
+    "id": "D25 pvr-not-enabled",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPrivate vulnerability reporting is not enabled for this repository. Please open an issue.",
+    "disc": "warn"
+  },
+  {
+    "id": "D26 pvr-isnt-enabled-curly",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPrivate vulnerability reporting isn’t enabled yet. Please open an issue.",
+    "disc": "warn"
+  },
+  {
+    "id": "D27 thai-body-english-headings-gsa",
+    "text": "# Security Policy\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| main / latest | ✅ |\n| older versions | ❌ |\n\n## Reporting a Vulnerability\n\nหากพบช่องโหว่ กรุณาแจ้งผู้ดูแลผ่าน GitHub Security Advisory\n\n## Scope\n\n- Admin panel\n- Supabase API / database access\n- LINE webhook / notification\n- Payment / shop order flow\n- File upload and storage\n",
+    "disc": "pass|info"
+  },
+  {
+    "id": "D28 chinese-body-english-headings-gsa",
+    "text": "# Security Policy\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 1.x | :white_check_mark: |\n\n## Reporting a Vulnerability\n\n请不要公开提交 issue。请通过 GitHub Security Advisory 私下报告漏洞，我们会尽快回复。\n\n## Scope\n\nThe web API, the CLI and the Docker image are in scope.\n",
+    "disc": "pass|info"
+  },
+  {
+    "id": "D29 japanese-body-english-headings-noaddr",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\n脆弱性を見つけた場合は、公開の Issue ではなく、メンテナーに非公開で連絡してください。\n\n## Scope\n\nThe API server, the web UI and the CLI tools are in scope for this policy.\n",
+    "disc": "info"
+  },
+  {
+    "id": "D30 private-security-reporting",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease report vulnerabilities through GitHub private security reporting.",
+    "disc": "pass"
+  },
+  {
+    "id": "D31 select-security-then-report",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport a vulnerability privately through GitHub:\n\n1. Open the repository.\n2. Select **Security**, then **Report a vulnerability**.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D32 filing-gsa",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\n1. Prefer filing a **GitHub Security Advisory** (private disclosure).\n2. If that is not possible, contact the maintainer.",
+    "disc": "pass"
+  },
+  {
+    "id": "D33 html-comment-opener-in-inline-code",
+    "text": "# Security\n\nOur sanitizer strips `<!--` comment openers from user input.\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D34 html-comment-opener-in-code-fence",
+    "text": "# Security\n\n```html\n<!-- a broken comment\n```\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D35 commented-template-then-real",
+    "text": "# Security Policy\n\n<!--\n## Reporting a Vulnerability\nUse this section to tell people how to report a vulnerability.\n-->\n\n## Reporting a Vulnerability\n\nUse [GitHub's private vulnerability reporting](https://github.com/acme/widget/security/advisories/new).\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D36 email-only-in-front-matter",
+    "text": "---\ntitle: Security\ncontact: security@acme-widgets.org\n---\n\n# Security\n\nPlease report vulnerabilities privately by email.\n",
+    "disc": "warn|info",
+    "note": "address only in front matter"
+  },
+  {
+    "id": "D37 email-in-contact-table",
+    "text": "# Security\n\n| Contact | Address |\n| --- | --- |\n| Security team | security@acme-widgets.org |\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D38 email-only-in-versions-table-template-reporting",
+    "text": "# Security Policy\n\n## Supported Versions\n\n| Version | Supported | Owner |\n| ------- | --------- | ----- |\n| 5.1.x | :white_check_mark: | alice@acme-widgets.org |\n\n## Reporting a Vulnerability\n\nUse this section to tell people how to report a vulnerability.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "D39 crlf-tabs-nbsp",
+    "text": "# Security Policy\r\n\r\n## Reporting a Vulnerability\r\n\r\n\tPlease email security@acme-widgets.org with details.\r\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D40 utf16le-encoded",
+    "b64": "//4jACAAUwBlAGMAdQByAGkAdAB5ACAAUABvAGwAaQBjAHkACgAKACMAIwAgAFIAZQBwAG8AcgB0AGkAbgBnACAAYQAgAFYAdQBsAG4AZQByAGEAYgBpAGwAaQB0AHkACgAKAEUAbQBhAGkAbAAgAHMAZQBjAHUAcgBpAHQAeQBAAGEAYwBtAGUALQB3AGkAZABnAGUAdABzAC4AbwByAGcAIAB3AGkAdABoACAAZABlAHQAYQBpAGwAcwAuAAoA",
+    "disc": "pass",
+    "note": "UTF-16: decoded and read, so its address counts (the audit expected info or unknown)"
+  },
+  {
+    "id": "D41 binary-png",
+    "b64": "iVBORw0KGgoAAAANSUhEUgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4/QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/wABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
+    "disc": "info|unknown"
+  },
+  {
+    "id": "D42 empty-file",
+    "text": "",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D43 only-link-to-org-policy",
+    "text": "See https://github.com/acme/.github/blob/main/SECURITY.md",
+    "disc": "pass"
+  },
+  {
+    "id": "D44 see-readme",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSee the README for how to report vulnerabilities.",
+    "disc": "info|pass"
+  },
+  {
+    "id": "D45 fullwidth-at",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security＠acme-widgets.org",
+    "disc": "pass"
+  },
+  {
+    "id": "D46 kerberos-like-uppercase-domain",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail alice@ACME-WIDGETS.ORG with details.",
+    "disc": "pass"
+  },
+  {
+    "id": "D47 not-on-hackerone",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nWe are not on HackerOne. Please open an issue.",
+    "disc": "warn"
+  },
+  {
+    "id": "D48 do-not-use-hackerone",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not report through HackerOne or Bugcrowd; open a GitHub issue instead.",
+    "disc": "warn"
+  },
+  {
+    "id": "D49 matrix-room-alias",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReport in our Matrix room #acme-security:matrix.org",
+    "disc": "warn|info"
+  },
+  {
+    "id": "D50 matrix-user",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nMessage @alice:matrix.org privately.",
+    "disc": "pass"
+  },
+  {
+    "id": "D51 non-english-github-issues-only",
+    "text": "# Sicherheitsrichtlinie\n\n## Eine Sicherheitslücke melden\n\nBitte melden Sie Sicherheitslücken über die [Issues](https://github.com/acme/widget/issues).\n",
+    "disc": "info|warn"
+  },
+  {
+    "id": "D52 html-only-policy",
+    "text": "<h1>Security</h1><p>Please report vulnerabilities to <a href=\"mailto:security@acme-widgets.org\">our team</a>.</p>",
+    "disc": "pass"
+  },
+  {
+    "id": "D53 placeholder-email",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@OUR-COMPANY-NAME.com with the details.",
+    "disc": "warn",
+    "note": "unfilled placeholder"
+  },
+  {
+    "id": "D54 placeholder-email-2",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail [YOUR_EMAIL] or security@yourcompany.com",
+    "disc": "warn"
+  },
+  {
+    "id": "D55 issue-tracker-for-nonsecurity-email-for-security",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nUse the issue tracker for regular bugs. For security issues, email security@acme-widgets.org.",
+    "disc": "pass"
+  },
+  {
+    "id": "D56 suggestions-via-pr-email-obfuscated",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail alice [at] acme [dot] org.\n\n## Comments on this Policy\n\nIf you have suggestions on how this process could be improved, please submit a pull request.",
+    "disc": "pass"
+  },
+  {
+    "id": "D57 rst-email",
+    "path": "SECURITY.rst",
+    "text": "Security\n========\n\nReport vulnerabilities to ``security@acme-widgets.org``.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D58 adoc-email",
+    "path": "SECURITY.adoc",
+    "text": "= Security\n\n== Reporting\n\nmailto:security@acme-widgets.org[Email the team].\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D59 txt-rfc9116",
+    "path": "SECURITY.txt",
+    "text": "Contact: mailto:security@acme-widgets.org\nExpires: 2027-01-01T00:00:00.000Z\nPreferred-Languages: en\n",
+    "disc": "pass"
+  },
+  {
+    "id": "D60 x-x-bold-heading-noaddr",
+    "text": "**Security**\n\nIf you find a vulnerability please reach out to us privately.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "V01 not-normally-supported",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x | Not normally supported |\n| 1.x | :x: |\n",
+    "tags": ["v2.5.0"],
+    "rel": "warn|info",
+    "note": "2.x read as yes?"
+  },
+  {
+    "id": "V02 not-actively-supported",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x | Not actively supported |\n| 1.x | No |\n",
+    "tags": ["v2.5.0"],
+    "rel": "warn|info"
+  },
+  {
+    "id": "V03 not-yet-supported-newest",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Not yet supported |\n| 2.x | Yes |\n",
+    "tags": ["v3.0.0", "v2.9.0"],
+    "rel": "warn|info",
+    "note": "3.0 released but table says not yet supported"
+  },
+  {
+    "id": "V04 supported-until-2020",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 1.x | Supported until 2020 |\n",
+    "tags": ["v1.4.0"],
+    "rel": "info|warn"
+  },
+  {
+    "id": "V05 supported-until-2030",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 1.x | Supported until 2030 |\n",
+    "tags": ["v1.4.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V06 eol-date-in-status-newest",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Status |\n| ------- | ------ |\n| 3.x | Current, EOL 2028 |\n| 2.x | Supported |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass|info",
+    "note": "EOL 2028 is future"
+  },
+  {
+    "id": "V07 until-end-of-life",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Supported until end of life in 2028 |\n| 2.x | Supported |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V08 lts-eol-future",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Status |\n| --- | --- |\n| 22.x | Active LTS (EOL 2027-04-30) |\n| 20.x | Maintenance LTS (EOL 2026-04-30) |\n",
+    "tags": ["v22.11.0"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V09 ambiguous-words",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Best effort |\n| 2.x | Limited |\n| 1.x | Critical only |\n",
+    "tags": ["v3.1.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V10 tbd-question",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | TBD |\n| 2.x | ? |\n",
+    "tags": ["v3.1.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V11 example-table-near",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\nFor example, if the latest release is 2.0, we support:\n\n| Version | Supported |\n| --- | --- |\n| 2.0 | :white_check_mark: |\n| 1.9 | :x: |\n",
+    "tags": ["v5.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V12 example-table-far",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\nWe support the latest minor release and the one before it. For example, when the latest release is 2.0:\n\n- 2.0 gets every fix\n- 1.9 gets security fixes\n- older lines get none\n\nIn table form:\n\n| Version | Supported |\n| --- | --- |\n| 2.0 | :white_check_mark: |\n| 1.9 | :white_check_mark: |\n| < 1.9 | :x: |\n",
+    "tags": ["v5.0.0", "v4.9.0"],
+    "rel": "info",
+    "note": "example intro 6+ lines above"
+  },
+  {
+    "id": "V13 cvss-table-then-versions",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Severity\n\n| CVSS | Severity | Response time |\n| --- | --- | --- |\n| 9.0-10.0 | Critical | 24 hours |\n| 7.0-8.9 | High | 7 days |\n\n## Supported Versions\n\n| Version | Supported |\n| --- | --- |\n| 4.x | :white_check_mark: |\n| 3.x | :x: |\n",
+    "tags": ["v4.2.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V14 cvss-table-only",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Severity and supported response\n\n| CVSS score | Supported response |\n| --- | --- |\n| 9.0 | 24 hours |\n| 7.0 | 7 days |\n| 4.0 | 30 days |\n",
+    "tags": ["v4.2.0"],
+    "rel": "info",
+    "note": "CVSS scores look like versions"
+  },
+  {
+    "id": "V15 product-table-match",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Product | Version | Supported |\n| --- | --- | --- |\n| widget | 2.x | :white_check_mark: |\n| gadget | 7.x | :white_check_mark: |\n",
+    "tags": ["v2.3.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V16 product-table-nomatch",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Product | Version | Supported |\n| --- | --- | --- |\n| Foo Server | 1.x | :white_check_mark: |\n| Bar Agent | 7.x | :white_check_mark: |\n",
+    "tags": ["v3.0.0"],
+    "rel": "info",
+    "note": "components do not match repo"
+  },
+  {
+    "id": "V17 bounty-scope-table",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Scope\n\n| Asset | In scope | Max bounty |\n| --- | --- | --- |\n| api.acme.com | Yes | $5000 |\n| 2.x SDK | Yes | $500 |\n",
+    "tags": ["v3.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V18 versions-in-headings",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n### 2.x (supported)\n\nGets security fixes.\n\n### 1.x (end of life)\n\nNo fixes.\n",
+    "tags": ["v3.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V19 empty-supported-column",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x |  |\n| 1.x |  |\n",
+    "tags": ["v3.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V20 img-status",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | <img src=\"check.svg\" alt=\"yes\"> |\n| 2.x | <img src=\"cross.svg\" alt=\"no\"> |\n",
+    "tags": ["v3.0.0"],
+    "rel": "info|pass"
+  },
+  {
+    "id": "V21 html-table",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n<table><tr><th>Version</th><th>Supported</th></tr><tr><td>2.x</td><td>Yes</td></tr><tr><td>1.x</td><td>No</td></tr></table>\n",
+    "tags": ["v2.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V22 rst-list-table",
+    "path": "SECURITY.rst",
+    "text": "Security\n========\n\nSupported Versions\n------------------\n\n.. list-table::\n   :header-rows: 1\n\n   * - Version\n     - Supported\n   * - 2.x\n     - Yes\n   * - 1.x\n     - No\n",
+    "tags": ["v2.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V23 adoc-table",
+    "path": "SECURITY.adoc",
+    "text": "= Security\n\n== Supported Versions\n\n[options=\"header\"]\n|===\n| Version | Supported\n| 2.x | Yes\n| 1.x | No\n|===\n",
+    "tags": ["v2.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V24 os-rows",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| Windows | :white_check_mark: |\n| macOS | :white_check_mark: |\n",
+    "tags": ["v3.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V25 deprecated-word",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x | Deprecated |\n| 3.x | Yes |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V26 x-mark-security-fixes-only-newest",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | :x: security fixes only |\n| 4.x | :white_check_mark: |\n",
+    "tags": ["v3.9.0"],
+    "rel": "info|pass",
+    "note": "4.x newer than release; 3.x gets security fixes"
+  },
+  {
+    "id": "V27 supported-no-longer-in-beta",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Supported (no longer in beta) |\n| 2.x | :white_check_mark: |\n",
+    "tags": ["v3.0.1"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V28 version-range",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.0 - 2.4 | :white_check_mark: |\n| < 2.0 | :x: |\n",
+    "tags": ["v2.3.1"],
+    "rel": "pass"
+  },
+  {
+    "id": "V29 gte",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| >= 2.0 | :white_check_mark: |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V30 stale-table",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 1.x | :white_check_mark: |\n| < 1.0 | :x: |\n",
+    "tags": ["v2.0.0"],
+    "rel": "warn"
+  },
+  {
+    "id": "V31 calver",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2026.x | :white_check_mark: |\n| 2025.x | :x: |\n",
+    "tags": ["v2026.3.1"],
+    "rel": "pass"
+  },
+  {
+    "id": "V32 negation-far",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | :white_check_mark: |\n| 2.x | Security fixes, which we will no longer provide after March 2024 |\n",
+    "tags": ["v3.0.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V33 table-in-code-fence",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n```\n| Version | Supported |\n| ------- | --------- |\n| 1.x     | yes       |\n```\n",
+    "tags": ["v2.0.0"],
+    "rel": "info"
+  },
+  {
+    "id": "V34 stars-for-yes",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x | ⭐ |\n| 1.x | - |\n",
+    "tags": ["v2.0.0"],
+    "rel": "info|pass"
+  },
+  {
+    "id": "V35 template-table-real-release-5",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 5.1.x | :white_check_mark: |\n| 5.0.x | :x: |\n| 4.0.x | :white_check_mark: |\n| < 4.0 | :x: |\n",
+    "tags": ["v5.1.3"],
+    "rel": "pass"
+  },
+  {
+    "id": "V36 commented-out-template-rows",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n<!-- | 5.1.x | :white_check_mark: | -->\n| 2.x | :white_check_mark: |\n",
+    "tags": ["v2.0.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V37 supported-until-next-major",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Until 4.0 is released |\n| 2.x | Until 2025-01-01 |\n",
+    "tags": ["v3.2.0"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V38 yes-except-eol-word-in-note",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported | Notes |\n| --- | --- | --- |\n| 3.x | Yes | EOL planned for 2029 |\n| 2.x | No | EOL |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V39 current-eol-2028-and-older-supported",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Status |\n| ------- | ------ |\n| 3.x | Current (EOL 2028) |\n| 2.x | Supported |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V40 retired-in-future",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Yes |\n| 2.x | Will be retired in 2027 |\n",
+    "tags": ["v3.1.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V41 unsupported-soon-newest",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nx\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 2.x | Supported, superseded by 3.x soon |\n| 1.x | No |\n",
+    "tags": ["v2.4.0"],
+    "rel": "pass|info"
+  },
+  {
+    "id": "V42 php-style-two-until-columns",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Version | Active support until | Security support until |\n| --- | --- | --- |\n| 8.3 | 31 Dec 2025 | 31 Dec 2027 |\n| 8.2 | 31 Dec 2024 | 31 Dec 2026 |\n| 8.1 | 25 Nov 2023 | 31 Dec 2025 |\n",
+    "tags": ["v8.3.4"],
+    "rel": "pass",
+    "note": "8.3 still gets security fixes until 2027"
+  },
+  {
+    "id": "V43 python-style-status-eol",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Branch | Status | First release | End of life |\n| --- | --- | --- | --- |\n| 3.14 | bugfix | 2025-10-07 | 2030-10 |\n| 3.13 | security | 2024-10-07 | 2029-10 |\n",
+    "tags": ["v3.14.1"],
+    "rel": "pass"
+  },
+  {
+    "id": "V44 eol-column-past-for-newest-typo",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Version | Supported | End of life |\n| --- | --- | --- |\n| 3.x | :white_check_mark: | 2028-01-01 |\n| 2.x | :white_check_mark: | 2026-01-01 |\n",
+    "tags": ["v3.0.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "V45 node-style",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\n## Supported Versions\n\n| Release | Status | Codename | Initial Release | Active LTS Start | Maintenance Start | End-of-life |\n| --- | --- | --- | --- | --- | --- | --- |\n| 24.x | Active LTS | Krypton | 2025-05-06 | 2025-10-28 | 2026-10-20 | 2028-04-30 |\n| 22.x | Maintenance LTS | Jod | 2024-04-24 | 2024-10-29 | 2025-10-21 | 2027-04-30 |\n",
+    "tags": ["v24.11.0"],
+    "rel": "pass"
+  },
+  {
+    "id": "S01 symlink-text-chain",
+    "text": "docs/SECURITY.md",
+    "disc": "info|unknown",
+    "note": "symlink to a file that is itself a symlink; not followed twice"
+  },
+  {
+    "id": "S02 pointer-to-missing-relative-file",
+    "text": "# Security\n\nSee [our security policy](docs/SECURITY.md).\n",
+    "disc": "info|unknown",
+    "note": "link not followed or fetch failed"
+  },
+  {
+    "id": "S03 symlink-to-noext",
+    "text": "docs/SECURITY",
+    "disc": "info|unknown",
+    "note": "symlink served as path without .md extension"
+  },
+  {
+    "id": "S04 utf16be",
+    "b64": "ACMAIABTAGUAYwB1AHIAaQB0AHkAIABQAG8AbABpAGMAeQAKAAoARQBtAGEAaQBsACAAcwBlAGMAdQByAGkAdAB5AEAAYQBjAG0AZQAtAHcAaQBkAGcAZQB0AHMALgBvAHIAZwAuAAo=",
+    "disc": "pass",
+    "note": "UTF-16: decoded and read, so its address counts (the audit expected info or unknown)"
+  },
+  {
+    "id": "S05 latin1-with-accents",
+    "b64": "IyBT6WN1cml06QoKU2lnbmFsZXogbGVzIGZhaWxsZXMg4CBz6WN1cml06UBhY21lLXdpZGdldHMub3JnIG91IHNlY3VyaXR5QGFjbWUtd2lkZ2V0cy5vcmcuCg==",
+    "disc": "pass"
+  },
+  {
+    "id": "S06 zero-width-in-email",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail secu​rity@acme​-widgets.org.\n\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S07 email-in-code-fence",
+    "text": "# Security\n\n## Reporting\n\n```\nsecurity@acme-widgets.org\n```\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S08 issues-link-only-in-other-section",
+    "text": "# Security\n\n## Reporting\n\nEmail security@acme-widgets.org.\n\n## Other bugs\n\nFile regular bugs at https://github.com/acme/widget/issues.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S09 only-other-repo-issue-link",
+    "text": "# Security\n\nPlease report security bugs at https://github.com/acme/other/issues/new.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "S10 gh-advisory-url-other-repo",
+    "text": "# Security\n\nReport at https://github.com/someone-else/template/security/advisories/new.\n",
+    "disc": "pass|info",
+    "note": "advisory form of another repository"
+  },
+  {
+    "id": "S11 security-tab-only-link",
+    "text": "# Security\n\nUse the [Security tab](../../security).\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S12 report-via-email-link-text-only",
+    "text": "# Security\n\nPlease report vulnerabilities via [email](mailto:).\n",
+    "disc": "warn"
+  },
+  {
+    "id": "S13 huge-emoji-policy",
+    "text": "# 🔐 Security 🔐\n\n## 🐛 Reporting 🐛\n\n📧 security@acme-widgets.org 🙏\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S14 bom-and-front-matter",
+    "text": "﻿---\nlayout: page\n---\n# Security\n\nEmail security@acme-widgets.org.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S15 front-matter-unclosed",
+    "text": "---\ntitle: Security\n\n# Security\n\nEmail security@acme-widgets.org.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S16 email-before-mailing-list-word",
+    "text": "# Security\n\nSecurity reports go to our private list security@lists.acme-widgets.org, which only maintainers read.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S17 do-not-use-github-advisories",
+    "text": "# Security\n\nDo not use GitHub security advisories; we do not monitor them. Email security@acme-widgets.org.\n",
+    "disc": "pass"
+  },
+  {
+    "id": "S18 do-not-use-github-advisories-only",
+    "text": "# Security\n\nWe do not use GitHub Security Advisories. Please open an issue.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "S19 hackerone-closed",
+    "text": "# Security\n\nOur HackerOne program is closed. Please open a public issue.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "S20 tidelift-not",
+    "text": "# Security\n\nThis project is not part of Tidelift. Please open an issue for security bugs.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E01 spelled-spaced-false-email",
+    "text": "# Security\n\n## Reporting\n\nSecurity issues are triaged at the org level. Please open a GitHub issue.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E02 spelled-spaced-false-email-2",
+    "text": "# Security\n\n## Reporting a Vulnerability\n\nLook at the net effect before you report. Please open an issue on GitHub.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E03 spelled-at-false",
+    "text": "# Security\n\n## Reporting\n\nOur security team at github.com reviews public issues. Open an issue.\n",
+    "disc": "warn",
+    "note": "SPELLED_AT security...at host"
+  },
+  {
+    "id": "E04 quoted-at-false",
+    "text": "# Security\n\n## Reporting\n\nThe word \"at\" example.com is not an address. Please open an issue.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E05 short-email-false",
+    "text": "# Security\n\n## Reporting\n\nReport bugs to the issue tracker. Our handle on npm is @widget, see npm@latest.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E06 spaced-at-false",
+    "text": "# Security\n\n## Reporting\n\nReport issues on GitHub. Example: run `curl user @ host.example.net`.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E07 package-at-version",
+    "text": "# Security\n\n## Reporting\n\nPlease open an issue. Upgrade with npm install widget@4.2.1 or yarn add widget@latest.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E08 git-ssh-url",
+    "text": "# Security\n\n## Reporting\n\nClone git@gitlab.example.org:acme/widget.git and open an issue.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E09 docker-image-digest",
+    "text": "# Security\n\n## Reporting\n\nOpen an issue. Images: acme/widget@sha256:abcdef0123.\n",
+    "disc": "warn"
+  },
+  {
+    "id": "E10 decorator-at-in-text",
+    "text": "# Security\n\n## Reporting\n\nPlease file an issue mentioning @Security.Admin roles or the @widget.io tag.\n",
+    "disc": "warn"
+  }
+]

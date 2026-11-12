@@ -2,7 +2,7 @@
 // returns null otherwise, so the check stays one people tick off themselves: a missing sign is never a failure.
 import { SCRIPT_RUN } from './hops.ts';
 import type { Hops } from './hops.ts';
-import { actionName, readWorkflow } from './jobs.ts';
+import { actionName, workflowOf } from './jobs.ts';
 import type { Step, Workflow } from './jobs.ts';
 import { finditer, re, search, splitLines } from './py.ts';
 import type { Evidence, Status } from './types.ts';
@@ -70,13 +70,13 @@ export const XTRACE = re(
   String.raw`(?:^|[;&|(]|\bthen\b|\bdo\b)\s*set\s+(?:-[A-Za-z]*x[A-Za-z]*\b|-o\s+xtrace\b)|\b(?:ba|z|k)?sh\s+-[A-Za-z]*x[A-Za-z]*\b`,
 );
 /** A secret in an expression: ${{ secrets.NAME }} or ${{ secrets['NAME'] }}. */
-export const SECRET_REF = re(String.raw`\$\{\{[^}]*\bsecrets\s*[.\[]`);
+export const SECRET_REF = re(String.raw`\$\{\{[^{}]*\bsecrets\s*[.\[]`);
 
 /** The run steps that trace their commands while a secret is in the step: the step, and the line of the tracing. */
 export function tracedSecrets(workflows: { path: string; text: string }[]): { step: Step; line: number }[] {
   const out: { step: Step; line: number }[] = [];
   for (const w of workflows) {
-    for (const job of readWorkflow(w.path, w.text).jobs) {
+    for (const job of workflowOf(w).jobs) {
       for (const s of job.steps) {
         if (s.run === null || !search(SECRET_REF, s.all)) continue;
         if (s.shell && search(XTRACE, s.shell)) {
@@ -93,10 +93,14 @@ export function tracedSecrets(workflows: { path: string; text: string }[]): { st
 }
 
 // ------------------------------------------------------------------------------------------- license gates
-/** A license check that fails on licenses outside an allow list. */
+/**
+ * A license check that fails on licenses outside an allow list. The flag is at most 1000 characters after the command
+ * on its line, and before the command starts again (as in release-caches.ts' PUBLISH_RUN).
+ */
 const LICENSE_RUN = re(
-  String.raw`\bgo-licenses\s+check\b|\blicense-checker(?:-rseidelsohn)?\b[^\n]*\s--(?:onlyAllow|failOn)\b|` +
-    String.raw`\blicense-compliance\b[^\n]*\s--allow\b`,
+  String.raw`\bgo-licenses\s+check\b|` +
+    String.raw`\blicense-checker(?:-rseidelsohn)?\b(?:(?!\blicense-checker(?:-rseidelsohn)?\b)[^\n]){0,1000}\s--(?:onlyAllow|failOn)\b|` +
+    String.raw`\blicense-compliance\b(?:(?!\blicense-compliance\b)[^\n]){0,1000}\s--allow\b`,
 );
 const CARGO_DENY = re(String.raw`\bcargo[- ]deny\b([^\n]*)`);
 const DENY_CHECK = re(String.raw`\b(advisories|bans|licenses|sources)\b`);
@@ -141,6 +145,7 @@ export interface LicenseInput {
 /** deps-licenses passes when CI runs a license check with an allow or deny list. */
 export async function licenseGate(input: LicenseInput): Promise<Outcome | null> {
   const files = new Set(input.files);
+  const hopped = new Map<string, Promise<string | null>>();
   const pass = (summary: string, path: string): Outcome => ({
     status: 'pass',
     summary,
@@ -149,8 +154,14 @@ export async function licenseGate(input: LicenseInput): Promise<Outcome | null> 
   });
   let denyToml: Promise<string | null> | null = null;
   let aboutToml: Promise<string | null> | null = null;
+  // Each file read once, however many steps name it.
+  const configs = new Map<string, Promise<string | null>>();
+  const config = (path: string) => {
+    if (!configs.has(path)) configs.set(path, input.read(path));
+    return configs.get(path)!;
+  };
   for (const w of input.workflows) {
-    const wf = readWorkflow(w.path, w.text);
+    const wf = workflowOf(w);
     for (const job of wf.jobs) {
       for (const s of job.steps) {
         const name = actionName(s);
@@ -162,7 +173,7 @@ export async function licenseGate(input: LicenseInput): Promise<Outcome | null> 
           // A local config file (a remote one, OWNER/REPO/FILE@REF, isn't read).
           const local = cfg.startsWith('./') ? cfg.slice(2) : cfg && !cfg.includes('@') ? cfg : '';
           if (local && files.has(local)) {
-            const body = await input.read(local);
+            const body = await config(local);
             const doc = body === null ? null : parseYaml(body);
             if (['allow-licenses', 'deny-licenses'].some((k) => list(at(doc, k)).length)) {
               return pass(`Dependency review checks the licenses of new dependencies (${local})`, w.path);
@@ -177,33 +188,56 @@ export async function licenseGate(input: LicenseInput): Promise<Outcome | null> 
             return pass('cargo-deny checks dependency licenses in CI', w.path);
           }
         }
-        for (const line of await expanded(s)) {
-          if (search(LICENSE_RUN, line))
-            return pass(`${search(LICENSE_RUN, line)![0].split(' ')[0]} checks dependency licenses in CI`, w.path);
-          const d = search(CARGO_DENY, line);
-          if (d && denyChecksLicenses(d[1]) && (await denyAllows())) {
-            return pass('cargo-deny checks dependency licenses in CI', w.path);
-          }
-          if (search(CARGO_ABOUT, line) && (await aboutAccepts())) {
-            return pass('cargo-about checks dependency licenses in CI', w.path);
-          }
-        }
+        const found = await stepChecks(s);
+        if (found) return pass(found, w.path);
       }
     }
   }
   return null;
 
-  /** A step's script lines, with the body of a script or target it runs (one hop). */
-  async function expanded(s: Step): Promise<string[]> {
+  /** The license check a script line runs, or null. */
+  async function lineChecks(line: string): Promise<string | null> {
+    const run = search(LICENSE_RUN, line);
+    if (run) return `${run[0].split(' ')[0]} checks dependency licenses in CI`;
+    const d = search(CARGO_DENY, line);
+    if (d && denyChecksLicenses(d[1]) && (await denyAllows())) return 'cargo-deny checks dependency licenses in CI';
+    if (search(CARGO_ABOUT, line) && (await aboutAccepts())) return 'cargo-about checks dependency licenses in CI';
+    return null;
+  }
+  /**
+   * The license check a step's script runs, in its own lines or in the body of a script or target it runs (one hop,
+   * each read once: a workflow can run one target thousands of times).
+   */
+  async function stepChecks(s: Step): Promise<string | null> {
     const lines = splitLines(s.run ?? '').filter((l) => !l.trimStart().startsWith('#'));
-    const out = [...lines];
+    for (const l of lines) {
+      const got = await lineChecks(l);
+      if (got) return got;
+    }
     for (const l of lines) {
       for (const m of finditer(SCRIPT_RUN, l)) {
-        const body = await input.hops.body(m[1].split(' ')[0], m[2]);
-        if (typeof body === 'string') out.push(...splitLines(body));
+        const got = await hopChecks(m[1].split(' ')[0], m[2]);
+        if (got) return got;
       }
     }
-    return out;
+    return null;
+  }
+  async function hopChecks(tool: string, target: string): Promise<string | null> {
+    const k = `${tool} ${target}`;
+    if (!hopped.has(k)) {
+      hopped.set(
+        k,
+        input.hops.body(tool, target).then(async (body) => {
+          if (typeof body !== 'string') return null;
+          for (const line of splitLines(body)) {
+            const got = await lineChecks(line);
+            if (got) return got;
+          }
+          return null;
+        }),
+      );
+    }
+    return hopped.get(k)!;
   }
   async function denyAllows(): Promise<boolean> {
     const path = input.files.find((f) => search(DENY_TOML, f));
@@ -278,7 +312,7 @@ export async function customQueries(input: QueryInput): Promise<Outcome | null> 
   const fromConfig = (doc: YNode | null) => [...names(at(doc, 'queries')), ...names(at(doc, 'packs'))].find(isOwn);
   const files = new Set(input.files);
   for (const w of input.workflows) {
-    const wf: Workflow = readWorkflow(w.path, w.text);
+    const wf: Workflow = workflowOf(w);
     for (const job of wf.jobs) {
       const inputs: [string | undefined, string | undefined, string | undefined, string | undefined][] = [];
       // A reusable workflow called with queries or packs passes them to CodeQL itself.

@@ -37,7 +37,7 @@ The answer is the same report, sent with `Cache-Control: no-store`, so the CDN d
 
 ## Check that the service is up
 
-`GET /api/health` returns `{"ok": true, "scanner_version": "0.5.0"}`. It says nothing else about the server, and it isn't rate limited.
+`GET /api/health` returns `{"ok": true, "scanner_version": "0.5.1"}`. It says nothing else about the server, and it isn't rate limited.
 
 ## Download the guide's data
 
@@ -73,7 +73,7 @@ Each entry in `results` has a `status`, a one-sentence `summary`, `evidence` (a 
 | `pass` | The control is in place | Done |
 | `warn` | It's partly in place | Partly done |
 | `fail` | It's missing | Missing |
-| `info` | A fact worth knowing, with no verdict | Info |
+| `info` | A fact worth knowing, with no verdict. It's also what a check gives for something it can't read, such as a SECURITY.md in a language it doesn't read or a versions table it can't parse, rather than a warning. | Info |
 | `unknown` | This scan couldn't settle it: it needs admin access, or the scan couldn't read something | Needs a deeper scan, or Couldn't check when a read failed |
 | `na` | It doesn't apply to this repository | Not applicable |
 
@@ -84,7 +84,7 @@ Here's a report for this project's own repository, trimmed to two results:
 ```json
 {
   "schema": "sosf-scan/1",
-  "tool": { "name": "sosf-scan", "version": "0.5.0" },
+  "tool": { "name": "sosf-scan", "version": "0.5.1" },
   "repo": "ntindle/sossscan",
   "scanned_at": "2026-11-10T20:29:59Z",
   "layer": "public",
@@ -102,9 +102,9 @@ Here's a report for this project's own repository, trimmed to two results:
   "results": {
     "disc-security-md": {
       "status": "pass",
-      "summary": "SECURITY.md found",
+      "summary": "SECURITY.md found; it says to report through GitHub's private vulnerability reporting",
       "evidence": [{ "label": "SECURITY.md", "url": "https://github.com/ntindle/sossscan/blob/main/SECURITY.md" }],
-      "details": { "path": "SECURITY.md", "length": 1293 },
+      "details": { "path": "SECURITY.md", "length": 1293, "report": ["github"] },
       "layer": "public"
     },
     "plan-irp": {

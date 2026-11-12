@@ -13,11 +13,54 @@ interface Fetched {
   status: number;
   body: Uint8Array;
   headers: Record<string, string>;
+  /** The body went on past the limit, so this is only its start. */
+  cut: boolean;
 }
+
+/**
+ * The most of a response the scanner reads, unless the request asks for less: far more than any answer from GitHub's
+ * API (a file tree of 100,000 paths is about 20 MB). Anyone can put a file of 100 MB in a repository, and public scans
+ * download on our server, so file reads ask for much less.
+ */
+export const MAX_BODY = 64 * 1024 * 1024;
 
 /** bytes.decode("utf-8", errors="replace"): bad bytes become U+FFFD and a leading BOM is kept. */
 export function decodeReplace(body: Uint8Array): string {
   return new TextDecoder('utf-8', { ignoreBOM: true }).decode(body);
+}
+
+/**
+ * A text file's bytes as text: UTF-16 when it starts with a UTF-16 byte-order mark, or when every other byte is zero
+ * (ASCII saved as UTF-16 by a Windows editor); Windows-1252 when it isn't UTF-8 at all; otherwise UTF-8 as
+ * decodeReplace reads it. For security policies, which people save in all sorts of ways.
+ */
+export function decodeText(body: Uint8Array): string {
+  if (body.length >= 2 && body[0] === 0xff && body[1] === 0xfe)
+    return new TextDecoder('utf-16le').decode(body.subarray(2));
+  if (body.length >= 2 && body[0] === 0xfe && body[1] === 0xff)
+    return new TextDecoder('utf-16be').decode(body.subarray(2));
+  const n = Math.min(body.length, 4000) & ~1;
+  if (n >= 8) {
+    let even = 0;
+    let odd = 0;
+    for (let k = 0; k < n; k += 2) {
+      if (body[k] === 0) even++;
+      if (body[k + 1] === 0) odd++;
+    }
+    const pairs = n / 2;
+    if (odd > pairs * 0.6 && even < pairs * 0.1)
+      return new TextDecoder('utf-16le').decode(body.subarray(0, body.length & ~1));
+    if (even > pairs * 0.6 && odd < pairs * 0.1)
+      return new TextDecoder('utf-16be').decode(body.subarray(0, body.length & ~1));
+  }
+  const text = decodeReplace(body);
+  // A file saved in a Windows code page (smart quotes and accented letters as single bytes) isn't UTF-8, so each of
+  // those bytes reads as U+FFFD, and "don't" with a curly quote as "don\uFFFDt". When nothing in it beyond ASCII is
+  // UTF-8, it's read as Windows-1252, as GitHub shows it.
+  if (text.includes('\uFFFD') && !/[\u0080-\uFFFC\uFFFE\uFFFF\u{10000}-\u{10FFFF}]/u.test(text)) {
+    return new TextDecoder('windows-1252').decode(body);
+  }
+  return text;
 }
 
 /** json.loads(body) on the bytes of a response: invalid UTF-8 or JSON gives null, and a UTF-8 BOM is skipped. */
@@ -42,17 +85,27 @@ function isRateLimit({ status, body, headers }: Fetched): boolean {
   return typeof parsed?.message === 'string' && /rate limit/i.test(parsed.message);
 }
 
-async function readBody(res: Response, touch: () => void): Promise<Uint8Array> {
-  if (!res.body) return new Uint8Array();
+/** The body, or its first limit bytes: past the limit nothing more is downloaded. */
+async function readBody(res: Response, touch: () => void, limit: number): Promise<{ body: Uint8Array; cut: boolean }> {
+  if (!res.body) return { body: new Uint8Array(), cut: false };
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let cut = false;
   const reader = res.body.getReader();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
+    touch();
+    if (size + value.length > limit) {
+      chunks.push(value.subarray(0, limit - size));
+      size = limit;
+      cut = true;
+      // Close the connection rather than read the rest.
+      reader.cancel().catch(() => {});
+      break;
+    }
     chunks.push(value);
     size += value.length;
-    touch();
   }
   const out = new Uint8Array(size);
   let offset = 0;
@@ -60,7 +113,7 @@ async function readBody(res: Response, touch: () => void): Promise<Uint8Array> {
     out.set(c, offset);
     offset += c.length;
   }
-  return out;
+  return { body: out, cut };
 }
 
 export class Http {
@@ -76,12 +129,16 @@ export class Http {
     this.timeout = timeout;
   }
 
-  /** One GET, retried once on a 5xx or a network error. A network failure comes back as status 0. */
+  /**
+   * One GET, retried once on a 5xx or a network error. A network failure comes back as status 0. At most limit bytes
+   * of the body are read; the last value says whether it went on past them.
+   */
   async req(
     url: string,
     accept = 'application/vnd.github+json',
     auth = true,
-  ): Promise<[number, Uint8Array, Record<string, string>]> {
+    limit = MAX_BODY,
+  ): Promise<[number, Uint8Array, Record<string, string>, boolean]> {
     // Python's http.client refuses to send a URL with spaces, control or non-ASCII characters, and the
     // scanner doesn't catch that error, so neither does this.
     if (/[^\x21-\x7e]/.test(url)) throw new Error(`URL can't contain control, space or non-ASCII characters: ${url}`);
@@ -93,23 +150,23 @@ export class Http {
       this.calls += 1;
       let got: Fetched;
       try {
-        got = await this.follow(url, headers);
+        got = await this.follow(url, headers, limit);
       } catch (e) {
         if (attempt === 0) continue;
-        return [0, new TextEncoder().encode(String(e)), {}];
+        return [0, new TextEncoder().encode(String(e)), {}, false];
       }
       if (got.status >= 500 && attempt === 0) continue;
       if (GITHUB_HOSTS.has(host) && isRateLimit(got)) this.rateLimited = true;
-      return [got.status, got.body, got.headers];
+      return [got.status, got.body, got.headers, got.cut];
     }
-    return [0, new Uint8Array(), {}];
+    return [0, new Uint8Array(), {}, false];
   }
 
   /**
    * GET url and follow redirects the way urllib does (at most 10 distinct URLs, each at most 4 times), except that
    * the token is dropped as soon as a redirect leaves api.github.com and raw.githubusercontent.com.
    */
-  private async follow(url: string, headers: Record<string, string>): Promise<Fetched> {
+  private async follow(url: string, headers: Record<string, string>, limit: number): Promise<Fetched> {
     const ctl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const touch = () => {
@@ -135,8 +192,8 @@ export class Http {
             continue;
           }
         }
-        const body = await readBody(res, touch);
-        return { status: res.status, body, headers: Object.fromEntries(res.headers) };
+        const { body, cut } = await readBody(res, touch, limit);
+        return { status: res.status, body, headers: Object.fromEntries(res.headers), cut };
       }
     } finally {
       clearTimeout(timer);
@@ -153,10 +210,16 @@ export class Http {
     return [status, parseJson(body), headers];
   }
 
-  /** GET text; null unless the status is 200. */
-  async text(url: string, opts: { auth?: boolean } = {}): Promise<[number, string | null]> {
-    const [status, body] = await this.req(url, '*/*', opts.auth);
-    return [status, status === 200 ? decodeReplace(body) : null];
+  /**
+   * GET text; null unless the status is 200. decode reads the bytes (as UTF-8, unless it says otherwise). At most
+   * limit bytes are read; the last value says whether the file went on past them.
+   */
+  async text(
+    url: string,
+    opts: { auth?: boolean; decode?: (body: Uint8Array) => string; limit?: number } = {},
+  ): Promise<[number, string | null, boolean]> {
+    const [status, body, , cut] = await this.req(url, '*/*', opts.auth, opts.limit);
+    return [status, status === 200 ? (opts.decode ?? decodeReplace)(body) : null, cut];
   }
 }
 

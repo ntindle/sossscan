@@ -22,7 +22,7 @@ import {
 } from './constants.ts';
 import { fundEntry, sharingResult, trainingResult } from './fund.ts';
 import { Hops, PUBLISH_SCRIPT_RUN, publishesToNpm } from './hops.ts';
-import { Http, decodeReplace } from './http.ts';
+import { Http, decodeReplace, decodeText } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
 import { privateLayer } from './private-layer.ts';
 import type { AddFinding, AddResult } from './private-layer.ts';
@@ -31,6 +31,7 @@ import {
   findallTuples,
   get,
   isDict,
+  LINE_SPACE,
   item,
   pyIn,
   pyInt,
@@ -59,8 +60,12 @@ import {
 } from './self-checks.ts';
 import type { Outcome } from './self-checks.ts';
 import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
-import { covers, supportProse, supportTable, targetRelease, templateRows } from './versions.ts';
+import { howToReport, looksLikePolicy, readPolicy, reportVerdict, sameRepoLinkFor } from './policy.ts';
+import type { Followed, Policy, Reporting } from './policy.ts';
+import { readSupport, releaseLine, supportVerdict } from './versions.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
+import { workflowOf } from './jobs.ts';
+import { TooComplex } from './yaml-lite.ts';
 
 const STATUSES: Status[] = ['pass', 'warn', 'fail', 'info', 'unknown', 'na'];
 /** The folders whose contents are listed when the full file tree is too big for one response. */
@@ -74,6 +79,42 @@ const NO_WORKFLOW_ITEMS = [
   'ci-workflow-audit',
 ];
 const NO_RELEASE_ITEMS = ['rel-sbom', 'rel-provenance', 'rel-signing', 'rel-trusted-publishing'];
+/**
+ * The workflow checks, and the results among theirs that say something is in no workflow: a workflow the scan
+ * couldn't read may hold it, so those become unknown.
+ */
+const IF_ALL_READ: Record<string, Status[]> = {
+  'ci-token-permissions': ['pass', 'na'],
+  'ci-pin-actions': ['pass', 'na'],
+  'ci-persist-credentials': ['pass', 'na'],
+  'ci-dangerous-triggers': ['pass', 'na'],
+  'ci-script-injection': ['pass', 'na'],
+  'ci-workflow-audit': ['fail', 'na'],
+  'ci-oidc': ['fail', 'na'],
+  'sast-codeql': ['fail', 'na'],
+  'sast-codeql-actions': ['fail', 'na'],
+  'rel-sbom': ['fail', 'na'],
+  'rel-provenance': ['fail', 'na'],
+  'rel-signing': ['info', 'na'],
+  'rel-trusted-publishing': ['fail', 'na'],
+};
+
+const MB = 1024 * 1024;
+/**
+ * What the scan reads of the files anyone can commit (one can be 100 MB) on our server, far above real repositories.
+ * The largest in the 193 repositories of the Fund's list: a workflow, 480 KB (openclaw's ci.yml); any other file the
+ * scan reads, 156 KB (openclaw's package.json; CLAUDE.md files reach 130 KB, CODEOWNERS 112 KB); workflow files, 127
+ * in one repository (openclaw), 3.4 MB in all. Past a limit a file is too large to read, and the checks that need it
+ * are unknown. A security policy is downloaded up to 1 MB, of which the reader reads the first 256 KB.
+ */
+const MAX_WORKFLOW = 2 * MB;
+const MAX_FILE = MB;
+const MAX_POLICY_BYTES = MB;
+const MAX_WORKFLOWS = 500;
+const MAX_WORKFLOW_TEXT = 16 * MB;
+/** How many other files a scan reads, at most: a real scan reads under 40 (composite actions, configs, manifests). */
+const MAX_READS = 200;
+const mb = (n: number) => `${n / MB} MB`;
 const NEEDS_PRIVATE_LAYER: [string, string][] = [
   ['deps-alerts', 'Dependabot alerts'],
   ['ci-fork-pr-approval', 'Fork PR approval policy'],
@@ -84,27 +125,35 @@ const NEEDS_PRIVATE_LAYER: [string, string][] = [
 ];
 
 const WORKFLOW_FILE = re(String.raw`^\.github/workflows/[^/]+\.ya?ml$`);
-const DEPENDENTS = re(String.raw`(?s)([\d,]+)\s*(?:<[^>]+>\s*)*\s*(Repositories|Packages)\b`);
-const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.rst|\.txt|\.adoc)?$`);
-const HOW_TO_REPORT = re(
-  // Any email address or bug bounty program counts too: both are ways to report privately.
-  String.raw`(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability|` +
-    String.raw`[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+|bug bounty|hackerone|bugcrowd|intigriti`,
+const DEPENDENTS = re(String.raw`(?s)(?<![\d,])([\d,]+)\s*(?:<[^<>]+>\s*)*(Repositories|Packages)\b`);
+/**
+ * A security policy: SECURITY.md in the root, .github/ or docs/, any case. GitHub's Security tab shows only a
+ * SECURITY.md (or SECURITY with no extension); the scan also reads the other formats people use.
+ */
+const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.markdown|\.rst|\.txt|\.adoc)?$`);
+/** A security policy's name in any folder (docs/security/SECURITY.md), for one GitHub doesn't show. */
+const NESTED_POLICY = re(String.raw`(?i)(?:^|/)security(?:\.md|\.markdown|\.rst|\.txt|\.adoc)?$`);
+/**
+ * Folders of other projects' code, whose policies aren't this repository's (3rdparty/openssl, extern/zlib,
+ * Pods/Alamofire, site-packages/requests), and of test fixtures.
+ */
+const VENDORED = re(
+  String.raw`(?i)(?:^|/)(?:node_modules|_?vendor(?:ed)?|third[-_]?party|3rd[-_]?party|external|extern|deps|contrib|libs?|bower_components|pods|site-packages|dist-packages|fixtures?|__fixtures__|testdata|test[-_]data)/`,
 );
 const THREAT_MODEL = re(String.raw`(?i)threat[-_ ]?model`);
 const INCIDENT_RESPONSE = re(String.raw`(?i)incident[-_ ]?response|(^|/)irp[-_.]|security[-_]incident`);
 const CODEOWNERS = re(String.raw`^(\.github/|docs/)?CODEOWNERS$`);
-const COVERS_WORKFLOWS = re(String.raw`(?m)^\s*(\*|/?\.github(/|\s)|/?\.github/workflows)`);
+const COVERS_WORKFLOWS = re(String.raw`(?m)^${LINE_SPACE}*(\*|/?\.github(/|\s)|/?\.github/workflows)`);
 const OTHER_SAST = TOOLS.find(([t]) => t === 'other_sast')![1];
 const ZIZMOR_CONFIG = re(String.raw`(?i)(^|/)\.?zizmor\.ya?ml$`);
 const DEPENDABOT = re(String.raw`^\.github/dependabot\.ya?ml$`);
 const RENOVATE = re(String.raw`(?i)^(\.github/)?(renovate\.json5?|\.renovaterc(\.json)?)$`);
 const PACKAGE_ECOSYSTEM = re(String.raw`package-ecosystem:\s*["\']?([\w-]+)`);
-const DEPENDABOT_COOLDOWN = re(String.raw`(?m)^\s*cooldown\s*:`);
+const DEPENDABOT_COOLDOWN = re(String.raw`(?m)^${LINE_SPACE}*cooldown\s*:`);
 const RENOVATE_COOLDOWN = re(String.raw`minimumReleaseAge|stabilityDays`);
 const NPM_COOLDOWN = re(String.raw`min-release-age`);
 const UV_COOLDOWN = re(String.raw`exclude-newer`);
-const IGNORE_SCRIPTS = re(String.raw`(?m)^\s*ignore-scripts\s*=\s*true`);
+const IGNORE_SCRIPTS = re(String.raw`(?m)^${LINE_SPACE}*ignore-scripts\s*=\s*true`);
 const DENY_TOML = re(String.raw`(^|/)deny\.toml$`);
 const GORELEASER = re(String.raw`^\.goreleaser\.ya?ml$`);
 const GORELEASER_SBOMS = re(String.raw`(?m)^sboms\s*:`);
@@ -121,6 +170,21 @@ const SECURITY_RULES = re(String.raw`(?i)secur|secret|vulnerab`);
 export const RATE_LIMITED = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
 
 type Got = Record<string, [number, any, Record<string, string>]>;
+
+/** Whether GitHub's Security tab shows this file as the policy: a SECURITY.md, or a SECURITY with no extension. */
+function githubShows(path: string): boolean {
+  const file = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+  return file === 'security.md' || file === 'security';
+}
+
+/**
+ * GitHub's order for a security policy: a SECURITY.md (or SECURITY) in .github/, the root, then docs/. The formats
+ * GitHub doesn't show (.rst, .adoc, .txt, .markdown) come after, in the same folder order.
+ */
+function policyRank(path: string): number {
+  const folder = /^\.github\//i.test(path) ? 0 : /^docs\//i.test(path) ? 2 : 1;
+  return (githubShows(path) ? 0 : 3) + folder;
+}
 
 /**
  * GitHub's refusal of a feature the account's plan doesn't include, such as rulesets in a private repository on GitHub
@@ -205,7 +269,11 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   if (treeStatus !== 200 && treeStatus !== 409) {
     rep.errors.push(`Could not read the repository's files (HTTP ${treeStatus}), so the file checks may be wrong`);
   }
-  const entry = (t: any, prefix = '') => ({ path: prefix + item(t, 'path'), file: get(t, 'type') === 'blob' });
+  const entry = (t: any, prefix = '') => ({
+    path: prefix + item(t, 'path'),
+    file: get(t, 'type') === 'blob',
+    size: Number(get(t, 'size')) || 0,
+  });
   let entries = pyIter(get(pyOr(tree, {}), 'tree', [])).map((t) => entry(t));
   // A truncated tree lists only some files, so no check may conclude from it that a kind of file is absent.
   let treeTruncated = false;
@@ -224,6 +292,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const paths = entries.map((e) => e.path);
   const files = entries.filter((e) => e.file).map((e) => e.path);
+  /** Each file's size in bytes, as the tree gives it (0 when it doesn't). */
+  const sizes = new Map(entries.filter((e) => e.file).map((e) => [e.path, e.size]));
   /** Submodules: the tree lists each as a commit (a gitlink), whose files aren't in it. */
   const gitlinks = pyIter(get(pyOr(tree, {}), 'tree', []))
     .filter((t) => isDict(t) && get(t, 'type') === 'commit')
@@ -231,30 +301,72 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   /** The whole tree came back (an empty repository's 409 included), so a file it doesn't list isn't there. */
   const treeComplete = (treeStatus === 200 || treeStatus === 409) && !treeTruncated;
 
-  /** A file on the default branch: the HTTP status, and the text unless the status isn't 200. */
-  const fetchFile = async (p: string): Promise<[number, string | null]> => {
+  /**
+   * A file on the default branch: the HTTP status, the text unless the status isn't 200, and whether the file went on
+   * past limit bytes (only those are downloaded). decode reads the bytes (UTF-8; a security policy can also be
+   * UTF-16, which decodeText reads).
+   */
+  const fetchFile = async (
+    p: string,
+    decode = decodeReplace,
+    limit = MAX_FILE,
+  ): Promise<[number, string | null, boolean]> => {
     if (privateRepo) {
-      const [s, body] = await http.req(
+      const [s, body, , cut] = await http.req(
         `${API}/repos/${repo}/contents/${quote(p)}?ref=${quote(branch)}`,
         'application/vnd.github.raw',
+        true,
+        limit,
       );
-      return [s, s === 200 ? decodeReplace(body) : null];
+      return [s, s === 200 ? decode(body) : null, cut];
     }
-    return http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`);
+    return http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`, { decode, limit });
   };
   /**
-   * The files that couldn't be read, with the HTTP status. The tree lists each one, so a check must say it couldn't
-   * read the file, never that the file is missing or empty.
+   * The files that couldn't be read, and why: "HTTP 404", "larger than 1 MB", or what made one too complex to read.
+   * The tree lists each one, so a check must say it couldn't read the file, never that the file is missing or empty.
    */
-  const unread = new Map<string, number>();
-  const read = async (p: string): Promise<string | null> => {
-    const [s, text] = await fetchFile(p);
-    if (text === null) unread.set(p, s);
-    return text;
+  const unread = new Map<string, string>();
+  let reads = 0;
+  /**
+   * A file's text, or null when it can't be read: a failed request, a file over cap bytes (unless cut, which keeps
+   * its start), or one past the MAX_READS files a scan reads.
+   */
+  const read = async (
+    p: string,
+    {
+      decode = decodeReplace,
+      cap = MAX_FILE,
+      cut = false,
+    }: { decode?: typeof decodeReplace; cap?: number; cut?: boolean } = {},
+  ): Promise<string | null> => {
+    if (++reads > MAX_READS) {
+      unread.set(p, `past the ${MAX_READS} files a scan reads`);
+      return null;
+    }
+    const [s, text, over] = await fetchFile(p, decode, cap);
+    if (text === null) unread.set(p, `HTTP ${s}`);
+    else if (over && !cut) unread.set(p, `larger than ${mb(cap)}`);
+    else return text;
+    return null;
   };
-  const couldNotRead = (p: string) => `Could not read ${p} (HTTP ${unread.get(p)})`;
+  /** How a security policy is read: as UTF-8 or UTF-16, and its start when it's large (the reader reads 256 KB). */
+  const POLICY_FILE = { decode: decodeText, cap: MAX_POLICY_BYTES, cut: true };
+  const couldNotRead = (p: string) => `Could not read ${p} (${unread.get(p)})`;
   /** One hop from a workflow step into package.json scripts and Makefile targets, each read once. */
-  const hops = new Hops(files, read);
+  const hops = new Hops(files, (p) => read(p));
+  /**
+   * A check that reads what a repository's owner wrote: an error in it leaves its result out, with a note in the
+   * errors, rather than failing the scan.
+   */
+  const attempt = async <T>(what: string, run: () => Promise<T> | T): Promise<T | null> => {
+    try {
+      return await run();
+    } catch (e) {
+      rep.errors.push(`Could not finish ${what}: ${String(e)}`);
+      return null;
+    }
+  };
   /** A detection's result: its evidence names repository files, which become links. */
   const outcome = (itemId: string, o: Outcome) =>
     res(
@@ -272,7 +384,11 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
    */
   const accountDefault = async (
     rx: RegExp,
-  ): Promise<{ label: string; url: string; body: string | null; status: number } | { failed: number } | null> => {
+  ): Promise<
+    | { label: string; url: string; body: string | null; status: number; path: string; repo: string; branch: string }
+    | { failed: number }
+    | null
+  > => {
     if (name.toLowerCase() === '.github') return null;
     const [s, defaults] = await http.json(`/repos/${owner}/.github`);
     // 404: the account has no .github repo, so it has no defaults.
@@ -284,21 +400,42 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     // An empty .github repo (409) has no files to provide.
     if (ts === 404 || ts === 409) return null;
     if (ts !== 200) return { failed: ts };
-    const rank = (p: string) => (/^\.github\//i.test(p) ? 0 : /^docs\//i.test(p) ? 2 : 1);
     const hits = pyIter(get(pyOr(t, {}), 'tree', []))
       .filter((x) => get(x, 'type') === 'blob' && search(rx, String(item(x, 'path'))) !== null)
       .map((x) => String(item(x, 'path')))
-      .sort((a, b) => rank(a) - rank(b));
+      .sort((a, b) => policyRank(a) - policyRank(b));
     if (!hits.length) return null;
     const [bs, body] = await http.text(
       `https://raw.githubusercontent.com/${owner}/.github/${quote(br)}/${quote(hits[0])}`,
+      { decode: decodeText, limit: MAX_POLICY_BYTES },
     );
     return {
       label: `${hits[0]} in ${owner}/.github`,
       url: `https://github.com/${owner}/.github/blob/${br}/${hits[0]}`,
       body,
       status: bs,
+      path: hits[0],
+      repo: `${owner}/.github`,
+      branch: br,
     };
+  };
+  /**
+   * A security policy in a sub-folder, where GitHub doesn't look (docs/security/SECURITY.md): of the three nearest the
+   * root, the first that reads like a policy (it says how to report, or has a part about reporting vulnerabilities),
+   * so a page about security features doesn't hide a policy deeper down. Costs a read for each one tried; null when
+   * none is a policy or can be read.
+   */
+  const nestedPolicy = async (): Promise<string | null> => {
+    const named = files
+      .filter((p) => p.includes('/') && search(NESTED_POLICY, p) && !search(VENDORED, p) && !search(SECURITY_MD, p))
+      .sort((a, b) => a.split('/').length - b.split('/').length || a.length - b.length);
+    for (const path of named.slice(0, 3)) {
+      const text = await read(path, POLICY_FILE);
+      if (text === null) continue;
+      const p = readPolicy(text, path);
+      if (looksLikePolicy(p, howToReport(p, repo))) return path;
+    }
+    return null;
   };
   /** The files whose path matches: what most checks look for (a folder named security/ is not a SECURITY.md). */
   const find = (rx: RegExp) => files.filter((p) => search(rx, p) !== null);
@@ -307,19 +444,59 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   const ecos = pySorted([...new Set(ECOSYSTEM_FILES.filter(([rx]) => find(rx).length).map(([, eco]) => eco))]);
   const wfPaths = find(WORKFLOW_FILE);
-  const texts = await mapLimit(wfPaths, 8, read);
-  // dict(zip(paths, texts)): one entry per path, in first-seen order.
-  const wfText = new Map<string, string | null>();
-  wfPaths.forEach((p, i) => wfText.set(p, texts[i]));
-  const wfs: WorkflowAnalysis[] = [...wfText].filter(([, t]) => t).map(([p, t]) => analyzeWorkflow(p, t!));
-  // A workflow that couldn't be read is left out of every check, like an empty one, though it may hold what they look
-  // for: say so.
-  const wfUnread = [...wfText.keys()].filter((p) => unread.has(p));
+  // At most MAX_WORKFLOWS files, none over MAX_WORKFLOW, and MAX_WORKFLOW_TEXT in all, by the sizes in the tree.
+  const toRead: string[] = [];
+  let planned = 0;
+  for (const p of wfPaths) {
+    const size = sizes.get(p) ?? 0;
+    if (toRead.length >= MAX_WORKFLOWS) unread.set(p, `past the first ${MAX_WORKFLOWS} workflow files`);
+    else if (size > MAX_WORKFLOW) unread.set(p, `larger than ${mb(MAX_WORKFLOW)}`);
+    else if (planned + size > MAX_WORKFLOW_TEXT) unread.set(p, `past the first ${mb(MAX_WORKFLOW_TEXT)} of workflows`);
+    else {
+      toRead.push(p);
+      planned += size;
+    }
+  }
+  const texts = await mapLimit(toRead, 8, async (p) => {
+    const [s, text, over] = await fetchFile(p, decodeReplace, MAX_WORKFLOW);
+    if (text === null) unread.set(p, `HTTP ${s}`);
+    else if (over) unread.set(p, `larger than ${mb(MAX_WORKFLOW)}`);
+    else return text;
+    return null;
+  });
+  // Each workflow read once for every check (workflowOf), and analyzed line by line. One too deep, or too big with
+  // its aliases expanded, to read is left out like one that couldn't be downloaded. An empty one is left out too.
+  const wfText = new Map<string, string>();
+  const wfs: WorkflowAnalysis[] = [];
+  const readable: { path: string; text: string }[] = [];
+  let total = 0;
+  toRead.forEach((p, i) => {
+    const text = texts[i];
+    if (!text) return;
+    total += text.length;
+    if (total > MAX_WORKFLOW_TEXT) {
+      unread.set(p, `past the first ${mb(MAX_WORKFLOW_TEXT)} of workflows`);
+      return;
+    }
+    const file = { path: p, text };
+    try {
+      workflowOf(file);
+      wfs.push(analyzeWorkflow(p, text));
+    } catch (e) {
+      unread.set(p, e instanceof TooComplex ? e.message : `the scan failed to read it: ${String(e)}`);
+      return;
+    }
+    wfText.set(p, text);
+    readable.push(file);
+  });
+  // A workflow that couldn't be read is left out of every check, though it may hold what they look for: say so, and
+  // the results that say something is in no workflow become unknown (IF_ALL_READ, at the end).
+  const wfUnread = wfPaths.filter((p) => unread.has(p));
   if (wfUnread.length) {
     const one = wfUnread.length === 1;
     rep.errors.push(
       `Could not read ${one ? wfUnread[0] : `${wfUnread.length} workflow files, such as ${wfUnread[0]}`} ` +
-        `(HTTP ${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
+        `(${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
     );
   }
   // A workflow that runs the package.json script named publish publishes to npm only when that script does: npm's,
@@ -373,7 +550,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     const [s, body] = got[key];
     return s === 200 || s === 404 || notInPlan(s, body) ? null : s;
   };
-  const [, depPage] = await http.text(`https://github.com/${repo}/network/dependents`, { auth: false });
+  const [, depPage] = await http.text(`https://github.com/${repo}/network/dependents`, { auth: false, limit: 4 * MB });
 
   let deps: { repositories: number; packages: number } | null = null;
   if (depPage) {
@@ -410,31 +587,45 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   rep.tier = tierFor(get(meta, 'stargazers_count', 0), dependents || 0);
 
   // ---- disclosure
-  const sec = find(SECURITY_MD);
+  const sec = find(SECURITY_MD).sort((a, b) => policyRank(a) - policyRank(b));
   /** The security policy GitHub shows for the repo (its own, or the account's), or why it couldn't be read. */
-  let policy: { text: string; label: string; url: string } | null = null;
+  let policy: {
+    text: string;
+    label: string;
+    url: string;
+    path: string;
+    /** Where the file lives, for reading another file it links to. */
+    repo: string;
+    branch: string;
+    own: boolean;
+  } | null = null;
   let policyTrouble: string | null = null;
   if (sec.length) {
-    const body = await read(sec[0]);
+    const body = await read(sec[0], POLICY_FILE);
     if (body === null) {
       res('disc-security-md', 'unknown', couldNotRead(sec[0]), fileLink(sec[0]));
       policyTrouble = couldNotRead(sec[0]);
     } else {
-      policy = { text: body, label: sec[0], url: blob(sec[0]) };
-      const how = search(HOW_TO_REPORT, body) !== null;
-      res(
-        'disc-security-md',
-        how && pyLen(body) > 200 ? 'pass' : 'warn',
-        `${sec[0]} found` + (how ? '' : ' but it does not clearly say how to report privately'),
-        fileLink(sec[0]),
-        { path: sec[0], length: pyLen(body) },
-      );
+      policy = { text: body, label: sec[0], url: blob(sec[0]), path: sec[0], repo, branch, own: true };
     }
   } else {
     // GitHub shows the account's default, a SECURITY.md in its public .github repo, for any repo without its own.
     const inherited = await accountDefault(SECURITY_MD);
     if (inherited === null) {
-      res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
+      // GitHub shows none, but a policy may sit in a sub-folder, where GitHub doesn't look: say where it is.
+      const nested = await nestedPolicy();
+      if (nested) {
+        // An issue template is still needed as one: what it says goes into a SECURITY.md too.
+        const fix = /^\.github\/ISSUE_TEMPLATE\//i.test(nested)
+          ? 'copy what it says about reporting into a SECURITY.md in one of those folders'
+          : 'move it to one of those folders';
+        res(
+          'disc-security-md',
+          'warn',
+          `No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; ${nested} reads like the policy: ${fix} so GitHub shows it`,
+          fileLink(nested),
+        );
+      } else res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
     } else if ('failed' in inherited) {
       res(
         'disc-security-md',
@@ -451,17 +642,81 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       );
       policyTrouble = `Could not read the account's default, ${inherited.label} (HTTP ${inherited.status})`;
     } else {
-      policy = { text: inherited.body, label: inherited.label, url: inherited.url };
-      const how = search(HOW_TO_REPORT, inherited.body) !== null;
-      res(
-        'disc-security-md',
-        how && pyLen(inherited.body) > 200 ? 'pass' : 'warn',
-        `${inherited.label} found, the account's default for repos without their own` +
-          (how ? '' : ' but it does not clearly say how to report privately'),
-        [{ label: inherited.label, url: inherited.url }],
-        { path: inherited.label, length: pyLen(inherited.body), account_default: true },
-      );
+      const { body, label, url, path, repo: home, branch: br } = inherited;
+      policy = { text: body, label, url, path, repo: home, branch: br, own: false };
     }
+  }
+  // The policy, read once for every check (policy.ts), and the one other file in its repository it led to: the
+  // target of a symlink, or the full policy that a short one links to. Nothing outside GitHub is fetched.
+  let doc: Policy | null = null;
+  let followed: { path: string; label: string; url: string; policy: Policy; reporting: Reporting } | null = null;
+  /** The account's default, when GitHub shows it instead of the repository's own .rst, .adoc or .txt policy. */
+  let shownDefault: { label: string; url: string; policy: Policy } | null = null;
+  if (policy) {
+    doc = readPolicy(policy.text, policy.path);
+    const reporting = howToReport(doc, policy.repo, repo);
+    const link = sameRepoLinkFor(doc, policy.text, policy.repo, {
+      report: !reporting.channels.length,
+      versions: !readSupport(doc).section,
+    });
+    const next = link?.path ?? null;
+    /** The file it led to, when it couldn't be read: its path and the HTTP status. */
+    let unreadNext: Followed | null = null;
+    // A file the whole tree doesn't list isn't there: no need to ask for it (a link to N/A, a moved file).
+    if (next && policy.own && treeComplete && !files.includes(next)) {
+      unreadNext = { path: next, status: 404 };
+    } else if (next) {
+      const [status, text] = policy.own
+        ? await fetchFile(next, decodeText, MAX_POLICY_BYTES)
+        : await http.text(`https://raw.githubusercontent.com/${policy.repo}/${quote(policy.branch)}/${quote(next)}`, {
+            decode: decodeText,
+            limit: MAX_POLICY_BYTES,
+          });
+      if (text !== null) {
+        const fp = readPolicy(text, next);
+        followed = {
+          path: next,
+          label: policy.own ? next : `${next} in ${policy.repo}`,
+          url: `https://github.com/${policy.repo}/blob/${policy.branch}/${next}`,
+          policy: fp,
+          reporting: howToReport(fp, policy.repo, repo),
+        };
+      } else unreadNext = { path: policy.own ? next : `${next} in ${policy.repo}`, status };
+    }
+    // A file it led to for the supported versions says nothing about how to report.
+    const forReport = link?.report ? (followed ?? unreadNext) : null;
+    let v = reportVerdict(doc, reporting, forReport);
+    let shown = '';
+    if (!githubShows(policy.path)) {
+      // GitHub's Security tab doesn't show this file. For a repository without a SECURITY.md it shows the account's
+      // default, if there is one, so that counts too.
+      const inherited = policy.own ? await accountDefault(SECURITY_MD) : null;
+      if (inherited && !('failed' in inherited) && inherited.body !== null && githubShows(inherited.path)) {
+        const dp = readPolicy(inherited.body, inherited.path);
+        shownDefault = { label: inherited.label, url: inherited.url, policy: dp };
+        shown = ` (GitHub's Security tab shows the account's default, ${inherited.label}, instead)`;
+        const dv = reportVerdict(dp, howToReport(dp, inherited.repo, repo), null);
+        if (v.status !== 'pass' && dv.status === 'pass') v = { ...dv, says: dv.says.replace('; it ', '; that one ') };
+      } else {
+        shown = " (GitHub's Security tab shows only a SECURITY.md)";
+      }
+    }
+    res(
+      'disc-security-md',
+      v.status,
+      `${policy.label} found` +
+        (policy.own ? '' : ", the account's default for repos without their own") +
+        shown +
+        v.says,
+      [{ label: policy.label, url: policy.url }],
+      {
+        path: policy.label,
+        length: pyLen(policy.text),
+        ...(policy.own ? {} : { account_default: true }),
+        ...(v.channels.length ? { report: v.channels } : {}),
+        ...(followed && link?.report ? { followed: followed.path } : {}),
+      },
+    );
   }
   const pvr = got.pvr[0] === 200 ? got.pvr[1] : null;
   if (isDict(pvr) && Object.hasOwn(pvr, 'enabled')) {
@@ -839,15 +1094,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         : 'No publishing workflow detected',
   );
   // ---- release jobs and the caches and artifacts they build from (new in 0.5.0)
-  const readable = wfs.map((w) => ({ path: w.path, text: wfText.get(w.path) ?? '' }));
-  const caches = await releaseCacheCheck({
-    workflows: readable,
-    unread: wfUnread.map((p) => ({ path: p, status: unread.get(p) ?? 0 })),
-    files,
-    treeRead: treeStatus === 200 || treeStatus === 409,
-    read,
-    hops,
-  });
+  const caches = (await attempt('the check of release jobs and caches', () =>
+    releaseCacheCheck({
+      workflows: readable,
+      unread: wfUnread.map((p) => ({ path: p, why: unread.get(p) ?? '' })),
+      files,
+      treeRead: treeStatus === 200 || treeStatus === 409,
+      read: (p) => read(p),
+      hops,
+    }),
+  )) ?? { status: 'unknown', summary: 'Could not finish this check', evidence: [], details: {}, findings: [] };
   res(
     'ci-untrusted-artifacts-caches',
     caches.status,
@@ -860,7 +1116,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const publishingJobs = (caches.details.publishing_jobs as unknown[] | undefined)?.length ?? 0;
   // A run step that traces its commands while it has a secret prints what the secret expands into.
-  const traced = tracedSecrets(readable);
+  const traced = (await attempt('the check of traced secrets', () => tracedSecrets(readable))) ?? [];
   if (traced.length) {
     const one = traced.length === 1;
     res(
@@ -951,7 +1207,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     otherSast ? otherSast.flatMap(fileLink) : [],
   );
   // Custom CodeQL queries count once CI runs them; queries kept elsewhere can't be seen, so there's no result then.
-  const queries = await customQueries({ workflows: readable, files, read });
+  const queries = await attempt('the check of custom CodeQL queries', () =>
+    customQueries({ workflows: readable, files, read: (p) => read(p) }),
+  );
   if (queries) outcome('sast-custom-queries', queries);
   const copilot = got.rules[0] === 200 ? copilotReview(got.rules[1]) : null;
   if (copilot) {
@@ -1083,7 +1341,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     null,
     locks,
   );
-  const licenses = await licenseGate({ workflows: readable, files, read, hops });
+  const licenses = await attempt('the check of license gates', () =>
+    licenseGate({ workflows: readable, files, read: (p) => read(p), hops }),
+  );
   if (licenses) outcome('deps-licenses', licenses);
 
   // ---- releases
@@ -1141,77 +1401,54 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         .map((r) => ({ tag: String(get(r, 'tag_name') ?? ''), prerelease: truthy(get(r, 'prerelease')) }))
     : null;
   let releasesTrouble: number | null = relList ? null : got.releases[0];
-  if (candidates && !candidates.length) {
+  // The tags stand in for releases when there are none, or when none of them is stable (only pre-releases).
+  const noStable = (c: { tag: string; prerelease?: boolean }[]) => {
+    const l = releaseLine(c, name);
+    return !l.target && !l.mixed;
+  };
+  if (candidates && (!candidates.length || (policy && noStable(candidates)))) {
     const [ts, tags] = await http.json(`/repos/${repo}/tags?per_page=100`);
-    if (ts === 200 && Array.isArray(tags))
-      candidates = tags.filter(isDict).map((t) => ({ tag: String(get(t, 'name')) }));
-    else [candidates, releasesTrouble] = [null, ts];
+    if (ts === 200 && Array.isArray(tags)) {
+      const fromTags = tags.filter(isDict).map((t) => ({ tag: String(get(t, 'name')) }));
+      if (!candidates.length || releaseLine(fromTags, name).target) candidates = fromTags;
+    } else if (!candidates.length) [candidates, releasesTrouble] = [null, ts];
   }
-  const target = candidates ? targetRelease(candidates) : null;
   const policyLink = policy ? [{ label: policy.label, url: policy.url }] : [];
   if (candidates && !candidates.length && !publishes && !publishingJobs) {
     res('rel-security-support', 'na', 'No releases, tags or publishing workflow');
-  } else if (!policy) {
+  } else if (!policy || !doc) {
     res(
       'rel-security-support',
       policyTrouble ? 'unknown' : 'info',
       policyTrouble ?? 'No SECURITY.md to say which versions get security fixes',
     );
   } else {
-    const table = supportTable(policy.text);
-    const readableRows = table.rows.filter((r) => covers(r.version, [0]) !== null);
-    const supported = readableRows.filter((r) => r.supported);
-    const covering = target ? supported.find((r) => covers(r.version, target.version)) : undefined;
-    if (table.template && templateRows(table.rows)) {
-      res(
-        'rel-security-support',
-        'warn',
-        `${policy.label} still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)`,
-        policyLink,
-      );
-    } else if (readableRows.length && target && covering) {
-      res(
-        'rel-security-support',
-        'pass',
-        `${policy.label} lists ${covering.version} as supported, which covers the newest release, ${target.tag}`,
-        policyLink,
-        { target: target.tag, supported: supported.map((r) => r.version) },
-      );
-    } else if (readableRows.length && target) {
-      const listed = supported.map((r) => r.version);
-      res(
-        'rel-security-support',
-        'warn',
-        `${policy.label} lists ` +
-          (listed.length ? `${listed.slice(0, 3).join(', ')} as supported` : 'no version as supported') +
-          `, but the newest release is ${target.tag}`,
-        policyLink,
-        { target: target.tag, supported: listed },
-      );
-    } else if (readableRows.length && releasesTrouble !== null) {
-      res(
-        'rel-security-support',
-        'unknown',
-        `Could not read the releases to compare with the table in ${policy.label} (HTTP ${releasesTrouble})`,
-        policyLink,
-      );
-    } else if (readableRows.length) {
-      res(
-        'rel-security-support',
-        'info',
-        `${policy.label} has a supported-versions table, but there's no stable release to compare it with`,
-        policyLink,
-      );
-    } else if (table.section || supportProse(policy.text)) {
-      res(
-        'rel-security-support',
-        'info',
-        `${policy.label} says which versions get fixes in words, not a table: check it covers ${target ? target.tag : 'your current release'}`,
-        policyLink,
-      );
-    } else {
-      res('rel-security-support', 'info', `${policy.label} doesn't say which versions get security fixes`, policyLink);
+    // The policy's own supported-versions section, or the one in the file it led to.
+    let support = readSupport(doc);
+    let label = policy.label;
+    let link = policyLink;
+    for (const other of [followed, shownDefault]) {
+      if (support.section || !other) continue;
+      const there = readSupport(other.policy);
+      if (there.section) [support, label, link] = [there, other.label, [{ label: other.label, url: other.url }]];
     }
+    const line = candidates ? releaseLine(candidates, name) : { target: null, mixed: null };
+    let v = supportVerdict(support, line, label, releasesTrouble, name);
+    if (v.status === 'warn' && !policy.own && label === policy.label) {
+      // The account's default is written for all its repositories, or for the .github repository itself: its table
+      // isn't this repository's to fall behind.
+      const target = line.target?.tag ?? 'your current release';
+      v = {
+        status: 'info',
+        summary: `${label}, the account's default for repos without their own, lists ${(v.details.supported as string[]).slice(0, 3).join(', ')} as supported, which may be about other repositories: check it covers ${target}`,
+        details: v.details,
+      };
+    }
+    // Past MAX_POLICY the reader looked only at the start, which matters only when it found no answer.
+    if (v.status !== 'pass' && label === policy.label && doc.truncated) {
+      v = { ...v, summary: `${v.summary} (the scan read only the first 256 KB of it)` };
+    }
+    res('rel-security-support', v.status, v.summary, link, v.details);
   }
 
   // ---- fuzzing (folders count here: a fuzz/ folder holds fuzz targets, and .clusterfuzzlite/ is a folder)
@@ -1341,6 +1578,21 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);
     }
   }
+  // A workflow the scan couldn't read may hold what a result says is in none of them. What the others hold is said
+  // after the reason, unless the scan read none.
+  if (wfUnread.length) {
+    const first = `${wfUnread[0]} (${unread.get(wfUnread[0])})`;
+    const why =
+      wfUnread.length === 1
+        ? `Could not read ${first}`
+        : `Could not read ${wfUnread.length} workflow files, such as ${first}`;
+    const others = wfUnread.length === 1 ? 'in the other workflows' : 'in the others';
+    for (const [it, statuses] of Object.entries(IF_ALL_READ)) {
+      const r = R[it];
+      if (!r || !statuses.includes(r.status)) continue;
+      res(it, 'unknown', readable.length ? `${why}; ${others}: ${r.summary}` : why, r.evidence, r.details, r.layer);
+    }
+  }
   if (http.rateLimited) rep.errors.push(RATE_LIMITED);
   rep.summary = Object.fromEntries(
     STATUSES.map((s) => [s, Object.values(R).filter((r) => r.status === s).length]),
@@ -1435,7 +1687,7 @@ async function ossFuzzGuess(http: Http, owner: string, name: string): Promise<st
   for (const cand of candidates) {
     const [, body] = await http.text(
       `https://raw.githubusercontent.com/google/oss-fuzz/master/projects/${quote(cand)}/project.yaml`,
-      { auth: false },
+      { auth: false, limit: MB },
     );
     if (!body) continue;
     mainRepo ??= re(

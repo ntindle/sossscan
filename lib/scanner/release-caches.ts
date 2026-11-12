@@ -5,23 +5,35 @@
 // workflow), the jobs whose artifacts it downloads (matched by name, directly or through one job in between), and
 // zizmor's list of actions that restore caches.
 import type { Finding, Status } from './types.ts';
-import { actionMajor, actionName, grantsIdToken, readCompositeSteps, readWorkflow } from './jobs.ts';
+import { actionMajor, actionName, grantsIdToken, readCompositeSteps, workflowOf } from './jobs.ts';
 import type { Job, Step, Workflow } from './jobs.ts';
 import { NPM_PUBLISH, SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import type { Hops } from './hops.ts';
 import { finditer, re, search, splitLines } from './py.ts';
+import { TooComplex } from './yaml-lite.ts';
 
-/** A command that publishes a package, an image or a release. Dry runs and snapshot builds publish nothing. */
+/**
+ * What follows a command on its line, up to the flag the command needs: at most 1000 characters, and never past the
+ * same command again. Run from each start, a run that went on past the later ones took time squared on a line of the
+ * command many times; stopping there finds the same commands, since the later start has the flag after it too.
+ */
+const upTo = (command: string) => String.raw`(?:(?!(?<=[\s;&|(/])${command})[^\n]){0,1000}`;
+/**
+ * A command that publishes a package, an image or a release. Dry runs and snapshot builds publish nothing: their flag
+ * is looked for in the 200 characters after the command, so that each start looks at a few hundred characters.
+ */
 export const PUBLISH_RUN = re(
-  String.raw`(?:^|[\s;&|(/])(?:(?:npm|pnpm)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|` +
+  String.raw`(?:^|[\s;&|(/])(?:(?:npm|pnpm)(?:\s+-[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|` +
     String.raw`yarn\s+npm\s+publish\b|twine\s+upload\b|` +
     String.raw`(?:uv|poetry|hatch|flit)\s+publish\b|maturin\s+(?:upload|publish)\b|cargo\s+publish\b|gem\s+push\b|` +
     String.raw`docker\s+(?:image\s+)?push\b|` +
-    String.raw`docker\s+buildx\s+build\b[^\n]*\s--push\b|gh\s+release\s+(?:create|upload)\b|` +
-    String.raw`goreleaser\s+release\b(?![^\n]*\s--(?:snapshot|skip-publish|skip[= ]publish))|` +
-    String.raw`mvnw?\b[^\n]*(?<![\w.:-])deploy(?![\w.=-])|gradlew?\b[^\n]*\bpublish(?!ToMavenLocal)\w*|` +
-    String.raw`sbt\b[^\n]*(?:\bpublish(?!Local)\w*|\bci-release\b|\btlCiRelease\b)|semantic-release\b|` +
-    String.raw`(?:dotnet\s+)?nuget\s+push\b)(?![^\n]*\s--dry-run\b)`,
+    String.raw`docker\s+buildx\s+build\b${upTo(String.raw`docker\s+buildx\s+build\b`)}\s--push\b|` +
+    String.raw`gh\s+release\s+(?:create|upload)\b|` +
+    String.raw`goreleaser\s+release\b(?![^\n]{0,200}\s--(?:snapshot|skip-publish|skip[= ]publish))|` +
+    String.raw`mvnw?\b${upTo(String.raw`mvnw?\b`)}(?<![\w.:-])deploy(?![\w.=-])|` +
+    String.raw`gradlew?\b${upTo(String.raw`gradlew?\b`)}\bpublish(?!ToMavenLocal)\w*|` +
+    String.raw`sbt\b${upTo(String.raw`sbt\b`)}(?:\bpublish(?!Local)\w*|\bci-release\b|\btlCiRelease\b)|semantic-release\b|` +
+    String.raw`(?:dotnet\s+)?nuget\s+push\b)(?![^\n]{0,200}\s--dry-run\b)`,
 );
 /** A script file in the repository that a step runs (at the start of a command), which the scan doesn't read. */
 const LOCAL_SCRIPT = re(
@@ -235,26 +247,34 @@ function localPath(uses: string): string {
   return p;
 }
 
-/** A value with its ${{ env.NAME }} expressions replaced by the workflow's or job's fixed values for them. */
-function withEnv(value: string | undefined, env: Record<string, string>): string | null {
-  let v = value?.trim();
+/** ${{ env.NAME }} or ${{env.NAME}}, the two ways a value names an env variable. */
+const ENV_REF = /\$\{\{ env\.([^\s{}]+) \}\}|\$\{\{env\.([^\s{}]+)\}\}/g;
+
+/**
+ * A value with its ${{ env.NAME }} expressions replaced by their fixed values: from the first of envs (the step's,
+ * the job's, the workflow's) that sets the name, unless that value is an expression itself. Each name is looked up,
+ * so a job that sets thousands takes no longer.
+ */
+function withEnv(value: string | undefined, envs: Record<string, string>[]): string | null {
+  const v = value?.trim();
   if (!v) return null;
-  for (const [k, x] of Object.entries(env)) {
-    if (x.includes('${{')) continue;
-    for (const form of [`\${{ env.${k} }}`, `\${{env.${k}}}`]) v = v.replaceAll(form, x);
-  }
-  return v;
+  if (!v.includes('env.')) return v;
+  return v.replace(ENV_REF, (m: string, a?: string, b?: string) => {
+    const k = (a ?? b)!;
+    const x = envs.find((e) => Object.hasOwn(e, k))?.[k];
+    return x === undefined || x.includes('${{') ? m : x;
+  });
 }
 
-/** The artifacts a step uploads or downloads, with env (the workflow's and job's) filled in to their names. */
-function artifactsOf(step: Step, env: Record<string, string>): { uploads: string[]; downloads: Download[] } {
+/** The artifacts a step uploads or downloads, with the step's, then the job's or workflow's env (envs) filled in. */
+function artifactsOf(step: Step, envs: Record<string, string>[]): { uploads: string[]; downloads: Download[] } {
   const name = actionName(step);
+  const all = [step.env, ...envs];
   if (name === 'actions/upload-artifact') {
-    return { uploads: [withEnv(step.with.name, { ...env, ...step.env }) || 'artifact'], downloads: [] };
+    return { uploads: [withEnv(step.with.name, all) || 'artifact'], downloads: [] };
   }
   if (name === 'actions/download-artifact') {
     const w = step.with;
-    const all = { ...env, ...step.env };
     const other = ['run-id', 'github-token', 'repository'].some((k) => (w[k] ?? '').trim() !== '');
     return {
       uploads: [],
@@ -281,17 +301,29 @@ function shortName(name: string): string {
   return out;
 }
 
-/** A glob with * and ? against a name. */
-function globMatch(glob: string, name: string): boolean {
-  const go = (g: number, n: number): boolean => {
-    if (g === glob.length) return n === name.length;
-    if (glob[g] === '*') {
-      for (let k = n; k <= name.length; k++) if (go(g + 1, k)) return true;
-      return false;
-    }
-    return n < name.length && (glob[g] === '?' || glob[g] === name[n]) && go(g + 1, n + 1);
-  };
-  return go(0, 0);
+/**
+ * A glob with * and ? against a name, with the usual two-pointer method: on a mismatch, the last * takes one more
+ * character. At most the product of the lengths, where trying every split for each * took exponential time.
+ */
+export function globMatch(glob: string, name: string): boolean {
+  let g = 0;
+  let n = 0;
+  let star = -1;
+  let from = 0;
+  while (n < name.length) {
+    if (g < glob.length && glob[g] === '*') {
+      star = g++;
+      from = n;
+    } else if (g < glob.length && (glob[g] === '?' || glob[g] === name[n])) {
+      g++;
+      n++;
+    } else if (star >= 0) {
+      g = star + 1;
+      n = ++from;
+    } else return false;
+  }
+  while (g < glob.length && glob[g] === '*') g++;
+  return g === glob.length;
 }
 
 /** An artifact name with ${{ }} expressions read as wildcards. */
@@ -326,8 +358,8 @@ function takes(d: Download, upload: string): 'yes' | 'all' | 'no' | 'unknown' {
 export interface CacheCheckInput {
   /** The workflows that could be read. */
   workflows: { path: string; text: string }[];
-  /** Workflow files that couldn't be read, with the HTTP status. */
-  unread: { path: string; status: number }[];
+  /** Workflow files that couldn't be read, and why ("HTTP 500", "larger than 2 MB"). */
+  unread: { path: string; why: string }[];
   /** Every file in the tree, for finding local actions, package.json and the Makefile. */
   files: string[];
   /** Whether the file tree could be listed at all. */
@@ -367,6 +399,14 @@ interface Problem {
 }
 
 const MAX_ACTION_FILES = 10;
+/** At most this many steps of local composite actions are read into the jobs that use them, in all. */
+const MAX_ACTION_STEPS = 50_000;
+/**
+ * The work the check may do, in steps read, characters of scripts (16 to a unit), jobs waited for and artifacts
+ * compared: about 20 times what the largest real repository needs, and a few hundred milliseconds. A hostile workflow (thousands of jobs that each need the last, or
+ * upload and download thousands of artifacts) gets unknown instead of an hour of matching.
+ */
+const MAX_WORK = 4_000_000;
 const CACHE_HINT =
   "Set cache-mode: none on the job and turn off the action's own cache input (for setup-node, package-manager-cache: false)";
 
@@ -380,7 +420,30 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
   ): CacheCheckResult => ({ status, summary, evidence, details, findings });
   if (!input.treeRead) return result('unknown', "Could not list the repository's files, so the workflows weren't read");
   if (!input.workflows.length && !input.unread.length) return result('na', 'No GitHub Actions workflows');
-  const wfs = input.workflows.map((w) => readWorkflow(w.path, w.text));
+  try {
+    return await check(input, result);
+  } catch (e) {
+    if (!(e instanceof TooComplex)) throw e;
+    return result('unknown', `Could not trace the release jobs: ${e.message}`);
+  }
+}
+
+async function check(
+  input: CacheCheckInput,
+  result: (
+    status: Status,
+    summary: string,
+    evidence?: string[],
+    details?: Record<string, unknown>,
+    findings?: CacheCheckResult['findings'],
+  ) => CacheCheckResult,
+): Promise<CacheCheckResult> {
+  let work = MAX_WORK;
+  const spend = (n: number) => {
+    work -= n;
+    if (work < 0) throw new TooComplex('the workflows have too many jobs, steps and artifacts to trace');
+  };
+  const wfs = input.workflows.map(workflowOf);
   const byPath = new Map(wfs.map((w) => [w.path, w]));
   const files = new Set(input.files);
 
@@ -392,14 +455,24 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
     if (!file) return Promise.resolve(null);
     if (!actionFiles.has(file)) {
       if (actionFiles.size >= MAX_ACTION_FILES) return Promise.resolve(null);
-      actionFiles.set(
-        file,
-        input.read(file).then((body) => (body === null ? null : readCompositeSteps(file, body))),
-      );
+      // An action file too deep or too big to read is one the scan couldn't read, like one it couldn't download.
+      const steps = (body: string | null) => {
+        try {
+          return body === null ? null : readCompositeSteps(file, body);
+        } catch (e) {
+          if (e instanceof TooComplex) return null;
+          throw e;
+        }
+      };
+      actionFiles.set(file, input.read(file).then(steps));
     }
     return actionFiles.get(file)!;
   };
-  /** Steps with the steps of their local composite actions after them (two levels deep), and the actions not read. */
+  /**
+   * Steps with the steps of their local composite actions after them (two levels deep), and the actions not read.
+   * Past MAX_ACTION_STEPS steps of actions in all, an action counts as one the scan couldn't read.
+   */
+  let actionStepsLeft = MAX_ACTION_STEPS;
   const expandSteps = async (steps: Step[], depth = 0): Promise<{ steps: Step[]; opaque: string[] }> => {
     const out: Step[] = [];
     const opaque: string[] = [];
@@ -407,13 +480,15 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
       out.push(s);
       if (!s.uses?.startsWith('./')) continue;
       const inner = depth < 2 ? await actionSteps(s.uses) : null;
-      if (!inner) {
+      if (!inner || inner.length > actionStepsLeft) {
         opaque.push(s.uses);
         continue;
       }
+      actionStepsLeft -= inner.length;
+      spend(inner.length);
       const deeper = await expandSteps(inner, depth + 1);
-      out.push(...deeper.steps);
-      opaque.push(...deeper.opaque);
+      for (const x of deeper.steps) out.push(x);
+      for (const x of deeper.opaque) opaque.push(x);
     }
     return { steps: out, opaque };
   };
@@ -426,23 +501,19 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
   };
 
   const hop = (tool: string, target: string) => input.hops.body(tool, target);
-
-  /** Why a job publishes, or what it runs that the scan couldn't follow. */
-  const publishing = async (n: Node): Promise<{ why: string | null; unresolved: string[] }> => {
-    const unresolved: string[] = [];
-    for (const s of n.steps) {
-      const why = publishOf(s);
-      if (why) return { why, unresolved };
-    }
-    for (const s of n.steps) {
-      for (const line of splitLines(s.run ?? '')) {
-        if (line.trimStart().startsWith('#')) continue;
-        for (const m of finditer(SCRIPT_RUN, line)) {
-          const tool = m[1].split(' ')[0];
-          const body = await hop(tool, m[2]);
-          // npm run publish (or pnpm's or yarn's) counts only when the script publishes to npm; any other script
-          // counts when it runs a publish command.
-          const npmScript = tool !== 'make' && m[2] === 'publish';
+  /**
+   * The publish command in the script or target a step runs, read once for each (a workflow can run one target
+   * thousands of times). npm run publish (or pnpm's or yarn's) counts only when the script publishes to npm; any other
+   * script counts when it runs a publish command.
+   */
+  const hopRuns = new Map<string, Promise<{ body: string | null | undefined; ran: RegExpExecArray | null }>>();
+  const ranBy = (tool: string, target: string) => {
+    const k = `${tool} ${target}`;
+    if (!hopRuns.has(k)) {
+      hopRuns.set(
+        k,
+        hop(tool, target).then((body) => {
+          const npmScript = tool !== 'make' && target === 'publish';
           const ran =
             typeof body !== 'string'
               ? null
@@ -451,6 +522,28 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
                   ? search(NPM_PUBLISH, body)
                   : null
                 : (search(PUBLISH_RUN, body) ?? search(NPM_PUBLISH, body));
+          return { body, ran };
+        }),
+      );
+    }
+    return hopRuns.get(k)!;
+  };
+
+  /** Why a job publishes, or what it runs that the scan couldn't follow. */
+  const publishing = async (n: Node): Promise<{ why: string | null; unresolved: string[] }> => {
+    const unresolved: string[] = [];
+    for (const s of n.steps) {
+      spend(1 + ((s.run?.length ?? 0) >> 4));
+      const why = publishOf(s);
+      if (why) return { why, unresolved };
+    }
+    for (const s of n.steps) {
+      spend(1 + ((s.run?.length ?? 0) >> 4));
+      for (const line of splitLines(s.run ?? '')) {
+        if (line.trimStart().startsWith('#')) continue;
+        for (const m of finditer(SCRIPT_RUN, line)) {
+          const tool = m[1].split(' ')[0];
+          const { body, ran } = await ranBy(tool, m[2]);
           if (ran) return { why: `${m[1]} ${m[2]}, which runs ${command(ran[0])}`, unresolved };
           // A bare "pnpm X" or "yarn X" is often a built-in command, so only a named script counts.
           const named = (m[1].includes(' ') || tool === 'make') && !NOT_PUBLISHING.has(m[2].toLowerCase());
@@ -504,8 +597,17 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
   const evidence = new Set<string>();
   const cacheModeNone = (n: Node) => (n.job.cacheMode ?? n.wf.cacheMode)?.trim().toLowerCase() === 'none';
   const label = (n: Node) => `${n.job.id} in ${n.wf.path}`;
-  const cachesOf = (n: Node) =>
-    n.steps.map((s) => cacheOf(s, cacheModeNone(n))).filter((c): c is NonNullable<typeof c> => c !== null);
+  /** Each job's caches, worked out once (a job is asked about once for each publishing job it's on the way to). */
+  const cached = new Map<Node, CacheUse[]>();
+  const cachesOf = (n: Node) => {
+    let got = cached.get(n);
+    if (!got) {
+      spend(n.steps.length);
+      got = n.steps.map((s) => cacheOf(s, cacheModeNone(n))).filter((c): c is NonNullable<typeof c> => c !== null);
+      cached.set(n, got);
+    }
+    return got;
+  };
 
   for (const nodes of runs) {
     const wf = nodes[0]?.wf;
@@ -549,6 +651,13 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
     // ---- the run's job graph: what each job waits for, through local reusable workflows
     const key = (path: string, id: string, via: Node | null) => `${path}#${id}#${via ? via.job.id : ''}`;
     const index = new Map(nodes.map((n) => [key(n.wf.path, n.job.id, n.via), n]));
+    const called = new Map<Node, Node[]>();
+    for (const m of nodes) {
+      if (!m.via) continue;
+      const list = called.get(m.via);
+      if (list) list.push(m);
+      else called.set(m.via, [m]);
+    }
     const needsOf = (n: Node): Node[] => {
       const out: Node[] = [];
       for (const id of n.job.needs) {
@@ -556,61 +665,126 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
         if (!dep) continue;
         out.push(dep);
         // Needing a job that calls a reusable workflow waits for all of that workflow's jobs.
-        out.push(...nodes.filter((m) => m.via === dep));
+        for (const m of called.get(dep) ?? []) out.push(m);
       }
-      if (n.via) out.push(...needsOf(n.via));
+      if (n.via) for (const m of needsOf(n.via)) out.push(m);
+      spend(1 + out.length);
       return out;
     };
+    // Every job n waits for, directly or not. Without recursion: a chain of jobs that each need the one before is as
+    // deep as it is long. A job is added to the set before the jobs it waits for, as a recursive walk would.
     const ancestry = new Map<Node, Set<Node>>();
     const ancestors = (n: Node): Set<Node> => {
-      let got = ancestry.get(n);
-      if (got) return got;
-      got = new Set();
-      ancestry.set(n, got);
-      for (const d of needsOf(n)) {
-        got.add(d);
-        for (const a of ancestors(d)) got.add(a);
-      }
-      return got;
-    };
-    const io = (n: Node) => {
-      const uploads: string[] = [];
-      const downloads: Download[] = [];
-      for (const s of n.steps) {
-        const a = artifactsOf(s, { ...n.wf.env, ...n.job.env });
-        uploads.push(...a.uploads);
-        downloads.push(...a.downloads);
-      }
-      return { uploads, downloads };
-    };
-    /** The jobs whose artifacts n downloads in its own run (strong: by name or pattern), and what it can't trace. */
-    const feeders = (n: Node) => {
-      const out: { node: Node; strong: boolean; artifact: string }[] = [];
-      const untraced: Download[] = [];
-      for (const d of io(n).downloads) {
-        if (d.otherRun) continue;
-        let linked = false;
-        for (const m of ancestors(n)) {
-          for (const up of io(m).uploads) {
-            const t = takes(d, up);
-            if (t === 'yes' || t === 'all') {
-              out.push({ node: m, strong: t === 'yes', artifact: up });
-              linked = true;
-            }
+      if (ancestry.has(n)) return ancestry.get(n)!;
+      ancestry.set(n, new Set());
+      const stack = [{ node: n, deps: needsOf(n), next: 0, entered: false }];
+      while (stack.length) {
+        const top = stack[stack.length - 1];
+        const got = ancestry.get(top.node)!;
+        if (top.next >= top.deps.length) {
+          stack.pop();
+          continue;
+        }
+        const d = top.deps[top.next];
+        if (!top.entered) {
+          top.entered = true;
+          got.add(d);
+          if (!ancestry.has(d)) {
+            ancestry.set(d, new Set());
+            stack.push({ node: d, deps: needsOf(d), next: 0, entered: false });
+            continue;
           }
         }
-        if (!linked) untraced.push(d);
+        const theirs = ancestry.get(d)!;
+        spend(1 + theirs.size);
+        for (const a of theirs) got.add(a);
+        top.next++;
+        top.entered = false;
+      }
+      return ancestry.get(n)!;
+    };
+    /** Each job's uploads and downloads, worked out once. */
+    const ios = new Map<Node, { uploads: string[]; downloads: Download[] }>();
+    const io = (n: Node) => {
+      let got = ios.get(n);
+      if (got) return got;
+      got = { uploads: [], downloads: [] };
+      const envs = [n.job.env, n.wf.env];
+      for (const s of n.steps) {
+        spend(1 + (s.with.name?.length ?? 0) + (s.with.pattern?.length ?? 0));
+        const a = artifactsOf(s, envs);
+        for (const x of a.uploads) got.uploads.push(x);
+        for (const x of a.downloads) got.downloads.push(x);
+      }
+      ios.set(n, got);
+      return got;
+    };
+    /** The jobs whose artifacts n downloads in its own run (strong: by name or pattern), and what it can't trace. */
+    const fed = new Map<Node, ReturnType<typeof feedersOf>>();
+    const feeders = (n: Node) => {
+      let got = fed.get(n);
+      if (!got) fed.set(n, (got = feedersOf(n)));
+      return got;
+    };
+    // Downloads that ask for the same artifacts (by name and pattern) link to the same uploads: worked out once, and
+    // listed once, as chainOf would keep them.
+    const feedersOf = (n: Node) => {
+      const out: { node: Node; strong: boolean; artifact: string }[] = [];
+      const untraced: Download[] = [];
+      const linked = new Map<string, boolean>();
+      for (const d of io(n).downloads) {
+        if (d.otherRun) continue;
+        const key = `${d.name ?? '\u0000'}\u0001${d.pattern ?? '\u0000'}`;
+        let any = linked.get(key);
+        if (any === undefined) {
+          any = false;
+          const want = (d.name ?? d.pattern ?? '').length;
+          for (const m of ancestors(n)) {
+            for (const up of io(m).uploads) {
+              // Matching a glob against a name takes at most the product of their lengths.
+              spend(1 + ((want * up.length) >> 6));
+              const t = takes(d, up);
+              if (t === 'yes' || t === 'all') {
+                out.push({ node: m, strong: t === 'yes', artifact: up });
+                any = true;
+              }
+            }
+          }
+          linked.set(key, any);
+        }
+        if (!any) untraced.push(d);
       }
       return { out, untraced };
     };
-    /** The jobs that build what n uses, directly or through one job in between. */
+    /**
+     * The jobs that build what n uses, directly or through one job in between, each job, artifact and strength once:
+     * what's said about a link depends on nothing else, and a hostile run repeats them many times over.
+     */
     const chainOf = (n: Node) => {
       const first = feeders(n);
-      const chain = first.out.map((f) => ({ ...f, through: null as Node | null }));
+      const chain: { node: Node; strong: boolean; artifact: string }[] = [];
+      const seen = new Map<Node, Set<string>>();
+      const add = (node: Node, strong: boolean, artifact: string) => {
+        spend(1);
+        if (node === n) return;
+        const k = `${strong} ${artifact}`;
+        const got = seen.get(node);
+        if (got?.has(k)) return;
+        if (got) got.add(k);
+        else seen.set(node, new Set([k]));
+        chain.push({ node, strong, artifact });
+      };
+      for (const f of first.out) add(f.node, f.strong, f.artifact);
+      // Through the same job, as strongly, the second step adds the same links again.
+      const through = new Map<Node, Set<boolean>>();
       for (const f of first.out) {
-        for (const g of feeders(f.node).out) chain.push({ ...g, strong: f.strong && g.strong, through: f.node });
+        const got = through.get(f.node);
+        if (got?.has(f.strong)) continue;
+        if (got) got.add(f.strong);
+        else through.set(f.node, new Set([f.strong]));
+        for (const g of feeders(f.node).out) add(g.node, f.strong && g.strong, g.artifact);
       }
-      return { chain: chain.filter((f) => f.node !== n), untraced: first.untraced };
+      return { chain, untraced: first.untraced };
     };
 
     // A job that may publish through a script the scan doesn't read matters only if a cache is on its path.
@@ -742,7 +916,7 @@ export async function releaseCacheCheck(input: CacheCheckInput): Promise<CacheCh
     const others = input.unread.length - 1;
     return result(
       'unknown',
-      `Could not read ${u.path} (HTTP ${u.status})` +
+      `Could not read ${u.path} (${u.why})` +
         (others ? ` and ${others} more workflow file${others > 1 ? 's' : ''}` : ''),
       ev,
       details,

@@ -1,7 +1,7 @@
 // A workflow's jobs and steps, read with yaml-lite.ts: what the checks that look inside a job need (its triggers,
 // needs, permissions, cache-mode, and each step's uses, with, env and run). New in 0.5.0.
 import { splitLines } from './py.ts';
-import { at, entry, list, parseYaml, strings, text } from './yaml-lite.ts';
+import { at, entry, list, readYaml, strings, text } from './yaml-lite.ts';
 import type { YNode } from './yaml-lite.ts';
 
 export interface Step {
@@ -56,7 +56,10 @@ export interface Workflow {
   jobs: Job[];
 }
 
-/** Every scalar under a node, joined by newlines. */
+/**
+ * Every scalar under a node, joined by newlines. readYaml() keeps a document's aliases from expanding past a few
+ * times its size, and its depth under MAX_DEPTH, so this takes time in proportion to the file.
+ */
 export function flatten(node: YNode | null | undefined): string {
   if (!node) return '';
   if (node.kind === 'scalar') return node.text;
@@ -113,9 +116,12 @@ function triggersOf(on: YNode | null): string[] {
   return list(on);
 }
 
-/** Read a workflow file. A file that isn't a mapping with jobs comes back with ok false and no jobs. */
+/**
+ * Read a workflow file. A file that isn't a mapping with jobs comes back with ok false and no jobs. Throws TooComplex
+ * for a file that nests too deep, or is too big with its aliases expanded, to read.
+ */
 export function readWorkflow(path: string, source: string): Workflow {
-  const doc = parseYaml(source);
+  const doc = readYaml(source);
   const lines = splitLines(source);
   const on = at(doc, 'on');
   const push = on && on.kind === 'map' ? at(on, 'push') : null;
@@ -155,9 +161,21 @@ export function readWorkflow(path: string, source: string): Workflow {
   };
 }
 
-/** The steps of a local composite action (runs.using: composite), or null for any other action file. */
+const parsed = new WeakMap<{ path: string; text: string }, Workflow>();
+
+/** readWorkflow(w.path, w.text), once for each file the scan read: it hands the same objects to every check. */
+export function workflowOf(w: { path: string; text: string }): Workflow {
+  let wf = parsed.get(w);
+  if (!wf) parsed.set(w, (wf = readWorkflow(w.path, w.text)));
+  return wf;
+}
+
+/**
+ * The steps of a local composite action (runs.using: composite), or null for any other action file. Throws
+ * TooComplex, as readWorkflow does.
+ */
 export function readCompositeSteps(path: string, source: string): Step[] | null {
-  const doc = parseYaml(source);
+  const doc = readYaml(source);
   const runs = at(doc, 'runs');
   if (text(at(runs, 'using'))?.toLowerCase() !== 'composite') return null;
   return stepsOf(at(runs, 'steps'), path, splitLines(source));
