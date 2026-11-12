@@ -2,7 +2,7 @@
 
 A security scanner and guide for open source maintainers, live at https://sossscan.ntindle.com.
 
-Scan a GitHub repository to see where it has security gaps, from your accounts to your releases, and which one to fix first. Each check shows how projects in GitHub's Secure Open Source Fund handled it: what they wrote about it, the files they added and the commits that fixed it. You can fix a gap yourself, hand it to your AI coding agent with a ready-made prompt, or let the optional GitHub App change the setting or open a pull request.
+Scan a GitHub repository to see where it has security gaps, from your accounts to your releases, and which one to fix first. Each check shows how projects in GitHub's Secure Open Source Fund handled it: what they wrote about it, the files they added and the commits that fixed it. You can fix a gap yourself, hand it to your AI coding agent with a ready-made prompt, or let the optional fix app, a GitHub App, change the setting or open a pull request.
 
 ## How a scan works
 
@@ -30,7 +30,7 @@ Each check's fix panel offers:
 
 1. **Do it yourself:** why it matters, steps and snippets, links to the right settings pages, a prefilled new file, the `gh` command and a tracking issue.
 2. **Hand it to your AI agent:** a prompt to paste into Claude Code, Codex, Copilot or Cursor. It holds the scan's findings, the steps, real fix commits from Fund projects, and ground rules: a new branch, the smallest change, pinned actions, nothing weakened, ask instead of guessing, and no settings changed behind your back. Checks about accounts, people and process get no prompt, because nothing in the repo would change.
-3. **Fix it for me**, with the GitHub App: a setting changes in one click, or the app opens a pull request that you preview first. [What the app does and never does](#the-github-app) is below.
+3. **Fix it for me**, with the fix app: a setting changes in one click, or the app opens a pull request that you preview first. [What the apps do and never do](#the-github-apps) is below.
 
 After a scan, **Prompt to fix**, at the head of the results, hands several checks to your agent at once. You pick them, starting from the five most urgent, and it copies one prompt: the scan's result with a link back to it, then each fix with its evidence, the recommended fix and the current result, then the requirements. Settings stay yours: the agent lists each one with its `gh` command or settings page and asks first.
 
@@ -68,39 +68,55 @@ AI agents can use sossscan through its MCP server at `https://sossscan.ntindle.c
 
 It speaks protocol version 2026-07-28, and 2025-11-25 and 2025-06-18 for clients that start with `initialize`, over the Streamable HTTP transport: one POST per message, one JSON answer, no sessions and no event stream. It's written for this site (`lib/mcp.ts`, `lib/mcp-tools.ts`) rather than built on the official TypeScript SDK, which has 17 dependencies of its own. A request from a web page on another site gets 403, each address can send 120 messages a minute, a body can be up to 64 KiB, and batches are refused. An [AI Catalog](https://ai-catalog.io) at `/.well-known/ai-catalog.json` points to the server's MCP Server Card at `/mcp/server-card`.
 
-## The GitHub App
+<a name="the-github-app"></a>
 
-The site uses one GitHub App, [`sossscan`](https://github.com/apps/sossscan). It's optional: without it, the site works except for sign-in, Deep scan and "Fix it for me". The server holds the app's private key, so installing the app means trusting this server with the permissions below on the repositories you pick. This section describes what the code does with them. The code is `app/api/app/`, `app/app/`, `lib/github-app.ts` and `lib/fixes.ts`, and the settings fixes are listed under `app_fixes` in `build/skeleton.json`.
+## The GitHub Apps
 
-### What its permissions are used for
+The site uses two GitHub Apps, both optional: without them, the site works except for sign-in, Deep scan and "Fix it for me".
+
+- **The main app**, [`sossscan`](https://github.com/apps/sossscan), only reads. It signs you in, runs Deep scan, and gives public scans their token.
+- **The fix app** changes things: the one-click settings fixes and the pull request fixes. Deep scan's private-report checks read through it too, since security advisories hold other people's unpublished reports. Install it only on the repositories where you want those. On a copy of the site without it, the main app does all of this.
+
+The server holds both apps' private keys, so installing an app means trusting this server with that app's permissions on the repositories you pick. Two apps keep the trust apart: a stolen key for the main app, the one most people install, can't change anything or read unpublished reports. This section describes what the code does with the permissions. The code is `app/api/app/`, `app/app/`, `lib/github-app.ts` and `lib/fixes.ts`, and the settings fixes are listed under `app_fixes` in `build/skeleton.json`.
+
+### What their permissions are used for
+
+The main app's, all read-only:
+
+| Permission | Used for |
+|---|---|
+| Administration, Actions | The admin-settings check, including the deployment environments and their reviewers |
+| Code scanning alerts, Secret scanning alerts, Dependabot alerts | How many alerts are open |
+| Contents, Pull requests | A private repository's files, releases and open update pull requests, and a fix's preview |
+| Secrets | How many Actions secrets the repository has (`ci-secrets-hygiene`). GitHub never gives a secret's value, and the scan reports only the count. |
+| Organization members, Organization administration | The admin-settings check (org 2FA and org settings) |
+| Metadata | Always on. Public scans use only this. |
+
+The fix app's:
 
 | Permission | Access | Used for |
 |---|---|---|
-| Administration | Read and write | The one-click settings fixes |
+| Administration | Read and write | The one-click settings fixes, CodeQL default setup included |
 | Contents | Read and write | Pull request fixes: a new branch with one commit |
 | Pull requests | Read and write | Opening that pull request |
 | Workflows | Read and write | Pull requests that add or change files in `.github/workflows` |
-| Code scanning alerts | Read and write | Turning on CodeQL default setup |
-| Secret scanning alerts, Dependabot alerts, Actions, Environments | Read | The admin-settings check |
-| Secrets | Read | How many Actions secrets the repository has (`ci-secrets-hygiene`). GitHub never gives a secret's value, and the scan reports only the count. |
 | Repository security advisories | Read | How many private vulnerability reports have waited over 14 days with no comment, and the oldest one's age (`disc-triage-sla`); the date of the latest closed advisory titled DRILL (`plan-irp-exercise`); and how many advisories brought in collaborators or have a temporary private fork (`disc-coordinated-disclosure`). Nothing else of an unpublished advisory reaches a result, and nothing is stored. |
-| Organization members, Organization administration | Read | The admin-settings check (org 2FA and org settings) |
-| Metadata | Read | Always on. Public scans use only this. |
+| Metadata | Read | Always on |
 
-The admin-settings check uses only read access, including the read side of the write permissions. Secrets and Repository security advisories are newer than the others, so an installation made before the app asked for them has them only once its owner approves them. Until then Deep scan says so where a check needs them (`DEPLOY.md` has the steps).
+Every token the server mints covers one repository and asks only for what its request needs: Deep scan's reads, the advisories get one that can read nothing else, a settings fix's holds Administration alone, a preview's reads, and the one that opens a pull request holds what that fix's files need. Secrets is newer than the main app's other permissions, so an installation made before the app asked for it has it only once its owner approves it. Until then Deep scan says so where a check needs it (`DEPLOY.md` has the steps).
 
-### What it never does
+### What they never do
 
-- **It never merges.** Every change arrives as a pull request for you to review and merge, or close.
-- **It never pushes to an existing branch.** A pull request fix creates a new branch, `sosf/<check>` (`-2` to `-5` if that name is taken), holding one commit on top of your default branch. The only branch it ever deletes is the one it just created, if GitHub refuses to open the pull request.
-- **It opens a pull request only after you've seen a preview.**
+- **They never merge.** Every change arrives as a pull request for you to review and merge, or close.
+- **They never push to an existing branch.** A pull request fix creates a new branch, `sosf/<check>` (`-2` to `-5` if that name is taken), holding one commit on top of your default branch. The only branch the fix app ever deletes is the one it just created, if GitHub refuses to open the pull request.
+- **A pull request opens only after you've seen a preview.**
   - The change is built on the server, never from text the browser sends: a file from the guide's own templates, your workflows with their actions pinned, or an AI agent's edit that passed the checks above.
   - You see the diff or the full new file first. It opens only when you confirm, within 15 minutes, as the person who asked for the preview, and only if your default branch hasn't moved since.
   - It won't add a file the repo already has, and it points to an already-open pull request instead of opening a second one.
-- **It changes a setting only when you click.** Each settings fix is one allow-listed API call, made after a confirm dialog says what will change. There are nine: turning on private vulnerability reporting, Dependabot alerts, Dependabot security updates, secret scanning, push protection, CodeQL default setup and immutable releases; making the default `GITHUB_TOKEN` read-only; and requiring approval before first-time contributors' workflows run.
-- **It acts only for a repo admin.** Every fix and admin check first confirms, with your own sign-in, that you're an admin of that repository.
-- **It never acts on a repository on its own.** There are no webhooks and nothing scheduled: every change happens inside a request from a signed-in admin. The settings review workflow it can add runs in your repository's own Actions, with that workflow's own token, and the app takes no part in it.
-- **It keeps its tokens narrow.** The tokens it mints to check or fix a repository cover only that repository, and the one that opens a pull request has only the permissions that fix needs. Public scans use a token limited to `metadata: read`. Your own sign-in token is used for two reads (who you are, and whether you're an admin of the repo). It lives encrypted in your browser's cookie for 7 hours; the server stores nothing.
+- **A setting changes only when you click.** Each settings fix is one allow-listed API call, made after a confirm dialog says what will change. There are nine: turning on private vulnerability reporting, Dependabot alerts, Dependabot security updates, secret scanning, push protection, CodeQL default setup and immutable releases; making the default `GITHUB_TOKEN` read-only; and requiring approval before first-time contributors' workflows run.
+- **They act only for a repo admin.** Every fix and admin check first confirms, with your own sign-in, that you're an admin of that repository.
+- **They never act on a repository on their own.** There are no webhooks and nothing scheduled: every change happens inside a request from a signed-in admin. The settings review workflow the fix app can add runs in your repository's own Actions, with that workflow's own token, and the apps take no part in it.
+- **They keep their tokens narrow.** Each token covers one repository and holds only what its request needs, as above. Public scans use a token limited to `metadata: read`. Your own sign-in token is used for two reads (who you are, and whether you're an admin of the repo). It lives encrypted in your browser's cookie for 7 hours; the server stores nothing.
 
 ## Local development
 
@@ -122,7 +138,8 @@ npm run build          # set SITE_BASE_URL to the public address for a real depl
 
 - `SITE_BASE_URL`: the public address (default `http://127.0.0.1:3340`). `https` turns on secure `__Host-` cookies and HSTS. Security headers are fixed at build time, so set it when you build.
 - `SOSF_SECRET`: the key for sign-in cookies, the sign-in handshake and sealed previews, at least 32 characters (`openssl rand -hex 32`). Sign-in needs it; the server never makes one up. Changing it signs everyone out.
-- `GITHUB_APP_ID` (a number), `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `GITHUB_APP_PRIVATE_KEY`: the GitHub App's credentials, and the only place they come from. All five are required; if one is missing or invalid, the site runs without sign-in. `GITHUB_APP_OWNER` and `GITHUB_APP_PUBLIC` are optional.
+- `GITHUB_APP_ID` (a number), `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `GITHUB_APP_PRIVATE_KEY`: the main GitHub App's credentials, and the only place they come from. All five are required; if one is missing or invalid, the site runs without sign-in. `GITHUB_APP_OWNER` and `GITHUB_APP_PUBLIC` are optional.
+- `GITHUB_FIX_APP_ID`, `GITHUB_FIX_APP_SLUG` and `GITHUB_FIX_APP_PRIVATE_KEY`: optional, the fix app's. It has no sign-in, so no client ID or secret. Without all three, the main app makes the fixes.
 - `GITHUB_TOKEN` or `GH_TOKEN`: optional. When set, public scans use it instead of the app's token.
 - `SOSF_DATA_DIR`: caches only, nothing secret (default: the project root; `/tmp/sosf` on Vercel).
 - `TRUST_PROXY_HEADERS=1`: behind a proxy that sets the visitor's address, so rate limits count each visitor. Without it (and off Vercel), everyone shares one count, because anyone can send a fake `X-Forwarded-For`.
@@ -144,13 +161,13 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `lib/home.ts` | The home page as Markdown: `content/index.md`, then every stage and check, listed from `public/data/guide.json`. |
 | `app/[...path]/` | Every address nothing else answers: a 404, as Markdown for requests that ask for it and as a page in the site's style otherwise. Next.js tries it after every file and route, and after `app/api/[[...path]]/` for addresses under `/api/`. |
 | `public/llms.txt`, `public/robots.txt`, `app/sitemap.ts` | For agents and crawlers: an index of the site in the llms.txt format, the crawl rules (crawlers stay out of `/api/` and `/app/`), and a sitemap dated by each page's last commit (`PAGE_DATES` in `next.config.ts`). |
-| `app/api/app/`, `app/app/` | The optional GitHub App: sign-in, Deep scan (the admin-settings check), settings fixes and pull request fixes. Nothing here creates or replaces the app. |
+| `app/api/app/`, `app/app/` | The optional GitHub Apps: sign-in and Deep scan (the admin-settings check) through the main app, settings fixes and pull request fixes through the fix app. Nothing here creates or replaces an app. |
 | `next.config.ts` | Serves the page (`/` is `public/index.html`), sends the security headers on every response (the CSP's script hashes are computed from `public/` at build time), redirects retired pages, and dates each page from Git for the sitemap. |
 | `lib/scanner/` | The scanner: the server's engine and the downloadable CLI. Read-only, no dependencies. |
 | `lib/public-scan.ts`, `lib/scan-token.ts` | Public scans: which repo, the 6-hour cache, at most 3 at once, and which token. |
 | `app/mcp/`, `lib/mcp.ts`, `lib/mcp-tools.ts` | The MCP server: the protocol and the transport, its tools, and its Server Card (`app/mcp/server-card/`). |
 | `app/.well-known/ai-catalog.json/` | The AI Catalog, whose one entry is the MCP server's card. |
-| `lib/github-app.ts`, `lib/sealed.ts`, `lib/github.ts` | The app's credentials (environment only), sealed sign-ins and previews, and GitHub API calls. |
+| `lib/github-app.ts`, `lib/sealed.ts`, `lib/github.ts` | The apps' credentials (environment only), which app each request uses and the permissions its token asks for, sealed sign-ins and previews, and GitHub API calls. |
 | `lib/fixes.ts` | Pull request fixes: builds the change on the server, previews it, then opens it. |
 | `lib/agent.ts` | AI agent fixes through any OpenAI-compatible chat API. Off until configured. |
 | `lib/ossfuzz.ts`, `lib/ossfuzz.json` | Which repos have an OSS-Fuzz project. `npm run ossfuzz` refreshes the list. |
@@ -219,7 +236,7 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
   - `disc-triage-sla` gives info when the policy says how soon reports get an answer (a time such as 48 hours or 3 business days, within 90 characters of a word such as acknowledge, respond or reply), and quotes that sentence. With admin access it warns when private vulnerability reports have waited over 14 days with no comment, and says how many and how old the oldest is, never which. GitHub gives an empty list to a token that can't read the reports, so an empty list counts only when the token is known to read them: an app installation with Repository security advisories, or a classic token with the `repo` scope. A fine-grained token's empty list gives no result.
   - `plan-irp-exercise` passes on a closed advisory titled DRILL (in capitals) closed in the last 12 months, and gives its date. An older one, or a sentence in the incident response plan that dates a drill or tabletop, gives info. Otherwise it stays a self-check.
   - `disc-coordinated-disclosure` gives info for what shows coordination: the policy's sentence about an embargo, advance notice, telling downstream users or coordinated disclosure ("responsible disclosure" alone doesn't count); published advisories that credit a reporter or finder; the latest releases whose notes cite the repository's own GHSA or CVE IDs; and, with admin access, how many drafts, closed and published advisories brought in collaborators (GitHub adds a private report's reporter itself, so that one doesn't count) or have a temporary private fork.
-- `repo-settings-review` passes when an issue labeled `settings-review` was closed in the last 6 months, the longer end of the guide's "every 3 to 6 months", and gives its date. The guide's `.github/workflows/settings-review.yml` opens one in January and July. A scheduled workflow whose steps name the label gives info, saying when GitHub has turned it off or issues are off, and so does an older closed issue. Pull requests with the label don't count, and nor do issues closed as not planned or as duplicates. It reads the 5 newest closed issues with the label, one request. The GitHub App doesn't ask for the Issues permission, so in a Deep scan of a private repository the check says it couldn't read them; the CLI with an admin's token can.
+- `repo-settings-review` passes when an issue labeled `settings-review` was closed in the last 6 months, the longer end of the guide's "every 3 to 6 months", and gives its date. The guide's `.github/workflows/settings-review.yml` opens one in January and July. A scheduled workflow whose steps name the label gives info, saying when GitHub has turned it off or issues are off, and so does an older closed issue. Pull requests with the label don't count, and nor do issues closed as not planned or as duplicates. It reads the 5 newest closed issues with the label, one request. The main app doesn't ask for the Issues permission, so in a Deep scan of a private repository the check says it couldn't read them; the CLI with an admin's token can.
 - The release cache check reads the workflows, the local actions they use, and one hop into package.json scripts or Makefile targets. A release made by a script or a remote reusable workflow shows as info, because the scan can't see inside it.
 - The OSS Scanner check (public repos with over 1,000 stars or 200 dependents) finds a project by matching folder names in anthropics/oss-scanner against the repo's name and owner, then confirms the `repo:` URL in its project.yaml. A project enrolled under an unrelated folder name shows as not enrolled.
 - Peer adoption covers the 193 fund repos only, bucketed by stars.

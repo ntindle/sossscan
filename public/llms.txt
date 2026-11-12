@@ -33,5 +33,5 @@ Every page on the site also comes as Markdown, at its address with .md added (/i
 ## Optional
 
 - [Source code](https://github.com/ntindle/sossscan): the site, the scanner and the guide's build, under the MIT license
-- [GitHub App](https://github.com/apps/sossscan): checks admin-only settings and applies fixes from the site, once installed on a repository
+- [GitHub App](https://github.com/apps/sossscan): checks admin-only settings from the site, once installed on a repository. A second, optional app applies the fixes.
 - [Sitemap](https://sossscan.ntindle.com/sitemap.xml): every page on the site

@@ -28,19 +28,19 @@ So that one visitor can't use up the site's GitHub quota, the server counts requ
 
 ## Signing in with GitHub
 
-You only need to sign in to use Deep scan and the GitHub App's fixes. The sign-in itself happens on GitHub, under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). When GitHub sends you back, the server gets a GitHub user token for you and asks GitHub for your username.
+You only need to sign in to use Deep scan and "Fix it for me". The sign-in itself happens on GitHub, under [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). When GitHub sends you back, the server gets a GitHub user token for you and asks GitHub for your username.
 
 Both go into a cookie in your browser, with the app's ID and the time your sign-in ends. The cookie is encrypted and signed with a key only the server has, so its contents can't be read or changed in the browser, and the page's scripts can't read it. It lasts 7 hours, and Sign out deletes it. While you're on GitHub's sign-in page, a second cookie holds a random value for up to 15 minutes, to make sure the sign-in that comes back started in your browser. These two are the only cookies the site sets.
 
-The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. When the app is installed there, it keeps that answer in memory, with your username and the repository's name, until the server instance stops, and reuses it for up to a minute.
+The server doesn't save your sign-in anywhere. It uses your token for two reads on GitHub: who you are, and whether you're an admin of the repository you're looking at. When the site's apps are installed there, it keeps that answer in memory, with your username and the repository's name, until the server instance stops, and reuses it for up to a minute.
 
-## Checks and fixes through the app
+## Checks and fixes through the apps
 
-For Deep scan and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. A deep scan runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
+The site has two GitHub Apps. Deep scan goes through the main app, sossscan, which can only read. "Fix it for me" goes through the fix app, the only one that can change a repository, which you install only if you want fixes. For each request, the server calls GitHub with a token of that app's installation that covers only that repository and holds only the permissions the request needs. A deep scan runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
 
 Two things Deep scan reads are private, and it keeps neither:
 
-- Private vulnerability reports and other unpublished security advisories. It reads how many reports have waited over 14 days with no comment and how old the oldest is, when the last practice advisory titled DRILL was closed, and how many advisories brought in collaborators or have a temporary private fork. None of their text goes into the result: no title, description, reporter or severity.
+- Private vulnerability reports and other unpublished security advisories. It reads them through the fix app, with a token that can read nothing else, so only where the fix app is installed. It reads how many reports have waited over 14 days with no comment and how old the oldest is, when the last practice advisory titled DRILL was closed, and how many advisories brought in collaborators or have a temporary private fork. None of their text goes into the result: no title, description, reporter or severity.
 - The names of the repository's Actions secrets, for the secrets check. GitHub never gives anyone a secret's value, and the result has only how many secrets there are.
 
 The result goes only to your browser, which keeps it for the tab, as below. The server doesn't store it.
