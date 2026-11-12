@@ -133,8 +133,13 @@ const DEPENDENTS = re(String.raw`(?s)(?<![\d,])([\d,]+)\s*(?:<[^<>]+>\s*)*(Repos
 const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.markdown|\.rst|\.txt|\.adoc)?$`);
 /** A security policy's name in any folder (docs/security/SECURITY.md), for one GitHub doesn't show. */
 const NESTED_POLICY = re(String.raw`(?i)(?:^|/)security(?:\.md|\.markdown|\.rst|\.txt|\.adoc)?$`);
-/** Folders of other projects' code, whose policies aren't this repository's. */
-const VENDORED = re(String.raw`(?i)(?:^|/)(?:node_modules|vendor|third[-_]?party|external|deps)/`);
+/**
+ * Folders of other projects' code, whose policies aren't this repository's (3rdparty/openssl, extern/zlib,
+ * Pods/Alamofire, site-packages/requests), and of test fixtures.
+ */
+const VENDORED = re(
+  String.raw`(?i)(?:^|/)(?:node_modules|_?vendor(?:ed)?|third[-_]?party|3rd[-_]?party|external|extern|deps|contrib|libs?|bower_components|pods|site-packages|dist-packages|fixtures?|__fixtures__|testdata|test[-_]data)/`,
+);
 const THREAT_MODEL = re(String.raw`(?i)threat[-_ ]?model`);
 const INCIDENT_RESPONSE = re(String.raw`(?i)incident[-_ ]?response|(^|/)irp[-_.]|security[-_]incident`);
 const CODEOWNERS = re(String.raw`^(\.github/|docs/)?CODEOWNERS$`);
@@ -415,19 +420,22 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     };
   };
   /**
-   * A security policy in a sub-folder, where GitHub doesn't look (docs/security/SECURITY.md): the one nearest the root,
-   * when it reads like a policy (it says how to report, or has a part about reporting vulnerabilities). Costs one read
-   * when there's a candidate; null when there's none, it can't be read, or it's a page about something else.
+   * A security policy in a sub-folder, where GitHub doesn't look (docs/security/SECURITY.md): of the three nearest the
+   * root, the first that reads like a policy (it says how to report, or has a part about reporting vulnerabilities),
+   * so a page about security features doesn't hide a policy deeper down. Costs a read for each one tried; null when
+   * none is a policy or can be read.
    */
   const nestedPolicy = async (): Promise<string | null> => {
     const named = files
       .filter((p) => p.includes('/') && search(NESTED_POLICY, p) && !search(VENDORED, p) && !search(SECURITY_MD, p))
       .sort((a, b) => a.split('/').length - b.split('/').length || a.length - b.length);
-    if (!named.length) return null;
-    const text = await read(named[0], POLICY_FILE);
-    if (text === null) return null;
-    const p = readPolicy(text, named[0]);
-    return looksLikePolicy(p, howToReport(p, repo)) ? named[0] : null;
+    for (const path of named.slice(0, 3)) {
+      const text = await read(path, POLICY_FILE);
+      if (text === null) continue;
+      const p = readPolicy(text, path);
+      if (looksLikePolicy(p, howToReport(p, repo))) return path;
+    }
+    return null;
   };
   /** The files whose path matches: what most checks look for (a folder named security/ is not a SECURITY.md). */
   const find = (rx: RegExp) => files.filter((p) => search(rx, p) !== null);
@@ -607,10 +615,14 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       // GitHub shows none, but a policy may sit in a sub-folder, where GitHub doesn't look: say where it is.
       const nested = await nestedPolicy();
       if (nested) {
+        // An issue template is still needed as one: what it says goes into a SECURITY.md too.
+        const fix = /^\.github\/ISSUE_TEMPLATE\//i.test(nested)
+          ? 'copy what it says about reporting into a SECURITY.md in one of those folders'
+          : 'move it to one of those folders';
         res(
           'disc-security-md',
           'warn',
-          `No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; ${nested} reads like the policy: move it to one of those folders so GitHub shows it`,
+          `No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; ${nested} reads like the policy: ${fix} so GitHub shows it`,
           fileLink(nested),
         );
       } else res('disc-security-md', 'fail', 'No SECURITY.md in the root, .github/ or docs/');
@@ -649,7 +661,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     });
     /** The file it led to, when it couldn't be read: its path and the HTTP status. */
     let unreadNext: Followed | null = null;
-    if (next) {
+    // A file the whole tree doesn't list isn't there: no need to ask for it (a link to N/A, a moved file).
+    if (next && policy.own && treeComplete && !files.includes(next)) {
+      unreadNext = { path: next, status: 404 };
+    } else if (next) {
       const [status, text] = policy.own
         ? await fetchFile(next, decodeText, MAX_POLICY_BYTES)
         : await http.text(`https://raw.githubusercontent.com/${policy.repo}/${quote(policy.branch)}/${quote(next)}`, {

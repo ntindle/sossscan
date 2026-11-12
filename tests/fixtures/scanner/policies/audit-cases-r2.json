@@ -1,0 +1,433 @@
+[
+  {
+    "id": "L01 terse-english-no-stopwords-public",
+    "disc": "warn",
+    "text": "# Security\n\n## Reporting\n\nVulnerability reports: GitHub issues. Response time: best effort. Scope: core library, CLI tools, Docker images, Helm charts, documentation site.\n"
+  },
+  {
+    "id": "L02 terse-english-no-stopwords-address",
+    "disc": "pass",
+    "text": "# Security\n\n## Reporting\n\nVulnerability reports: security@acme-widgets.org. Response time: best effort. Scope: core library, CLI tools, Docker images, Helm charts.\n"
+  },
+  {
+    "id": "L03 spanish-section-public-issue",
+    "disc": "info|warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nSi encuentras una vulnerabilidad, abre un issue público en GitHub con los detalles.\n\n## Scope\n\nThe API server and the web UI are in scope. Please test against your own deployment only.\n"
+  },
+  {
+    "id": "L04 german-obfuscated-punkt",
+    "disc": "pass|info",
+    "note": "German \"punkt\" for dot",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nBitte melde Sicherheitslücken nicht als Issue, sondern per E-Mail an sicherheit (at) acme-widgets (punkt) de.\n"
+  },
+  {
+    "id": "L05 french-gsa-name",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nMerci de ne pas ouvrir d'issue publique. Utilisez les GitHub Security Advisories du dépôt.\n"
+  },
+  {
+    "id": "L06 mixed-paragraph-en-zh-gsa",
+    "disc": "pass|info",
+    "note": "one paragraph, two languages",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not open public issues for vulnerabilities. 请通过 GitHub Security Advisory 私下报告漏洞，我们会尽快回复。\n"
+  },
+  {
+    "id": "L07 mixed-lines-en-zh-gsa",
+    "disc": "pass|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not open public issues for vulnerabilities.\n请通过 GitHub Security Advisory 私下报告漏洞，我们会尽快回复。\n"
+  },
+  {
+    "id": "L08 vietnamese-no-address",
+    "disc": "info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nVui lòng không mở issue công khai cho các lỗ hổng bảo mật. Hãy liên hệ riêng với người bảo trì dự án.\n"
+  },
+  {
+    "id": "L09 portuguese-email",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPor favor, não abra uma issue pública. Envie um e-mail para seguranca@acme-widgets.com.br com os detalhes.\n"
+  },
+  {
+    "id": "L10 japanese-fullwidth-at",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\n脆弱性を見つけた場合は、公開の Issue ではなく security＠acme-widgets.co.jp までご連絡ください。\n"
+  },
+  {
+    "id": "L11 hindi-gsa",
+    "disc": "pass|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nकृपया सार्वजनिक issue न खोलें। GitHub Security Advisory के माध्यम से निजी रूप से रिपोर्ट करें।\n"
+  },
+  {
+    "id": "L12 english-code-like-paragraph",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\n`gpg --encrypt --recipient security@acme-widgets.org report.txt` then send the file.\n"
+  },
+  {
+    "id": "L13 thai-paragraph-plus-english-public-sentence",
+    "disc": "pass|info|warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease open a GitHub issue. หากพบช่องโหว่ กรุณาแจ้งผู้ดูแลผ่าน GitHub Security Advisory แทน\n"
+  },
+  {
+    "id": "F01 short-privacy-policy-link",
+    "disc": "warn|info",
+    "note": "a privacy contact",
+    "files": {
+      "PRIVACY.md": "# Privacy Policy\n\nWe collect no personal data. Questions about this privacy policy: privacy@acme-widgets.org\n"
+    },
+    "text": "# Security\n\nWe take security seriously. Read our [Privacy Policy](PRIVACY.md).\n"
+  },
+  {
+    "id": "F02 coc-and-security-links",
+    "disc": "pass",
+    "files": {
+      "docs/SECURITY-POLICY.md": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n"
+    },
+    "text": "# Security\n\nSee our [Code of Conduct](CODE_OF_CONDUCT.md) and our [security policy](docs/SECURITY-POLICY.md).\n"
+  },
+  {
+    "id": "F03 report-a-bug-link-to-contributing",
+    "disc": "warn",
+    "files": {
+      "CONTRIBUTING.md": "# Contributing\n\nFile bugs in the GitHub issue tracker. Send pull requests against main.\n"
+    },
+    "text": "# Security\n\nPlease [report a bug](CONTRIBUTING.md).\n"
+  },
+  {
+    "id": "F04 symlink-chain",
+    "disc": "info",
+    "files": {
+      "docs/SECURITY.md": "../policies/SECURITY.md"
+    },
+    "text": "docs/SECURITY.md"
+  },
+  {
+    "id": "F05 followed-404",
+    "disc": "info",
+    "files": {
+      "docs/SECURITY-POLICY.md": 404
+    },
+    "text": "# Security\n\nSee [our security policy](docs/SECURITY-POLICY.md).\n"
+  },
+  {
+    "id": "F06 followed-500",
+    "disc": "unknown",
+    "files": {
+      "docs/SECURITY-POLICY.md": 500
+    },
+    "text": "# Security\n\nSee [our security policy](docs/SECURITY-POLICY.md).\n"
+  },
+  {
+    "id": "F07 followed-429",
+    "disc": "unknown",
+    "files": {
+      "docs/SECURITY-POLICY.md": 429
+    },
+    "text": "# Security\n\nSee [our security policy](docs/SECURITY-POLICY.md).\n"
+  },
+  {
+    "id": "F08 feature-doc-with-link",
+    "disc": "warn|info",
+    "files": {
+      "docs/security-notes.md": "# Security notes\n\nTLS is on by default. See [upstream](https://github.com/other/lib/blob/main/SECURITY.md).\n"
+    },
+    "text": "# Security\n\nSee [security notes](docs/security-notes.md).\n"
+  },
+  {
+    "id": "F09 contributing-anchor",
+    "disc": "pass|info",
+    "note": "anchor names the section",
+    "files": {
+      "CONTRIBUTING.md": "# Contributing\n\n## Reporting security issues\n\nEmail security@acme-widgets.org. Do not open public issues.\n"
+    },
+    "text": "# Security\n\nSee [CONTRIBUTING](CONTRIBUTING.md#reporting-security-issues).\n"
+  },
+  {
+    "id": "F10 long-policy-links-policy-word",
+    "disc": "warn",
+    "files": {
+      "PRIVACY.md": "# Privacy\n\nprivacy@acme-widgets.org\n"
+    },
+    "text": "# Security\n\nThis project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. This project follows common practice for disclosure and for keeping users safe. \n\nSee the [Privacy Policy](PRIVACY.md).\n"
+  },
+  {
+    "id": "F11 na-only",
+    "disc": "warn",
+    "note": "a policy that is literally N/A",
+    "text": "N/A"
+  },
+  {
+    "id": "F12 and-or-only",
+    "disc": "warn",
+    "text": "and/or"
+  },
+  {
+    "id": "X01 utf16le-nobom",
+    "disc": "pass",
+    "b64": "IwAgAFMAZQBjAHUAcgBpAHQAeQAgAFAAbwBsAGkAYwB5AAoACgAjACMAIABSAGUAcABvAHIAdABpAG4AZwAgAGEAIABWAHUAbABuAGUAcgBhAGIAaQBsAGkAdAB5AAoACgBFAG0AYQBpAGwAIABzAGUAYwB1AHIAaQB0AHkAQABhAGMAbQBlAC0AdwBpAGQAZwBlAHQAcwAuAG8AcgBnACAAdwBpAHQAaAAgAGQAZQB0AGEAaQBsAHMALgAKAA=="
+  },
+  {
+    "id": "X02 utf16be-nobom",
+    "disc": "pass",
+    "b64": "ACMAIABTAGUAYwB1AHIAaQB0AHkAIABQAG8AbABpAGMAeQAKAAoAIwAjACAAUgBlAHAAbwByAHQAaQBuAGcAIABhACAAVgB1AGwAbgBlAHIAYQBiAGkAbABpAHQAeQAKAAoARQBtAGEAaQBsACAAcwBlAGMAdQByAGkAdAB5AEAAYQBjAG0AZQAtAHcAaQBkAGcAZQB0AHMALgBvAHIAZwAgAHcAaQB0AGgAIABkAGUAdABhAGkAbABzAC4ACg=="
+  },
+  {
+    "id": "X03 utf16le-nobom-chinese",
+    "disc": "pass|info",
+    "note": "mostly CJK, no BOM: NUL heuristic fails",
+    "b64": "IwAgAIlbaFE/ZVZ7CgAKACMAIwAgAKViSlQPbx5tCgAKAPeLDU6BiWxRAF/QY6RO7pWYmAIw94vRUwGQrpD2TjBSIABzAGUAYwB1AHIAaQB0AHkAQABhAGMAbQBlAC0AdwBpAGQAZwBlAHQAcwAuAG8AcgBnACAApWJKVA9vHm0M/xFi7E4aTyhXJE4qTuVdXE/lZYVR3lYNWQIwH2EijKhgLl6pUhFi7E7dT6RiKHU3YgIwCgAjACAAiVtoUT9lVnsKAAoAIwAjACAApWJKVA9vHm0KAAoA94sNToGJbFEAX9BjpE7ulZiYAjD3i9FTAZCukPZOMFIgAHMAZQBjAHUAcgBpAHQAeQBAAGEAYwBtAGUALQB3AGkAZABnAGUAdABzAC4AbwByAGcAIAClYkpUD28ebQz/EWLsThpPKFckTipO5V1cT+VlhVHeVg1ZAjAfYSKMqGAuXqlSEWLsTt1PpGIodTdiAjAKACMAIACJW2hRP2VWewoACgAjACMAIAClYkpUD28ebQoACgD3iw1OgYlsUQBf0GOkTu6VmJgCMPeL0VMBkK6Q9k4wUiAAcwBlAGMAdQByAGkAdAB5AEAAYQBjAG0AZQAtAHcAaQBkAGcAZQB0AHMALgBvAHIAZwAgAKViSlQPbx5tDP8RYuxOGk8oVyROKk7lXVxP5WWFUd5WDVkCMB9hIoyoYC5eqVIRYuxO3U+kYih1N2ICMAoA"
+  },
+  {
+    "id": "X04 utf32le-bom",
+    "disc": "pass|info",
+    "b64": "//4AACMAAAAgAAAAUwAAAGUAAABjAAAAdQAAAHIAAABpAAAAdAAAAHkAAAAgAAAAUAAAAG8AAABsAAAAaQAAAGMAAAB5AAAACgAAAAoAAAAjAAAAIwAAACAAAABSAAAAZQAAAHAAAABvAAAAcgAAAHQAAABpAAAAbgAAAGcAAAAgAAAAYQAAACAAAABWAAAAdQAAAGwAAABuAAAAZQAAAHIAAABhAAAAYgAAAGkAAABsAAAAaQAAAHQAAAB5AAAACgAAAAoAAABFAAAAbQAAAGEAAABpAAAAbAAAACAAAABzAAAAZQAAAGMAAAB1AAAAcgAAAGkAAAB0AAAAeQAAAEAAAABhAAAAYwAAAG0AAABlAAAALQAAAHcAAABpAAAAZAAAAGcAAABlAAAAdAAAAHMAAAAuAAAAbwAAAHIAAABnAAAAIAAAAHcAAABpAAAAdAAAAGgAAAAgAAAAZAAAAGUAAAB0AAAAYQAAAGkAAABsAAAAcwAAAC4AAAAKAAAA"
+  },
+  {
+    "id": "X05 cp1252-smart-apostrophe-noaddr",
+    "disc": "warn",
+    "note": "message should not say public issues",
+    "b64": "IyBTZWN1cml0eSBQb2xpY3kKCiMjIFJlcG9ydGluZyBhIFZ1bG5lcmFiaWxpdHkKClBsZWFzZSBkb26SdCBvcGVuIGEgcHVibGljIGlzc3VlLiBSZXBvcnQgaXQgcHJpdmF0ZWx5IHRvIHRoZSBtYWludGFpbmVycy4K"
+  },
+  {
+    "id": "X06 latin1-umlaut-email",
+    "disc": "pass",
+    "b64": "IyBTaWNoZXJoZWl0CgojIyBNZWxkdW5nCgpCaXR0ZSBtZWxkZW4gU2llIFNpY2hlcmhlaXRzbPxja2VuIGFuIHNlY3VyaXR5QGFjbWUtd2lkZ2V0cy5vcmcuCg=="
+  },
+  {
+    "id": "X07 shiftjis-with-ascii-email",
+    "disc": "pass",
+    "b64": "IyCDWoNMg4WDioNlg0KDfIOKg1aBWwoKIyMgkMaO45CrgsyV8Y2QCgqQxo7jkKuC8IypgsKCr4K9j+qNh4LNIHNlY3VyaXR5QGFjbWUtd2lkZ2V0cy5vcmcggtyCxYKymEGXjYKtgr6Cs4KigUKM9opKgswgSXNzdWUggs2OZ4LtgsiCooLFgq2CvoKzgqKBQgo="
+  },
+  {
+    "id": "X08 bom-crlf",
+    "disc": "pass",
+    "b64": "77u/IyBTZWN1cml0eSBQb2xpY3kNCg0KIyMgUmVwb3J0aW5nIGEgVnVsbmVyYWJpbGl0eQ0KDQpFbWFpbCBzZWN1cml0eUBhY21lLXdpZGdldHMub3JnIHdpdGggZGV0YWlscy4NCg=="
+  },
+  {
+    "id": "X09 gzip-binary",
+    "disc": "info",
+    "b64": "H4sIAMs/9WoC/+3MMQqAMAxA0T2nCHS2Z3BxFwX3WkMNVCttinh7O3gLs///DM7ka2Z5cEyR/QNgDE50pSx8BnS41HhSdivHFgEMh+OI5Zt65w/qbt4CSbEpB7xZdtxIWlUsGOWVV1555ZX/O/8ClO+xMGwHAAA="
+  },
+  {
+    "id": "X10 tiny-binary",
+    "disc": "info",
+    "b64": "E4j/AH8BnOIC1BARAP4FBg=="
+  },
+  {
+    "id": "X11 utf16le-bom-chinese",
+    "disc": "pass",
+    "b64": "//4jACAAiVtoUT9lVnsKAAoAIwAjACAApWJKVA9vHm0KAAoA94sNToGJbFEAX9BjpE7ulZiYAjD3i9FTAZCukPZOMFIgAHMAZQBjAHUAcgBpAHQAeQBAAGEAYwBtAGUALQB3AGkAZABnAGUAdABzAC4AbwByAGcAIAClYkpUD28ebQz/EWLsThpPKFckTipO5V1cT+VlhVHeVg1ZAjAfYSKMqGAuXqlSEWLsTt1PpGIodTdiAjAKACMAIACJW2hRP2VWewoACgAjACMAIAClYkpUD28ebQoACgD3iw1OgYlsUQBf0GOkTu6VmJgCMPeL0VMBkK6Q9k4wUiAAcwBlAGMAdQByAGkAdAB5AEAAYQBjAG0AZQAtAHcAaQBkAGcAZQB0AHMALgBvAHIAZwAgAKViSlQPbx5tDP8RYuxOGk8oVyROKk7lXVxP5WWFUd5WDVkCMB9hIoyoYC5eqVIRYuxO3U+kYih1N2ICMAoAIwAgAIlbaFE/ZVZ7CgAKACMAIwAgAKViSlQPbx5tCgAKAPeLDU6BiWxRAF/QY6RO7pWYmAIw94vRUwGQrpD2TjBSIABzAGUAYwB1AHIAaQB0AHkAQABhAGMAbQBlAC0AdwBpAGQAZwBlAHQAcwAuAG8AcgBnACAApWJKVA9vHm0M/xFi7E4aTyhXJE4qTuVdXE/lZYVR3lYNWQIwH2EijKhgLl6pUhFi7E7dT6RiKHU3YgIwCgA="
+  },
+  {
+    "id": "C01 no-eol-planned",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | No EOL planned |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C02 not-yet-eol",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Not yet EOL |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C03 eol-not-announced",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | EOL not announced |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C04 no-end-of-life-date-yet",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | No end-of-life date yet |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C05 supported-eol-tbd",
+    "rel": "pass",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Supported (EOL TBD) |\n| 2.x | :x: |\n"
+  },
+  {
+    "id": "C06 check-eol-tbd",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | ✅ — EOL: TBD |\n| 2.x | :x: |\n"
+  },
+  {
+    "id": "C07 eol-in-6-months",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "note": "4.x listed but newest release 3.1",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | EOL in 6 months |\n| 2.x | :x: |\n| 4.x | Supported |\n"
+  },
+  {
+    "id": "C08 eol-in-6-months-older-yes",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | EOL in 6 months |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C09 lts-eol-past",
+    "rel": "pass",
+    "tags": ["v4.2.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | LTS (EOL 2024-04-30) |\n| 4.x | Current |\n"
+  },
+  {
+    "id": "C10 security-fixes-until-eol-date",
+    "rel": "pass",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Security fixes until EOL (2027-06) |\n"
+  },
+  {
+    "id": "C11 discontinued-future",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Discontinued in 2030 |\n"
+  },
+  {
+    "id": "C12 eol-us-date",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | EOL 12/31/2028 |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C13 ended-past",
+    "rel": "pass",
+    "tags": ["v4.0.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Ended 2025-12-31 |\n| 4.x | :white_check_mark: |\n"
+  },
+  {
+    "id": "C14 supported-until-superseded",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | Yes, until superseded |\n| 2.x | No |\n"
+  },
+  {
+    "id": "C15 retired-word-in-note-col",
+    "rel": "pass",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported | Notes |\n| --- | --- | --- |\n| 3.x | :white_check_mark: | 2.x retired in 2025 |\n| 2.x | :x: | |\n"
+  },
+  {
+    "id": "C16 eol-quarter-future",
+    "rel": "pass|info",
+    "tags": ["v3.1.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | EOL Q4 2027 |\n| 2.x | Supported |\n"
+  },
+  {
+    "id": "C17 for-example-in-section-text",
+    "rel": "pass",
+    "tags": ["v3.1.0"],
+    "note": "\"for example\" in prose, the table is real",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\nWe support the two latest minor lines, for example 3.1 and 3.0 today.\n\n| Version | Supported |\n| --- | --- |\n| 3.x | :white_check_mark: |\n| < 3.0 | :x: |\n"
+  },
+  {
+    "id": "C18 for-example-stale-table",
+    "rel": "warn|info",
+    "tags": ["v2.4.0"],
+    "note": "stale table hidden as example",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n## Supported Versions\n\nPatches go to the latest minor, for example 2.4 when 2.4 is the newest.\n\n| Version | Supported |\n| --- | --- |\n| 1.x | :white_check_mark: |\n| < 1.0 | :x: |\n"
+  },
+  {
+    "id": "P01 hackerone-isnt-used",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nHackerOne isn't used for this project; please open a GitHub issue.\n"
+  },
+  {
+    "id": "P02 left-hackerone",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nWe left HackerOne in 2023. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "P03 no-hackerone-program",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nNo HackerOne program exists for this project. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "P04 hackerone-na",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nHackerOne: not applicable. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "P05 hackerone-no-longer-accepted",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nReports through HackerOne are no longer accepted. Open a GitHub issue instead.\n"
+  },
+  {
+    "id": "P06 formerly-bugcrowd",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nFormerly on Bugcrowd; now please open a GitHub issue.\n"
+  },
+  {
+    "id": "P07 not-on-h1-or-bugcrowd",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nThere is no bug bounty, and we are not on HackerOne or Bugcrowd. Open a GitHub issue.\n"
+  },
+  {
+    "id": "P08 tidelift-not-monitored",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nTidelift's security contact is not monitored for this project. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "P09 used-to-run-h1",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nWe used to run a bug bounty on HackerOne. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "P10 h1-paused",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nOur HackerOne program is paused for now. Please open a GitHub issue.\n"
+  },
+  {
+    "id": "O01 issues-link-negated-noaddr",
+    "disc": "warn",
+    "note": "message should not say public issues",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not report security bugs in our [public issue tracker](https://github.com/acme/widget/issues). Instead, contact the maintainers privately.\n"
+  },
+  {
+    "id": "O02 script-tag-in-prose",
+    "disc": "pass",
+    "note": "GitHub escapes <script> in prose (GFM tagfilter)",
+    "text": "# Security\n\nWe strip <script> tags from user input before rendering.\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n"
+  },
+  {
+    "id": "O03 style-tag-in-prose",
+    "disc": "pass",
+    "text": "# Security\n\nThe UI never injects <style> elements from user data.\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n"
+  },
+  {
+    "id": "O04 liquid-include",
+    "disc": "warn|info",
+    "text": "# Security\n\n{% include security-contact.html %}\n"
+  },
+  {
+    "id": "O05 team-at-github-com",
+    "disc": "warn",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nFor security issues, open a GitHub issue. For anything else, contact the team at github.com.\n"
+  },
+  {
+    "id": "O06 list-is-public",
+    "disc": "warn|pass",
+    "note": "a list the text says is public",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@lists.acme-widgets.org (this list is public and archived).\n"
+  },
+  {
+    "id": "O07 xss-doc-script-in-backticks",
+    "disc": "pass",
+    "text": "# Security\n\nWe strip `<script>` tags.\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n"
+  },
+  {
+    "id": "O08 handlebars-in-prose",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nOur templates use {{ security_email }} placeholders.\n\nEmail security@acme-widgets.org.\n"
+  },
+  {
+    "id": "O09 jekyll-front-matter-and-liquid",
+    "disc": "pass",
+    "text": "---\nlayout: page\n---\n# Security\n\n{{ page.content }}\n\nReport to security@acme-widgets.org.\n"
+  },
+  {
+    "id": "O10 iframe-in-prose",
+    "disc": "pass",
+    "text": "# Security\n\nWe never render <iframe> or <textarea> tags from users.\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n"
+  }
+]

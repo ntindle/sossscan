@@ -31,8 +31,8 @@ export function decodeReplace(body: Uint8Array): string {
 
 /**
  * A text file's bytes as text: UTF-16 when it starts with a UTF-16 byte-order mark, or when every other byte is zero
- * (ASCII saved as UTF-16 by a Windows editor); otherwise UTF-8 as decodeReplace reads it. For security policies, which
- * people save in all sorts of ways.
+ * (ASCII saved as UTF-16 by a Windows editor); Windows-1252 when it isn't UTF-8 at all; otherwise UTF-8 as
+ * decodeReplace reads it. For security policies, which people save in all sorts of ways.
  */
 export function decodeText(body: Uint8Array): string {
   if (body.length >= 2 && body[0] === 0xff && body[1] === 0xfe)
@@ -53,7 +53,14 @@ export function decodeText(body: Uint8Array): string {
     if (even > pairs * 0.6 && odd < pairs * 0.1)
       return new TextDecoder('utf-16be').decode(body.subarray(0, body.length & ~1));
   }
-  return decodeReplace(body);
+  const text = decodeReplace(body);
+  // A file saved in a Windows code page (smart quotes and accented letters as single bytes) isn't UTF-8, so each of
+  // those bytes reads as U+FFFD, and "don't" with a curly quote as "don\uFFFDt". When nothing in it beyond ASCII is
+  // UTF-8, it's read as Windows-1252, as GitHub shows it.
+  if (text.includes('\uFFFD') && !/[\u0080-\uFFFC\uFFFE\uFFFF\u{10000}-\u{10FFFF}]/u.test(text)) {
+    return new TextDecoder('windows-1252').decode(body);
+  }
+  return text;
 }
 
 /** json.loads(body) on the bytes of a response: invalid UTF-8 or JSON gives null, and a UTF-8 BOM is skipped. */

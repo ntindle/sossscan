@@ -93,8 +93,17 @@ const NO_WORD_OTHER = re(
 );
 /** The no-words that are an end of life, which a date to come makes a "yes, until then" ("EOL 2028"). */
 const EOL_WORD = re(String.raw`(?i)\b(?:end[ -]of[ -](?:life|support)|eol|superseded|retired|discontinued|sunset)\b`);
-/** An end of life to come without a date: "superseded soon". */
-const SOON = re(String.raw`(?i)\b(?:soon|planned|scheduled|upcoming|expected|next)\b`);
+/** An end of life to come without a date: "superseded soon", "EOL in 6 months". */
+const SOON = re(
+  String.raw`(?i)\b(?:soon|planned|scheduled|upcoming|expected|next)\b|\bin[ \t]+(?:\d+|an?|one|two|three|four|six|twelve|a[ \t]+few)[ \t]+(?:days?|weeks?|months?|quarters?|years?)\b`,
+);
+/**
+ * An end of life that isn't set, or hasn't come: "No EOL planned", "Not yet EOL", "EOL not announced", "No
+ * end-of-life date yet". The version is still supported.
+ */
+const NO_EOL = re(
+  String.raw`(?i)\b(?:no|not[ \t]+yet|without[ \t]+an?)[ \t]+(?:eol|end[ -]of[ -](?:life|support))\b(?:[ \t]+(?:date|planned|scheduled|set|announced|yet))*|\b(?:eol|end[ -]of[ -](?:life|support))(?:[ \t]+date)?[ \t]+(?:is[ \t]+)?(?:not[ \t]+(?:yet[ \t]+)?(?:announced|planned|scheduled|set|decided|determined|known|defined)|tb[ad]|to[ \t]+be[ \t]+(?:announced|determined|decided))\b`,
+);
 /** A date after "until" (or "till", "bis") in a status cell: supported until then. */
 const UNTIL_DATE = re(String.raw`(?i)\b(?:until|till|bis|through)[ \t]+(?:at[ \t]+least[ \t]+)?([^;,()|]{4,40})`);
 /** A cell that means no end date has been set yet, in a column of end dates. */
@@ -179,6 +188,17 @@ function outsideBrackets(cell: string): string {
  * of life with a date to come ("EOL 2028") is supported until then.
  */
 export function statusOf(cell: string, now: Date = new Date()): Status {
+  // An end of life not set yet says nothing against the version: the rest of the cell decides, and is a yes alone.
+  if (search(NO_EOL, cell)) {
+    let rest = '';
+    let last = 0;
+    for (const m of finditer(NO_EOL, cell)) {
+      rest += cell.slice(last, m.index) + ' ';
+      last = m.index + m[0].length;
+    }
+    const left = statusOf(rest + cell.slice(last), now);
+    return left === 'unknown' ? 'yes' : left;
+  }
   const { yes, no, eolOnly } = signals(cell);
   let st: Status = 'unknown';
   if (yes && no) {
@@ -515,6 +535,23 @@ export interface Support {
   unreadTable: boolean;
 }
 
+/**
+ * Whether text has a sentence that says what follows is an example: one that starts with "For example" (or "e.g.")
+ * or ends with a colon. "Patches go to the latest minor, for example 2.4." gives an example of a number, not a table.
+ */
+function givesExample(text: string): boolean {
+  if (!search(EXAMPLE, text)) return false;
+  for (const m of finditer(EXAMPLE, text)) {
+    const before = text.slice(0, m.index);
+    const lead = before.slice(
+      Math.max(before.lastIndexOf('. '), before.lastIndexOf('! '), before.lastIndexOf('? ')) + 1,
+    );
+    const rest = text.slice(m.index + m[0].length).split(/(?<=[.!?])\s/)[0];
+    if (!/[\p{L}\p{N}]/u.test(lead) || rest.trimEnd().endsWith(':')) return true;
+  }
+  return false;
+}
+
 /** The supported-versions section of a policy, read. */
 export function readSupport(p: Policy, now: Date = new Date()): Support {
   const secs = [...sections(p, SUPPORT_HEADING), ...sections(p, SUPPORT_HEADING_OTHER)].sort(
@@ -525,7 +562,7 @@ export function readSupport(p: Policy, now: Date = new Date()): Support {
   // The lines that say what follows is an example ("For example, ..."), anywhere in the section before a table.
   const examples: number[] = [];
   p.lines.forEach((l, i) => {
-    if (search(EXAMPLE, l) || (i + 1 < p.lines.length && search(EXAMPLE, `${l} ${p.lines[i + 1]}`))) examples.push(i);
+    if (givesExample(l) || (i + 1 < p.lines.length && givesExample(`${l} ${p.lines[i + 1]}`))) examples.push(i);
   });
   const exampleBefore = (t: Table, from: number) => {
     let lo = 0;
@@ -613,10 +650,13 @@ export function tagVersion(tag: string): { prefix: string; version: Version; sta
   const m = match(TAG_VERSION, tag.trim());
   if (!m) return null;
   const version = m[2].replaceAll('_', '.').split('.').map(Number);
+  const prefix = packageOf(m[1]);
+  // A label with a date (community-baseline-2026-10, pga-2026-11-09) marks a snapshot, not a release's version.
+  const dated = !!prefix && /^(?:19|20)\d\d$/.test(m[2]) && /^-\d\d(?:-\d\d)?(?!\d)/.test(m[3]);
   return {
-    prefix: packageOf(m[1]),
+    prefix,
     version,
-    stable: !search(PRERELEASE, m[3]) && !search(PRERELEASE_PREFIX, m[1]),
+    stable: !dated && !search(PRERELEASE, m[3]) && !search(PRERELEASE_PREFIX, m[1]),
   };
 }
 
@@ -632,8 +672,11 @@ export interface Target {
 /**
  * The release to compare the table with: among the given releases (newest first), the stable ones of the repository's
  * main package, and of those the highest version. The main package is the only one, or the one with bare version
- * tags (v1.2.3) or the repository's name (dio_v5.11.1 in cfug/dio). When the releases are for several packages and
- * none is the main one, `mixed` lists them.
+ * tags (v1.2.3) or the repository's name (dio_v5.11.1 in cfug/dio). When both are there, they are one project whose
+ * tags changed when their highest releases have the same major version (grub's 2.02 and grub-2.16, dubbo's
+ * dubbo-3.3.6 and 3.3.7), and the highest counts; otherwise two (LibreChat's v0.8.8 and its Helm chart's
+ * librechat-1.8.9, kepler.gl's v3.2.6 and its Python package's keplergl==0.4.0), and the one with more releases is
+ * the main one. When the releases are for several packages and none is the main one, `mixed` lists them.
  */
 export function releaseLine(
   tags: { tag: string; prerelease?: boolean }[],
@@ -647,7 +690,14 @@ export function releaseLine(
   const packages = [...new Set(stable.map((t) => t.v.prefix))];
   const name = canon(repoName);
   const main = (p: string) => p === '' || (!!name && (canon(p) === name || canon(p.split('/').pop() ?? '') === name));
-  const line = packages.length === 1 ? stable : stable.filter((t) => main(t.v.prefix));
+  const mains = packages.filter(main);
+  const of = (p: string) => stable.filter((t) => t.v.prefix === p);
+  const highest = (ts: typeof stable) => ts.reduce((a, b) => (compareVersions(b.v.version, a.v.version) > 0 ? b : a));
+  let line = packages.length === 1 ? stable : stable.filter((t) => main(t.v.prefix));
+  if (packages.length > 1 && mains.length > 1 && new Set(mains.map((p) => highest(of(p)).v.version[0])).size > 1) {
+    const best = mains.reduce((a, b) => (of(b).length > of(a).length ? b : a));
+    line = of(best);
+  }
   if (!line.length) return { target: null, mixed: packages };
   const top = line.reduce((a, b) => (compareVersions(b.v.version, a.v.version) > 0 ? b : a));
   return { target: { tag: top.tag, version: top.v.version, prefix: top.v.prefix }, mixed: null };

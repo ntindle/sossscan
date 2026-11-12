@@ -3535,6 +3535,41 @@ describe('security policies in any format', () => {
       'doc/manual/security.md': '# Security\n\nThe tool keeps its keys in the system keychain.\n',
     });
     expect(page.disc).toEqual(['fail', 'No SECURITY.md in the root, .github/ or docs/']);
+    // Nor is another project's policy, in a folder of vendored code or test fixtures, or a page about a web page's
+    // Content Security Policy.
+    for (const path of [
+      '3rdparty/openssl/SECURITY.md',
+      'extern/zlib/SECURITY.md',
+      'contrib/libfoo/SECURITY.md',
+      'lib/sqlite/SECURITY.md',
+      'bower_components/jquery/SECURITY.md',
+      'Pods/Alamofire/SECURITY.md',
+      'venv/lib/python3.12/site-packages/requests/SECURITY.md',
+      'tests/fixtures/policies/SECURITY.md',
+    ]) {
+      expect([path, (await both({ [path]: policy })).disc?.[0]]).toEqual([path, 'fail']);
+    }
+    const csp = '# Security\n\n## Content Security Policy\n\nThe app sends a strict CSP header.\n';
+    expect((await both({ 'skills/stripe/security.md': csp })).disc?.[0]).toBe('fail');
+    // A page about security features nearer the root doesn't hide a policy deeper down; of the three nearest, the
+    // first that reads like a policy is named.
+    const deeper = await both({
+      'docs/a/security.md': '# Security\n\nTLS is on by default.\n',
+      'docs/policy/sec/SECURITY.md': policy,
+    });
+    expect(deeper.disc?.[1]).toContain('docs/policy/sec/SECURITY.md reads like the policy');
+    // An issue template is still needed as one: what it says is copied, not moved.
+    const template = await both({ '.github/ISSUE_TEMPLATE/security.md': policy });
+    expect(template.disc).toEqual([
+      'warn',
+      'No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; .github/ISSUE_TEMPLATE/security.md reads like the policy: copy what it says about reporting into a SECURITY.md in one of those folders so GitHub shows it',
+    ]);
+  });
+
+  it("doesn't ask for a file the policy links to that the tree doesn't list", async () => {
+    const { disc, calls } = await both({ 'SECURITY.md': 'See [our security policy](docs/SECURITY.md).' });
+    expect(disc?.[0]).toBe('info');
+    expect(calls.some(([u]) => u === `${TINY_RAW}docs/SECURITY.md`)).toBe(false);
   });
 
   it("says when the file a policy points to can't be read, with its status, instead of warning", async () => {
@@ -3607,10 +3642,12 @@ describe('security policies in any format', () => {
       { ...REL, [TINY_RAW + 'SECURITY.md']: { file: 'policies/utf16le.md' } },
     );
     expect(utf16.disc).toEqual(['pass', 'SECURITY.md found; it says to report by email (security@octo-project.org)']);
+    // Past 256 KB the rest may say how to report, so finding nothing in the start is info.
     const huge = await both({ 'SECURITY.md': '# Security\n\n' + 'We take security seriously. '.repeat(12000) });
     expect(huge.disc).toEqual([
-      'warn',
-      'SECURITY.md found but it does not say how to report privately (the scan read only the first 256 KB of it)',
+      'info',
+      'SECURITY.md found, but the scan read only the first 256 KB of it and found no private way to report there: ' +
+        'check the rest says how',
     ]);
   });
 

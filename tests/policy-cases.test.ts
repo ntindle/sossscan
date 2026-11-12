@@ -1,9 +1,10 @@
 // Security policies as people write them. An independent audit tried the reader on 627 repositories it hadn't seen and
 // on 135 policies it wrote to be hard; these tests run all 135 (tests/fixtures/scanner/policies/audit-cases.json, the
-// auditor's text), and a short policy in the manner of each real repository it found the reader got wrong.
+// auditor's text), the 78 of its second round (audit-cases-r2.json, and the four of over 256 KB built here), and a
+// short policy in the manner of each real repository it found the reader got wrong.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { decodeReplace } from '../lib/scanner/http.ts';
+import { decodeReplace, decodeText } from '../lib/scanner/http.ts';
 import { howToReport, readPolicy, reportVerdict, sameRepoLink } from '../lib/scanner/policy.ts';
 import { readSupport, releaseLine, statusOf, supportVerdict } from '../lib/scanner/versions.ts';
 
@@ -59,6 +60,236 @@ describe("the audit's 135 policies", () => {
       );
       expect(c.rel.split('|')).toContain(rel.status);
     }
+  });
+});
+
+type Case2 = Case & { files?: Record<string, string | number> };
+/** The second round's four policies of over 256 KB: a long changelog table, or a long comment, before the policy. */
+function bigCases(): Case2[] {
+  const rows = Array.from(
+    { length: 4000 },
+    (_, i) => `| ${i}.0.${i % 10} | Fixed a rendering bug in the ${i}th widget variant and improved its docs. |`,
+  ).join('\n');
+  const head = '# Security Policy\n\n## Changelog of security fixes\n\n| Version | Change |\n| --- | --- |\n';
+  const reporting =
+    '# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org with details.\n\n';
+  return [
+    {
+      id: 'T01 address-past-256kb',
+      disc: 'info|pass',
+      text: `${head}${rows}\n\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n`,
+    },
+    {
+      id: 'T02 table-past-256kb',
+      rel: 'info|pass',
+      tags: ['v3.1.0'],
+      text: `${head}${rows}\n\n\n## Supported Versions\n\n| Version | Supported |\n| ------- | --------- |\n| 3.x | :white_check_mark: |\n`,
+    },
+    { id: 'T03 comment-past-256kb', disc: 'info|pass', text: `<!--\n${'old notes '.repeat(30000)}\n-->\n${reporting}` },
+    { id: 'T04 address-first-then-filler', disc: 'pass', text: `${reporting}${rows}\n` },
+  ];
+}
+const cases2: Case2[] = [
+  ...JSON.parse(readFileSync(new URL('./fixtures/scanner/policies/audit-cases-r2.json', import.meta.url), 'utf8')),
+  ...bigCases(),
+];
+
+describe("the audit's second round of policies", () => {
+  it.each(cases2.map((c) => [c.id, c] as const))('%s', (_, c) => {
+    const path = c.path ?? 'SECURITY.md';
+    // Bytes are read as a policy is (decodeText: UTF-16, or Windows-1252 when it isn't UTF-8).
+    const text = c.b64 ? decodeText(new Uint8Array(Buffer.from(c.b64, 'base64'))) : c.text!;
+    const p = readPolicy(text, path);
+    const r = howToReport(p, 'acme/widget', 'acme/widget');
+    const s = readSupport(p, NOW);
+    // The one file the policy leads to, from the case's files: its text, or the HTTP status it gives.
+    const next = sameRepoLink(p, text, 'acme/widget', { report: !r.channels.length, versions: !s.section });
+    const file = next && c.files ? c.files[next] : undefined;
+    const followed =
+      next && c.files
+        ? typeof file === 'string'
+          ? {
+              path: next,
+              policy: readPolicy(file, next),
+              reporting: howToReport(readPolicy(file, next), 'acme/widget'),
+            }
+          : { path: next, status: typeof file === 'number' ? file : 404 }
+        : null;
+    if (c.disc) expect(c.disc.split('|')).toContain(reportVerdict(p, r, followed).status);
+    if (c.rel && c.tags) {
+      const rel = supportVerdict(
+        s,
+        releaseLine(
+          c.tags.map((tag) => ({ tag })),
+          'widget',
+        ),
+        path,
+        null,
+        'widget',
+      );
+      expect(c.rel.split('|')).toContain(rel.status);
+    }
+  });
+});
+
+describe("the audit's second round: what the reader got wrong", () => {
+  it('gives info, not a warning, when it found nothing in the first 256 KB of a longer policy (j-256/guildcontrol)', () => {
+    const v = verdict(
+      '# Security\n\n' + 'Our release notes. '.repeat(20000) + '\n\n## Reporting\n\nEmail security@octo.org.',
+    );
+    expect([v.status, v.says]).toEqual([
+      'info',
+      ', but the scan read only the first 256 KB of it and found no private way to report there: check the rest says how',
+    ]);
+  });
+
+  it('hides a script or style only as an HTML block, as GitHub does, not as a tag in a sentence', () => {
+    const report = '\n\n## Reporting a Vulnerability\n\nEmail security@octo-project.org.';
+    expect(verdict('We strip <script> tags from user input.' + report).kinds).toEqual(['email']);
+    expect(verdict('The UI never injects <style> elements.' + report).kinds).toEqual(['email']);
+    // A block that starts a line and closes is hidden, the address in it too; one that never closes is text.
+    expect(verdict('<script>\nvar a = "admin@octo-project.org";\n</script>\n\nSee the docs.').kinds).toEqual([]);
+    expect(verdict('<style>\n.x { color: red }' + report).kinds).toEqual(['email']);
+  });
+
+  it('reads "N/A" and "and/or" as words, not as links to files', () => {
+    for (const text of ['N/A', 'and/or']) {
+      const p = readPolicy(text, 'SECURITY.md');
+      expect([text, p.symlink, verdict(text).status]).toEqual([text, null, 'warn']);
+      expect(sameRepoLink(p, text, REPO, { report: true, versions: true })).toBeNull();
+    }
+    // A path to a policy is still a symlink, with an extension or a policy's name, or one that starts with ./ or ../.
+    for (const [text, path] of [
+      ['docs/SECURITY.md', 'docs/SECURITY.md'],
+      ['../SECURITY', '../SECURITY'],
+      ['.github/security', '.github/security'],
+      ['./policies/report', './policies/report'],
+    ]) {
+      expect(readPolicy(text, 'docs/SECURITY.md').symlink).toBe(path);
+    }
+  });
+
+  it('follows a link to the part of a file about reporting (CONTRIBUTING.md#reporting-security-issues)', () => {
+    const p = readPolicy('# Security\n\nSee [CONTRIBUTING](CONTRIBUTING.md#reporting-security-issues).', 'SECURITY.md');
+    expect(sameRepoLink(p, '', REPO, { report: true, versions: false })).toBe('CONTRIBUTING.md');
+  });
+
+  it("doesn't follow a link to a privacy policy, terms or a code of conduct", () => {
+    for (const name of ['Privacy Policy', 'Cookie Policy', 'Terms of Service and Policy', 'Code of Conduct policy']) {
+      const p = readPolicy(`# Security\n\nWe take security seriously. Read our [${name}](POLICY.md).`, 'SECURITY.md');
+      expect([name, sameRepoLink(p, '', REPO, { report: true, versions: false })]).toEqual([name, null]);
+    }
+    const p = readPolicy('# Security\n\nRead our [policy](docs/POLICY.md).', 'SECURITY.md');
+    expect(sameRepoLink(p, '', REPO, { report: true, versions: false })).toBe('docs/POLICY.md');
+  });
+
+  it("doesn't take a platform the policy left, or says it doesn't use, for a way to report", () => {
+    const issue = ' Please open a GitHub issue.';
+    for (const s of [
+      "HackerOne isn't used for this project;",
+      'We left HackerOne in 2023.',
+      'No HackerOne program exists for this project.',
+      'HackerOne: not applicable.',
+      'Reports through HackerOne are no longer accepted.',
+      'Formerly on Bugcrowd; now',
+      "Tidelift's security contact is not monitored for this project.",
+      'We used to run a bug bounty on HackerOne.',
+    ]) {
+      const v = verdict(`## Reporting a Vulnerability\n\n${s}${issue}`);
+      expect([s, v.kinds, v.status]).toEqual([s, [], 'warn']);
+    }
+    // A platform the policy uses is still one, and "if you get no reply" isn't about it.
+    for (const s of [
+      'Report it through HackerOne.',
+      'If you get no reply in a week, use HackerOne.',
+      'We moved to HackerOne in 2023: report there.',
+    ]) {
+      expect([s, verdict(`## Reporting a Vulnerability\n\n${s}`).kinds]).toEqual([s, ['platform']]);
+    }
+  });
+
+  it("doesn't read a URL's path as an address, or a team at a website as one (BackendStack21/odek)", () => {
+    const odek =
+      '## Reporting\n\nThe certificate identity is exactly `https://github.com/acme/widget/.github/workflows/release.yml@refs/tags/<tag>`, which ' +
+      'the verifier checks before it reports success.';
+    expect(verdict(odek).kinds).toEqual([]);
+    const team = verdict(
+      '## Reporting a Vulnerability\n\nFor security issues, open a GitHub issue. For anything else, contact the team at github.com.',
+    );
+    expect([team.kinds, team.status, team.says]).toEqual([
+      [],
+      'warn',
+      ' but it only says to report in public issues, not privately',
+    ]);
+    // An inbox's name at a domain still is one: "email security at octo-project.org".
+    expect(readPolicy('Email security at octo-project.org with the details.', 'SECURITY.md').emails).toEqual([
+      'security@octo-project.org',
+    ]);
+  });
+
+  it("doesn't read an open issue, or an issue tracker it says not to use, as public issues (navikt/cplt)", () => {
+    const cplt = verdict(
+      '## Reporting a Vulnerability\n\nDo not open a public issue: email security@octo-project.org.\n\n## Notes\n\n' +
+        'It is a documented residual: [#366](https://github.com/octo/tiny/issues/366) closed, and no open issue tracks changing it.',
+    );
+    expect([cplt.status, cplt.r.publicIssues]).toEqual(['pass', false]);
+    const open = verdict('## Notes\n\nNo open issue tracks this, and an open issue about the cache is fine.');
+    expect(open.r.publicIssues).toBe(false);
+    const tracker = verdict(
+      '## Reporting a Vulnerability\n\nPlease do not report security bugs in our [public issue tracker](https://github.com/octo/tiny/issues). Instead, contact the maintainers privately.',
+    );
+    expect([tracker.status, tracker.says]).toEqual([
+      'warn',
+      ' but it asks for reports by email or message without giving an address',
+    ]);
+    // A link to the issues in a sentence that asks for them still is public issues.
+    expect(
+      verdict('## Reporting\n\nPlease report it in our [issue tracker](https://github.com/octo/tiny/issues).').r
+        .publicIssues,
+    ).toBe(true);
+  });
+
+  it('reads the language of each sentence: English and Chinese in one paragraph or on two lines', () => {
+    const zh = '请通过 GitHub Security Advisory 私下报告漏洞，我们会尽快回复。';
+    for (const sep of [' ', '\n']) {
+      const v = verdict(
+        `# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not open public issues for vulnerabilities.${sep}${zh}`,
+      );
+      expect([JSON.stringify(sep), v.status, v.kinds]).toEqual([JSON.stringify(sep), 'pass', ['github']]);
+    }
+  });
+
+  it('reads terse English as English, without its common words', () => {
+    const p = readPolicy(
+      '# Security\n\n## Reporting\n\nVulnerability reports: GitHub issues. Response time: best effort. Scope: core library, CLI tools, Docker images, Helm charts, documentation site.\n',
+      'SECURITY.md',
+    );
+    expect(p.english).toBe(true);
+    // A policy in another language still isn't read as English, the words it borrows from English too (Ahmetshbzz).
+    const tr = readPolicy(
+      "# Güvenlik\n\n## Güvenlik açığı bildirimi\n\nLütfen herkese açık issue açma. GitHub Security Advisories üzerinden özel olarak bildir; o mümkün değilse maintainer'a özel kanaldan ulaş. Bildirimde etkilenen versiyon, commit ve fix önerisi olsun.",
+      'SECURITY.md',
+    );
+    expect([tr.english, verdict(tr.text).status]).toEqual([false, 'pass']);
+    expect(
+      readPolicy(
+        '# Sicherheit\n\nBitte melden Sie Sicherheitslücken nicht öffentlich, sondern per E-Mail an das Team. Wir antworten innerhalb von drei Tagen und veröffentlichen dann eine Korrektur.',
+        'SECURITY.md',
+      ).english,
+    ).toBe(false);
+  });
+
+  it('reads a policy saved in a Windows code page (a curly apostrophe as one byte)', () => {
+    const bytes = new Uint8Array([
+      ...Buffer.from('## Reporting a Vulnerability\n\nPlease don', 'latin1'),
+      0x92,
+      ...Buffer.from('t open a public issue. Report it privately to the maintainers.', 'latin1'),
+    ]);
+    const text = decodeText(bytes);
+    expect(text).toContain('don’t open');
+    expect(verdict(text).says).toBe(' but it asks for reports by email or message without giving an address');
+    // UTF-8 stays UTF-8, a bad byte or two included.
+    expect(decodeText(new Uint8Array([...Buffer.from('日本 ', 'utf8'), 0xff]))).toBe('日本 \uFFFD');
   });
 });
 
@@ -322,7 +553,7 @@ describe('supported-versions tables as they are written', () => {
     expect(versions(table, ['v8.3.4']).status).toBe('pass');
   });
 
-  it('reads "for example" anywhere in the section before a table as an example', () => {
+  it('reads "for example" before a table as an example only where a sentence introduces one', () => {
     const text = [
       '## Supported Versions',
       '',
@@ -340,5 +571,52 @@ describe('supported-versions tables as they are written', () => {
       '| 1.9 | ✅ |',
     ].join('\n');
     expect(versions(text, ['v5.0.0'])).toMatchObject({ status: 'info' });
+    // "for example 2.4" gives an example of a number: the table after it is the real one, and out of date.
+    const stale = [
+      '## Supported Versions',
+      '',
+      'Patches go to the latest minor, for example 2.4 when 2.4 is the newest.',
+      '',
+      '| Version | Supported |',
+      '| --- | --- |',
+      '| 1.x | :white_check_mark: |',
+      '| < 1.0 | :x: |',
+    ].join('\n');
+    expect(versions(stale, ['v2.4.0'])).toMatchObject({ status: 'warn' });
+  });
+
+  it('reads an end of life not set yet as supported, and one months away as unknown', () => {
+    for (const cell of [
+      'No EOL planned',
+      'Not yet EOL',
+      'EOL not announced',
+      'No end-of-life date yet',
+      'Supported, no EOL planned',
+    ]) {
+      expect([cell, statusOf(cell, NOW)]).toEqual([cell, 'yes']);
+    }
+    for (const cell of ['EOL in 6 months', 'End of life in a few weeks'])
+      expect([cell, statusOf(cell, NOW)]).toEqual([cell, 'unknown']);
+    for (const cell of ['EOL', 'No', 'EOL 2020-01-01', '❌ No EOL planned'])
+      expect([cell, statusOf(cell, NOW)]).toEqual([cell, 'no']);
+  });
+
+  it('compares with the main version scheme, not a Helm chart, and not a dated snapshot (LibreChat, PaynEat)', () => {
+    const line = (tags: string[], name: string) =>
+      releaseLine(
+        tags.map((tag) => ({ tag })),
+        name,
+      ).target?.tag ?? null;
+    // Two schemes that both look like the main one: tags that changed in one project (the same major version) give
+    // the highest; two products (another major) give the one with more releases.
+    expect(line(['v0.8.9-rc1', 'v0.8.8', 'v0.8.7', 'librechat-1.8.9', 'chart-3.0.0'], 'LibreChat')).toBe('v0.8.8');
+    expect(line(['v3.3.0-alpha.1', 'keplergl==0.4.0', 'v3.2.6', 'v3.2.5'], 'kepler.gl')).toBe('v3.2.6');
+    expect(line(['grub-2.16', 'grub-2.14', '2.02', 'grub-2.12', '2.00'], 'grub')).toBe('grub-2.16');
+    expect(line(['3.3.7', 'dubbo-3.2.20', 'dubbo-3.3.6'], 'dubbo')).toBe('3.3.7');
+    expect(line(['community-baseline-2026-10', 'demo'], 'PaynEat')).toBeNull();
+    expect(line(['pga-2026-11-09', 'pga-2026-10-01'], 'pga-versions')).toBeNull();
+    // A package of the repository's name on its own, or another single package, is still the line.
+    expect(line(['dio_v5.11.1', 'dio_v5.11.0'], 'dio')).toBe('dio_v5.11.1');
+    expect(line(['core@13.4.0', 'core@13.3.0'], 'insomnia')).toBe('core@13.4.0');
   });
 });
