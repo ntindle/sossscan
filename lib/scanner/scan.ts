@@ -59,7 +59,9 @@ import {
 } from './self-checks.ts';
 import type { Outcome } from './self-checks.ts';
 import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
-import { covers, supportProse, supportTable, targetRelease, templateRows } from './versions.ts';
+import { howToReport, readPolicy, reportVerdict, sameRepoLink } from './policy.ts';
+import type { Policy, Reporting } from './policy.ts';
+import { readSupport, releaseLine, supportVerdict } from './versions.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
 
 const STATUSES: Status[] = ['pass', 'warn', 'fail', 'info', 'unknown', 'na'];
@@ -85,12 +87,11 @@ const NEEDS_PRIVATE_LAYER: [string, string][] = [
 
 const WORKFLOW_FILE = re(String.raw`^\.github/workflows/[^/]+\.ya?ml$`);
 const DEPENDENTS = re(String.raw`(?s)([\d,]+)\s*(?:<[^>]+>\s*)*\s*(Repositories|Packages)\b`);
-const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.rst|\.txt|\.adoc)?$`);
-const HOW_TO_REPORT = re(
-  // Any email address or bug bounty program counts too: both are ways to report privately.
-  String.raw`(?i)advisor|privately|report a vulnerability|security@|mailto:|e-?mail|private vulnerability|` +
-    String.raw`[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+|bug bounty|hackerone|bugcrowd|intigriti`,
-);
+/**
+ * A security policy: SECURITY.md in the root, .github/ or docs/, any case. GitHub's Security tab shows only a
+ * SECURITY.md (or SECURITY with no extension); the scan also reads the other formats people use.
+ */
+const SECURITY_MD = re(String.raw`(?i)^(\.github/|docs/)?security(\.md|\.markdown|\.rst|\.txt|\.adoc)?$`);
 const THREAT_MODEL = re(String.raw`(?i)threat[-_ ]?model`);
 const INCIDENT_RESPONSE = re(String.raw`(?i)incident[-_ ]?response|(^|/)irp[-_.]|security[-_]incident`);
 const CODEOWNERS = re(String.raw`^(\.github/|docs/)?CODEOWNERS$`);
@@ -121,6 +122,21 @@ const SECURITY_RULES = re(String.raw`(?i)secur|secret|vulnerab`);
 export const RATE_LIMITED = 'GitHub rate-limited this scan, so some checks may be wrong. Try again in a few minutes.';
 
 type Got = Record<string, [number, any, Record<string, string>]>;
+
+/** Whether GitHub's Security tab shows this file as the policy: a SECURITY.md, or a SECURITY with no extension. */
+function githubShows(path: string): boolean {
+  const file = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+  return file === 'security.md' || file === 'security';
+}
+
+/**
+ * GitHub's order for a security policy: a SECURITY.md (or SECURITY) in .github/, the root, then docs/. The formats
+ * GitHub doesn't show (.rst, .adoc, .txt, .markdown) come after, in the same folder order.
+ */
+function policyRank(path: string): number {
+  const folder = /^\.github\//i.test(path) ? 0 : /^docs\//i.test(path) ? 2 : 1;
+  return (githubShows(path) ? 0 : 3) + folder;
+}
 
 /**
  * GitHub's refusal of a feature the account's plan doesn't include, such as rulesets in a private repository on GitHub
@@ -272,7 +288,11 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
    */
   const accountDefault = async (
     rx: RegExp,
-  ): Promise<{ label: string; url: string; body: string | null; status: number } | { failed: number } | null> => {
+  ): Promise<
+    | { label: string; url: string; body: string | null; status: number; path: string; repo: string; branch: string }
+    | { failed: number }
+    | null
+  > => {
     if (name.toLowerCase() === '.github') return null;
     const [s, defaults] = await http.json(`/repos/${owner}/.github`);
     // 404: the account has no .github repo, so it has no defaults.
@@ -284,11 +304,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     // An empty .github repo (409) has no files to provide.
     if (ts === 404 || ts === 409) return null;
     if (ts !== 200) return { failed: ts };
-    const rank = (p: string) => (/^\.github\//i.test(p) ? 0 : /^docs\//i.test(p) ? 2 : 1);
     const hits = pyIter(get(pyOr(t, {}), 'tree', []))
       .filter((x) => get(x, 'type') === 'blob' && search(rx, String(item(x, 'path'))) !== null)
       .map((x) => String(item(x, 'path')))
-      .sort((a, b) => rank(a) - rank(b));
+      .sort((a, b) => policyRank(a) - policyRank(b));
     if (!hits.length) return null;
     const [bs, body] = await http.text(
       `https://raw.githubusercontent.com/${owner}/.github/${quote(br)}/${quote(hits[0])}`,
@@ -298,6 +317,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       url: `https://github.com/${owner}/.github/blob/${br}/${hits[0]}`,
       body,
       status: bs,
+      path: hits[0],
+      repo: `${owner}/.github`,
+      branch: br,
     };
   };
   /** The files whose path matches: what most checks look for (a folder named security/ is not a SECURITY.md). */
@@ -410,9 +432,18 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   rep.tier = tierFor(get(meta, 'stargazers_count', 0), dependents || 0);
 
   // ---- disclosure
-  const sec = find(SECURITY_MD);
+  const sec = find(SECURITY_MD).sort((a, b) => policyRank(a) - policyRank(b));
   /** The security policy GitHub shows for the repo (its own, or the account's), or why it couldn't be read. */
-  let policy: { text: string; label: string; url: string } | null = null;
+  let policy: {
+    text: string;
+    label: string;
+    url: string;
+    path: string;
+    /** Where the file lives, for reading another file it links to. */
+    repo: string;
+    branch: string;
+    own: boolean;
+  } | null = null;
   let policyTrouble: string | null = null;
   if (sec.length) {
     const body = await read(sec[0]);
@@ -420,15 +451,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       res('disc-security-md', 'unknown', couldNotRead(sec[0]), fileLink(sec[0]));
       policyTrouble = couldNotRead(sec[0]);
     } else {
-      policy = { text: body, label: sec[0], url: blob(sec[0]) };
-      const how = search(HOW_TO_REPORT, body) !== null;
-      res(
-        'disc-security-md',
-        how && pyLen(body) > 200 ? 'pass' : 'warn',
-        `${sec[0]} found` + (how ? '' : ' but it does not clearly say how to report privately'),
-        fileLink(sec[0]),
-        { path: sec[0], length: pyLen(body) },
-      );
+      policy = { text: body, label: sec[0], url: blob(sec[0]), path: sec[0], repo, branch, own: true };
     }
   } else {
     // GitHub shows the account's default, a SECURITY.md in its public .github repo, for any repo without its own.
@@ -451,17 +474,70 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       );
       policyTrouble = `Could not read the account's default, ${inherited.label} (HTTP ${inherited.status})`;
     } else {
-      policy = { text: inherited.body, label: inherited.label, url: inherited.url };
-      const how = search(HOW_TO_REPORT, inherited.body) !== null;
-      res(
-        'disc-security-md',
-        how && pyLen(inherited.body) > 200 ? 'pass' : 'warn',
-        `${inherited.label} found, the account's default for repos without their own` +
-          (how ? '' : ' but it does not clearly say how to report privately'),
-        [{ label: inherited.label, url: inherited.url }],
-        { path: inherited.label, length: pyLen(inherited.body), account_default: true },
-      );
+      const { body, label, url, path, repo: home, branch: br } = inherited;
+      policy = { text: body, label, url, path, repo: home, branch: br, own: false };
     }
+  }
+  // The policy, read once for every check (policy.ts), and the one other file in its repository it led to: the
+  // target of a symlink, or the full policy that a short one links to. Nothing outside GitHub is fetched.
+  let doc: Policy | null = null;
+  let followed: { path: string; label: string; url: string; policy: Policy; reporting: Reporting } | null = null;
+  /** The account's default, when GitHub shows it instead of the repository's own .rst, .adoc or .txt policy. */
+  let shownDefault: { label: string; url: string; policy: Policy } | null = null;
+  if (policy) {
+    doc = readPolicy(policy.text, policy.path);
+    const reporting = howToReport(doc, policy.repo);
+    const next = sameRepoLink(doc, policy.text, policy.repo, {
+      report: !reporting.channels.length,
+      versions: !readSupport(doc).section,
+    });
+    if (next) {
+      const [, text] = policy.own
+        ? await fetchFile(next)
+        : await http.text(`https://raw.githubusercontent.com/${policy.repo}/${quote(policy.branch)}/${quote(next)}`);
+      if (text !== null) {
+        const fp = readPolicy(text, next);
+        followed = {
+          path: next,
+          label: policy.own ? next : `${next} in ${policy.repo}`,
+          url: `https://github.com/${policy.repo}/blob/${policy.branch}/${next}`,
+          policy: fp,
+          reporting: howToReport(fp, policy.repo),
+        };
+      }
+    }
+    let v = reportVerdict(doc, reporting, followed);
+    let shown = '';
+    if (!githubShows(policy.path)) {
+      // GitHub's Security tab doesn't show this file. For a repository without a SECURITY.md it shows the account's
+      // default, if there is one, so that counts too.
+      const inherited = policy.own ? await accountDefault(SECURITY_MD) : null;
+      if (inherited && !('failed' in inherited) && inherited.body !== null && githubShows(inherited.path)) {
+        const dp = readPolicy(inherited.body, inherited.path);
+        shownDefault = { label: inherited.label, url: inherited.url, policy: dp };
+        shown = ` (GitHub's Security tab shows the account's default, ${inherited.label}, instead)`;
+        const dv = reportVerdict(dp, howToReport(dp, inherited.repo), null);
+        if (v.status !== 'pass' && dv.status === 'pass') v = { ...dv, says: dv.says.replace('; it ', '; that one ') };
+      } else {
+        shown = " (GitHub's Security tab shows only a SECURITY.md)";
+      }
+    }
+    res(
+      'disc-security-md',
+      v.status,
+      `${policy.label} found` +
+        (policy.own ? '' : ", the account's default for repos without their own") +
+        shown +
+        v.says,
+      [{ label: policy.label, url: policy.url }],
+      {
+        path: policy.label,
+        length: pyLen(policy.text),
+        ...(policy.own ? {} : { account_default: true }),
+        ...(v.channels.length ? { report: v.channels } : {}),
+        ...(followed ? { followed: followed.path } : {}),
+      },
+    );
   }
   const pvr = got.pvr[0] === 200 ? got.pvr[1] : null;
   if (isDict(pvr) && Object.hasOwn(pvr, 'enabled')) {
@@ -1147,71 +1223,28 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       candidates = tags.filter(isDict).map((t) => ({ tag: String(get(t, 'name')) }));
     else [candidates, releasesTrouble] = [null, ts];
   }
-  const target = candidates ? targetRelease(candidates) : null;
   const policyLink = policy ? [{ label: policy.label, url: policy.url }] : [];
   if (candidates && !candidates.length && !publishes && !publishingJobs) {
     res('rel-security-support', 'na', 'No releases, tags or publishing workflow');
-  } else if (!policy) {
+  } else if (!policy || !doc) {
     res(
       'rel-security-support',
       policyTrouble ? 'unknown' : 'info',
       policyTrouble ?? 'No SECURITY.md to say which versions get security fixes',
     );
   } else {
-    const table = supportTable(policy.text);
-    const readableRows = table.rows.filter((r) => covers(r.version, [0]) !== null);
-    const supported = readableRows.filter((r) => r.supported);
-    const covering = target ? supported.find((r) => covers(r.version, target.version)) : undefined;
-    if (table.template && templateRows(table.rows)) {
-      res(
-        'rel-security-support',
-        'warn',
-        `${policy.label} still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)`,
-        policyLink,
-      );
-    } else if (readableRows.length && target && covering) {
-      res(
-        'rel-security-support',
-        'pass',
-        `${policy.label} lists ${covering.version} as supported, which covers the newest release, ${target.tag}`,
-        policyLink,
-        { target: target.tag, supported: supported.map((r) => r.version) },
-      );
-    } else if (readableRows.length && target) {
-      const listed = supported.map((r) => r.version);
-      res(
-        'rel-security-support',
-        'warn',
-        `${policy.label} lists ` +
-          (listed.length ? `${listed.slice(0, 3).join(', ')} as supported` : 'no version as supported') +
-          `, but the newest release is ${target.tag}`,
-        policyLink,
-        { target: target.tag, supported: listed },
-      );
-    } else if (readableRows.length && releasesTrouble !== null) {
-      res(
-        'rel-security-support',
-        'unknown',
-        `Could not read the releases to compare with the table in ${policy.label} (HTTP ${releasesTrouble})`,
-        policyLink,
-      );
-    } else if (readableRows.length) {
-      res(
-        'rel-security-support',
-        'info',
-        `${policy.label} has a supported-versions table, but there's no stable release to compare it with`,
-        policyLink,
-      );
-    } else if (table.section || supportProse(policy.text)) {
-      res(
-        'rel-security-support',
-        'info',
-        `${policy.label} says which versions get fixes in words, not a table: check it covers ${target ? target.tag : 'your current release'}`,
-        policyLink,
-      );
-    } else {
-      res('rel-security-support', 'info', `${policy.label} doesn't say which versions get security fixes`, policyLink);
+    // The policy's own supported-versions section, or the one in the file it led to.
+    let support = readSupport(doc);
+    let label = policy.label;
+    let link = policyLink;
+    for (const other of [followed, shownDefault]) {
+      if (support.section || !other) continue;
+      const there = readSupport(other.policy);
+      if (there.section) [support, label, link] = [there, other.label, [{ label: other.label, url: other.url }]];
     }
+    const line = candidates ? releaseLine(candidates, name) : { target: null, mixed: null };
+    const v = supportVerdict(support, line, label, releasesTrouble, name);
+    res('rel-security-support', v.status, v.summary, link, v.details);
   }
 
   // ---- fuzzing (folders count here: a fuzz/ folder holds fuzz targets, and .clusterfuzzlite/ is a folder)

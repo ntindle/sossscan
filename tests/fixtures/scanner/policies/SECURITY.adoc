@@ -1,0 +1,19 @@
+= Security Policy
+:repo-url: https://github.com/octo/tiny
+
+////
+A comment block: report to nobody@not-read.org
+////
+
+== Supported Versions
+
+[cols="1,1",options="header"]
+|===
+|Version |Supported
+|2.3.x |:white_check_mark:
+|< 2.3 |:x:
+|===
+
+== Reporting a Vulnerability
+
+Open a link:{repo-url}/security/advisories/new[private security advisory].

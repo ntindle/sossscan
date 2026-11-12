@@ -40,7 +40,18 @@ import { securityConfiguration, smsTwoFactor } from '../lib/scanner/private-laye
 import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
 import { customQueries, licenseGate, memorySafety, refreshBacklog, tracedSecrets } from '../lib/scanner/self-checks.ts';
-import { covers, supportTable, targetRelease } from '../lib/scanner/versions.ts';
+import { howToReport, mentions, readPolicy, sameRepoLink, sections } from '../lib/scanner/policy.ts';
+import {
+  cellSpec,
+  covers,
+  endDate,
+  readSupport,
+  releaseLine,
+  statusOf as cellStatus,
+  supportTable,
+  supportVerdict,
+  targetRelease,
+} from '../lib/scanner/versions.ts';
 import { parseYaml } from '../lib/scanner/yaml-lite.ts';
 import type { YNode } from '../lib/scanner/yaml-lite.ts';
 import YAML from 'yaml';
@@ -762,7 +773,7 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
     const r = (await scanScenario('fixes', account)).rep.results['disc-security-md'];
     expect([r.status, r.summary, r.evidence]).toEqual([
       'pass',
-      ".github/SECURITY.md in octo/.github found, the account's default for repos without their own",
+      ".github/SECURITY.md in octo/.github found, the account's default for repos without their own; it says to report through GitHub's private vulnerability reporting",
       [
         {
           label: '.github/SECURITY.md in octo/.github',
@@ -775,12 +786,16 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
     const none = await scanScenario('fixes', { ...account, 'https://api.github.com/repos/octo/.github': hidden });
     expect(none.rep.results['disc-security-md'].status).toBe('fail');
 
-    // Any email address, or a bug bounty program, is a way to report privately (as Vercel's and GitHub's are).
+    // Any email address, or a bug bounty program, is a way to report privately (as Vercel's and GitHub's are). An
+    // address at a domain that can't receive mail (example.com) is a template's placeholder, not a way to report.
     const statusOf = async (text: string) =>
       (await scanScenario('fixes', { ...account, [policyUrl]: { text } })).rep.results['disc-security-md'].status;
     const filler = ' We investigate every report and fix confirmed problems as quickly as we can.'.repeat(3);
+    expect(
+      await statusOf('Please send vulnerability reports to responsible.disclosure@octo-project.org.' + filler),
+    ).toBe('pass');
     expect(await statusOf('Please send vulnerability reports to responsible.disclosure@example.com.' + filler)).toBe(
-      'pass',
+      'warn',
     );
     expect(await statusOf('Submit security issues through our bug bounty program on HackerOne.' + filler)).toBe('pass');
     expect(await statusOf('Open a GitHub issue describing the problem and how to reproduce it.' + filler)).toBe('warn');
@@ -2538,7 +2553,7 @@ describe('rel-security-support', () => {
     );
     expect(t.rows).toEqual([
       { version: 'v6.x', supported: true },
-      { version: '3.20.x', supported: true },
+      { version: '3.20.x (LTS)', supported: true },
       { version: '5.x', supported: false },
     ]);
     expect(targetRelease([{ tag: 'curl-8_11_0' }, { tag: 'curl-8_10_1' }])).toEqual({
@@ -3111,5 +3126,635 @@ describe('scanner bugs fixed in 0.5.0', () => {
       'octo/tiny',
     );
     expect([st.status, st.summary]).toEqual(['manual', "The scan can't settle this. Tick it off when it's done."]);
+  });
+});
+
+// ------------------------------------------------------------------- 0.5.1: security policies in any format
+describe('security policies in any format', () => {
+  const POLICIES = new URL('policies/', FIXTURES);
+  const fixturePolicy = (name: string) => readFileSync(new URL(name, POLICIES), 'utf8');
+  const releases = (...tags: (string | [string, boolean])[]) => ({
+    json: tags.map((t) =>
+      Array.isArray(t) ? { tag_name: t[0], prerelease: t[1] } : { tag_name: t, prerelease: false },
+    ),
+  });
+  const REL = { '/releases?per_page=10': releases('v2.3.0') };
+  /** Both checks for one policy file in the repo, at path. */
+  const both = async (files: Record<string, string>, api: Record<string, Route> = REL) => {
+    const { rep, calls } = await scanTiny(tiny(files, api));
+    return { disc: statusOf(rep, 'disc-security-md'), rel: statusOf(rep, 'rel-security-support'), rep, calls };
+  };
+
+  it('says how each format reports, and reads its versions table', async () => {
+    const cases: [string, string, string[], string[]][] = [
+      [
+        'email-short.md',
+        'SECURITY.md',
+        ['pass', 'SECURITY.md found; it says to report by email (security@octo-project.org)'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'obfuscated.md',
+        'SECURITY.md',
+        ['pass', 'SECURITY.md found; it says to report by email (security@octo-project.org)'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'pointer-page.md',
+        'SECURITY.md',
+        ['pass', 'SECURITY.md found; it points to https://octo-project.org/security/ for how to report'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'platform.md',
+        'SECURITY.md',
+        ['pass', "SECURITY.md found; it says to report through Tidelift's security contact"],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'button.md',
+        '.github/SECURITY.md',
+        ['pass', ".github/SECURITY.md found; it says to report through GitHub's private vulnerability reporting"],
+        ['info', ".github/SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'chat.md',
+        'SECURITY.md',
+        ['pass', 'SECURITY.md found; it says to report by private message'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'zh-email.md',
+        'SECURITY.md',
+        ['pass', 'SECURITY.md found; it says to report by email (security@octo-project.org)'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'ja-pvr.md',
+        'SECURITY.md',
+        ['pass', "SECURITY.md found; it says to report through GitHub's private vulnerability reporting"],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'security.txt',
+        'security.txt',
+        [
+          'pass',
+          "security.txt found (GitHub's Security tab shows only a SECURITY.md); it says to report by email (security@octo-project.org)",
+        ],
+        ['info', "security.txt doesn't say which versions get security fixes"],
+      ],
+      [
+        'SECURITY.rst',
+        'SECURITY.rst',
+        [
+          'pass',
+          "SECURITY.rst found (GitHub's Security tab shows only a SECURITY.md); it says to report by email (security@octo-project.org)",
+        ],
+        ['pass', 'SECURITY.rst lists 2.3.x as supported, which covers the newest release, v2.3.0'],
+      ],
+      [
+        'SECURITY.adoc',
+        'SECURITY.adoc',
+        [
+          'pass',
+          "SECURITY.adoc found (GitHub's Security tab shows only a SECURITY.md); it says to report through GitHub's private vulnerability reporting",
+        ],
+        ['pass', 'SECURITY.adoc lists 2.3.x as supported, which covers the newest release, v2.3.0'],
+      ],
+      [
+        'html-table.md',
+        'docs/SECURITY.md',
+        ['pass', 'docs/SECURITY.md found; it says to report by email (security@octo-project.org)'],
+        ['pass', 'docs/SECURITY.md lists >= 2.0 as supported, which covers the newest release, v2.3.0'],
+      ],
+      // Warnings, each for something the text says or plainly lacks.
+      [
+        'template.md',
+        'SECURITY.md',
+        ['warn', "SECURITY.md found but it still has GitHub's template text where it should say how to report"],
+        ['warn', "SECURITY.md still has the versions table from GitHub's template (5.1.x, 5.0.x, 4.0.x)"],
+      ],
+      [
+        'public-issues.md',
+        'SECURITY.md',
+        ['warn', 'SECURITY.md found but it only says to report in public issues, not privately'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'reporting-off.md',
+        'SECURITY.md',
+        ['warn', 'SECURITY.md found but it only says to report in public issues, not privately'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'no-address.md',
+        'SECURITY.md',
+        ['warn', 'SECURITY.md found but it asks for reports by email or message without giving an address'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      // A comment isn't read: its table and its address are hidden from readers too.
+      [
+        'commented.md',
+        'SECURITY.md',
+        ['warn', 'SECURITY.md found but it does not say how to report privately'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      // What the scan can't read gives info.
+      [
+        'pointer-elsewhere.md',
+        'SECURITY.md',
+        [
+          'info',
+          "SECURITY.md found; it points to https://octo-project.org/handbook, which the scan doesn't follow: check that page says how to report privately",
+        ],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+      [
+        'zh-none.md',
+        'SECURITY.md',
+        [
+          'info',
+          "SECURITY.md found, but it isn't in English and the scan found no email address or link in it to report to",
+        ],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
+    ];
+    for (const [name, path, disc, rel] of cases) {
+      const got = await both({ [path]: fixturePolicy(name) });
+      expect([name, got.disc]).toEqual([name, disc]);
+      expect([name, got.rel]).toEqual([name, rel]);
+    }
+  });
+
+  it('reads the policy GitHub shows first: a SECURITY.md in .github/, the root, then docs/', async () => {
+    const email = (who: string) => `Report problems to ${who}@octo-project.org.`;
+    const pick = async (files: Record<string, string>) => (await both(files)).disc;
+    expect(await pick({ 'SECURITY.adoc': email('adoc'), 'SECURITY.md': email('md') })).toEqual([
+      'pass',
+      'SECURITY.md found; it says to report by email (md@octo-project.org)',
+    ]);
+    expect(
+      await pick({
+        'docs/SECURITY.md': email('docs'),
+        'SECURITY.md': email('root'),
+        '.github/SECURITY.md': email('github'),
+      }),
+    ).toEqual(['pass', '.github/SECURITY.md found; it says to report by email (github@octo-project.org)']);
+    // GitHub shows a SECURITY with no extension; a .markdown file it doesn't show still counts as a policy.
+    expect(await pick({ SECURITY: email('bare') })).toEqual([
+      'pass',
+      'SECURITY found; it says to report by email (bare@octo-project.org)',
+    ]);
+    expect(await pick({ '.github/SECURITY.markdown': email('markdown') })).toEqual([
+      'pass',
+      ".github/SECURITY.markdown found (GitHub's Security tab shows only a SECURITY.md); it says to report by email (markdown@octo-project.org)",
+    ]);
+  });
+
+  it('follows one link to another file in the same repository, and nothing outside GitHub', async () => {
+    const short = 'Our full policy is in [docs/security-policy.md](docs/security-policy.md).';
+    const full = '# Security policy\n\nEmail security@octo-project.org with the details.\n';
+    const { disc, calls, rep } = await both({ 'SECURITY.md': short, 'docs/security-policy.md': full });
+    expect(disc).toEqual([
+      'pass',
+      'SECURITY.md found; it points to docs/security-policy.md, which says to report by email (security@octo-project.org)',
+    ]);
+    expect(rep.results['disc-security-md'].details).toEqual({
+      path: 'SECURITY.md',
+      length: pyLen(short),
+      report: ['email'],
+      followed: 'docs/security-policy.md',
+    });
+    expect(calls.filter(([u]) => u === `${TINY_RAW}docs/security-policy.md`)).toHaveLength(1);
+    // The same link as a full GitHub URL, and a symlink (raw.githubusercontent.com serves its target's path).
+    const url = 'See https://github.com/octo/tiny/blob/main/docs/security-policy.md for how to report.';
+    expect((await both({ 'SECURITY.md': url, 'docs/security-policy.md': full })).disc?.[0]).toBe('pass');
+    expect((await both({ 'SECURITY.md': 'docs/security-policy.md\n', 'docs/security-policy.md': full })).disc).toEqual([
+      'pass',
+      'SECURITY.md found; it points to docs/security-policy.md, which says to report by email (security@octo-project.org)',
+    ]);
+    // A link elsewhere is named, never fetched.
+    const away = await both({ 'SECURITY.md': fixturePolicy('pointer-elsewhere.md') });
+    const hosts = new Set(away.calls.map(([u]) => new URL(u).host));
+    expect(
+      [...hosts].filter(
+        (h) =>
+          !/^(api\.github\.com|raw\.githubusercontent\.com|github\.com|api\.securityscorecards\.dev|www\.bestpractices\.dev)$/.test(
+            h,
+          ),
+      ),
+    ).toEqual([]);
+    // A policy that already says how to report doesn't send the scan anywhere.
+    const enough = await both({
+      'SECURITY.md': `${fixturePolicy('email-short.md')}\nMore in [docs](docs/security-policy.md).`,
+    });
+    expect(enough.calls.some(([u]) => u.endsWith('docs/security-policy.md'))).toBe(false);
+  });
+
+  it("reads the account's default too when GitHub shows it instead of the repository's .rst or .adoc", async () => {
+    const account = {
+      'https://api.github.com/repos/octo/.github': { json: { private: false, default_branch: 'main' } },
+      'https://api.github.com/repos/octo/.github/git/trees/main?recursive=1': {
+        json: { tree: [{ path: 'SECURITY.md', type: 'blob' }] },
+      },
+      'https://raw.githubusercontent.com/octo/.github/main/SECURITY.md': { text: 'Email security@octo-project.org.' },
+    };
+    const doc = '= Security\n\nThis page explains how the tool stores keys.\n';
+    const { rep } = await scanTiny(tiny({ 'docs/security.adoc': doc }, { ...REL, ...account }));
+    expect(statusOf(rep, 'disc-security-md')).toEqual([
+      'pass',
+      "docs/security.adoc found (GitHub's Security tab shows the account's default, SECURITY.md in octo/.github, instead); that one says to report by email (security@octo-project.org)",
+    ]);
+  });
+
+  it('reads headings, links, addresses and tables in every format', () => {
+    const md = readPolicy(
+      [
+        '---',
+        'title: front matter',
+        '---',
+        'Security Policy',
+        '===============',
+        '',
+        '**Supported versions**',
+        '',
+        '| Version | Supported |',
+        '|---|---|',
+        '| 2.x | Yes |',
+        '',
+        'REPORTING',
+        '',
+        'Write to [the team](mailto:team@octo-project.org), see [ref] or <https://octo-project.org/security>.',
+        '',
+        '[ref]: https://octo-project.org/policy',
+        '```',
+        '## not a heading',
+        '```',
+      ].join('\n'),
+      'SECURITY.md',
+    );
+    expect(md.headings.map((h) => [h.text, h.level])).toEqual([
+      ['Security Policy', 1],
+      ['Supported versions', 7],
+      ['REPORTING', 8],
+    ]);
+    expect(md.links.map((l) => l.url)).toEqual([
+      'mailto:team@octo-project.org',
+      'https://octo-project.org/policy',
+      'https://octo-project.org/security',
+    ]);
+    expect(md.emails).toEqual(['team@octo-project.org']);
+    expect(md.tables).toEqual([{ header: ['Version', 'Supported'], rows: [['2.x', 'Yes']], line: 8, kind: 'pipe' }]);
+    const rst = readPolicy(
+      [
+        'Policy',
+        '======',
+        '',
+        '.. list-table::',
+        '   :header-rows: 1',
+        '',
+        '   * - Version',
+        '     - Supported',
+        '   * - 2.x',
+        '     - Yes',
+        '',
+        '=======  =========',
+        'Version  Supported',
+        '=======  =========',
+        '1.x      No',
+        '=======  =========',
+        '',
+        '.. csv-table::',
+        '   :header: "Version", "Supported"',
+        '',
+        '   "3.x", "Yes"',
+      ].join('\n'),
+      'SECURITY.rst',
+    );
+    expect(rst.tables.map((t) => [t.kind, t.header, t.rows])).toEqual([
+      ['list', ['Version', 'Supported'], [['2.x', 'Yes']]],
+      ['simple', ['Version', 'Supported'], [['1.x', 'No']]],
+      ['csv', ['Version', 'Supported'], [['3.x', 'Yes']]],
+    ]);
+    // Addresses written so bots can't read them.
+    const spelled = readPolicy(
+      [
+        'a [at] octo-project [dot] org',
+        'b(at)octo-project.org',
+        'c AT octo-project.org',
+        'security at octo-project dot org',
+        'Email: d at octo-project.org',
+        'e @ octo-project.org',
+        'f at gmail com.',
+        'g "at" octo-project.org',
+        'h [at] octo - project [dot] org',
+      ].join('\n\n'),
+      'SECURITY.md',
+    );
+    expect(spelled.emails).toEqual([
+      'a@octo-project.org',
+      'b@octo-project.org',
+      'h@octo-project.org',
+      'security@octo-project.org',
+      'c@octo-project.org',
+      'f@gmail.com',
+      'd@octo-project.org',
+      'e@octo-project.org',
+      'g@octo-project.org',
+    ]);
+    // A URL's user, a Kerberos principal, placeholders and remotes aren't inboxes; a mailto: in the text is.
+    expect(
+      readPolicy('postgres://app:secret@db.octo-project.org/x\n--principal ann@CORP.OCTO-PROJECT.ORG', 'SECURITY.md')
+        .emails,
+    ).toEqual([]);
+    expect(readPolicy('Contact: mailto:security@octo-project.org', 'security.txt').emails).toEqual([
+      'security@octo-project.org',
+    ]);
+    expect(
+      readPolicy('security@example.com, git@github.com:octo/tiny.git, x@users.noreply.github.com', 'SECURITY.md')
+        .emails,
+    ).toEqual([]);
+  });
+
+  it('tells a private way to report from a public one, in more than one language', () => {
+    const how = (text: string) => {
+      const r = howToReport(readPolicy(text, 'SECURITY.md'), 'octo/tiny');
+      return { kinds: r.channels.map((c) => c.kind), publicIssues: r.publicIssues, noAddress: r.noAddress };
+    };
+    expect(
+      how('Open a [draft security advisory](https://github.com/octo/tiny/security/advisories/new).').kinds,
+    ).toEqual(['github', 'github']);
+    expect(how('Use the [Report a vulnerability](../../security/advisories/new) form.').kinds).toEqual([
+      'github',
+      'github',
+    ]);
+    expect(how('Submit it through our bug bounty program on HackerOne.').kinds).toEqual(['platform']);
+    expect(how('Contact @octo-maint privately, or ping them on Matrix: @octo:matrix.org.').kinds).toEqual([
+      'chat',
+      'maintainer',
+    ]);
+    expect(
+      how('If you find a vulnerability, report it to our [lead maintainer](https://octo-person.dev/).').kinds,
+    ).toEqual(['page']);
+    // A maintainer's GitHub profile, linked by name, in a sentence an initial would cut short.
+    expect(how('To report a vulnerability, please contact [Ann B. Example](https://github.com/annb).').kinds).toEqual([
+      'maintainer',
+    ]);
+    expect(how('Please report it [here](https://forms.gle/abc123).').kinds).toEqual(['form']);
+    // Not ways to report privately: published advisories, a public issue, a CVE database, a chat server's invite.
+    expect(how('We publish security advisories on GitHub after a fix. Please open an issue.')).toEqual({
+      kinds: [],
+      publicIssues: true,
+      noAddress: false,
+    });
+    expect(
+      how(
+        'See [CVE-2020-1234](https://nvd.nist.gov/vuln/detail/CVE-2020-1234) and [our Discord](https://discord.gg/abc).',
+      ).kinds,
+    ).toEqual([]);
+    expect(how('Do not open an issue. Reach out to us by email instead.')).toEqual({
+      kinds: [],
+      publicIssues: false,
+      noAddress: true,
+    });
+    // In another language an address or a link is enough.
+    expect(
+      how('Bitte melde Sicherheitslücken über die [GitHub Security Advisories](../../security/advisories/new).').kinds,
+    ).toEqual(['github', 'github']);
+    expect(
+      how('Envie uma mensagem direta para o mantenedor: [@octo-maint](https://github.com/octo-maint).').kinds,
+    ).toEqual(['maintainer']);
+  });
+
+  it('reads the status words, dates and version cells tables use', () => {
+    const now = new Date('2026-11-11T00:00:00Z');
+    const cases: [string, string][] = [
+      ['✅', 'yes'],
+      [':white_check_mark: till 2027 April 30', 'yes'],
+      ['Security fixes only', 'yes'],
+      ['Critical fixes only', 'yes'],
+      ['LTS', 'yes'],
+      ['Ja', 'yes'],
+      ['支持', 'yes'],
+      ['❌ (no new releases, critical fixes may still be backported)', 'no'],
+      ['No, please upgrade', 'no'],
+      ['End of Life', 'no'],
+      ['不支持', 'no'],
+      ['Nicht unterstützt', 'no'],
+      ['until 2020-01-01', 'no'],
+      // A word the scan doesn't know is unknown, never unsupported.
+      ['Best-effort', 'unknown'],
+      ['Life Support', 'unknown'],
+      ['Deprecated', 'unknown'],
+      [':warning:', 'unknown'],
+      ['x', 'unknown'],
+    ];
+    for (const [cell, want] of cases) expect([cell, cellStatus(cell, now)]).toEqual([cell, want]);
+    const day = (cell: string) => endDate(cell)?.toISOString().slice(0, 10) ?? null;
+    expect(
+      [
+        '2027-06-30',
+        '30.06.2029',
+        'April 12, 2023',
+        '1st Jun 2022',
+        'June 2026',
+        'Q3 2026',
+        '2025 (est)',
+        '2026 April 30',
+        'TBD',
+      ].map(day),
+    ).toEqual([
+      '2027-06-30',
+      '2029-06-30',
+      '2023-04-12',
+      '2022-06-01',
+      '2026-06-30',
+      '2026-09-30',
+      '2025-12-31',
+      '2026-04-30',
+      null,
+    ]);
+    const v = (s: string) => s.split('.').map(Number);
+    const cells: [string, string, boolean | null][] = [
+      ['1.0 - 1.5', '1.5.3', true],
+      ['1.0 - 1.5', '1.6.0', false],
+      ['1.x and 2.x', '2.4.0', true],
+      ['8.2, 8.3', '8.3.1', true],
+      ['11.x and older', '9.0.0', true],
+      ['11.x and older', '12.0.0', false],
+      ['3.x.y', '3.2.1', true],
+      ['PHPUnit 13', '13.4.6', true],
+      ['Latest 3.x', '4.0.29', false],
+      ['latest', '4.0.29', true],
+      ['Stable', '1.13.3', true],
+      ['All versions', '26081109', true],
+      ['Older releases', '1.0.0', false],
+      ['< latest', '1.0.0', false],
+      ['main', '1.0.0', null],
+      ['`main` (latest release)', '1.0.0', true],
+      ['master (0.5.7)', '0.5.7', true],
+      ['https://crates.io/crates/octo', '0.20.1', true],
+      ['<SEMVER>', '1.0.0', null],
+    ];
+    for (const [cell, ver, want] of cells) expect([cell, ver, covers(cell, v(ver))]).toEqual([cell, ver, want]);
+    expect(cellSpec('main').kind).toBe('branch');
+  });
+
+  it("compares a monorepo's table with its main package's releases only", () => {
+    const line = (tags: string[], repo = 'tiny') => {
+      const l = releaseLine(
+        tags.map((tag) => ({ tag })),
+        repo,
+      );
+      return l.target ? l.target.tag : l.mixed;
+    };
+    expect(line(['web_adapter_v2.2.2', 'tiny_v5.11.1', 'http2_adapter_v2.9.0'])).toBe('tiny_v5.11.1');
+    expect(line(['@octo/tiny-cli@3.0.0', '@octo/tiny@2.4.1', '@octo/plugin@9.0.0'])).toBe('@octo/tiny@2.4.1');
+    expect(line(['api/v0.9.0', 'v1.2.0', 'experimental/v0.3.0'])).toBe('v1.2.0');
+    expect(line(['plane-4.6.1', 'copter-4.6.2', 'rover-4.6.0'])).toEqual(['plane', 'copter', 'rover']);
+    // Development builds and generic prefixes.
+    expect(line(['nightly-1794384896', 'v2.3.1-nightly', 'v2.3.0'])).toBe('v2.3.0');
+    expect(line(['REL_17_2', 'release-16.6', 'rel_17_1'])).toBe('REL_17_2');
+    expect(line(['releases/tiny/9.7.0', 'releases/tiny/9.6.1'])).toBe('releases/tiny/9.7.0');
+    expect(targetRelease([{ tag: 'curl-8_11_0' }, { tag: 'curl-8_10_1' }])).toEqual({
+      tag: 'curl-8_11_0',
+      version: [8, 11, 0],
+    });
+  });
+
+  it('warns only on a plain table that leaves out the newest release; anything it cannot read gives info', () => {
+    const table = (rows: string[], extra: string[] = [], header = '| Version | Supported |') =>
+      ['## Supported Versions', '', ...extra, header, '| --- | --- |', ...rows].join('\n');
+    const verdict = (text: string, tags: string[], repo = 'tiny') =>
+      (({ status, summary }) => [status, summary])(
+        supportVerdict(
+          readSupport(readPolicy(text, 'SECURITY.md'), new Date('2026-11-11T00:00:00Z')),
+          releaseLine(
+            tags.map((tag) => ({ tag })),
+            repo,
+          ),
+          'SECURITY.md',
+          null,
+          repo,
+        ),
+      );
+    expect(verdict(table(['| 1.x | ✅ |', '| < 1.0 | ❌ |']), ['v2.0.0'])).toEqual([
+      'warn',
+      'SECURITY.md lists 1.x as supported, but the newest release is v2.0.0',
+    ]);
+    expect(verdict(table(['| 2.x | ✅ |']), ['v2.0.0'])).toEqual([
+      'pass',
+      'SECURITY.md lists 2.x as supported, which covers the newest release, v2.0.0',
+    ]);
+    // Columns by their headers: a component column, compatibility columns, a column of end dates.
+    expect(
+      verdict(
+        table(['| tiny-core | >= 1.3.0 | 2023 | ✅ |'], [], '| Component | Version | Released | Security support |'),
+        ['1.3.13'],
+      )[0],
+    ).toBe('pass');
+    expect(
+      verdict(
+        table(['| 5.x | 8.3 | |', '| 4.x | 8.1 | April 2026 |'], [], '| Version | PHP | Security fixes until |'),
+        ['v5.6.1'],
+      ),
+    ).toEqual(['pass', 'SECURITY.md lists 5.x as supported, which covers the newest release, v5.6.1']);
+    expect(verdict(table(['| v6.x | TBD |'], [], '| Version | End-of-life |'), ['v6.2.17'])[0]).toBe('pass');
+    // Info, never a warning: a status word it doesn't know, a branch, an example, another numbering, packages it
+    // can't tie to the table, a table ahead of the releases, a range that starts after the newest release, and a
+    // table without a status column.
+    const infos: [string, string[]][] = [
+      [table(['| 2.x | Best-effort |']), ['v2.0.0']],
+      [table(['| main | ✅ |', '| < main | ❌ |']), ['v0.4.0']],
+      [
+        table(['| 28 | ✅ |', '| 27 | ✅ |'], ['For example, if the latest release is 28, we support:', '']),
+        ['OTP-29.1.2'],
+      ],
+      [table(['| 9.2.x | ✅ |']), ['2026-11-10']],
+      [table(['| > 1.0.x | ✅ |']), ['@octo/react/v0.2.3', '@octo/design/v0.2.1']],
+      [table(['| 1.x | ✅ |', '| 0.0.x | ❌ |']), ['0.0.9']],
+      [table(['| >8.0.0 | ✅ |']), ['v8.0.0']],
+      [
+        table(['| 9.0-10.0 | Releases within the previous twelve months |'], [], '| CVSS v3.0 | Supported Versions |'),
+        ['25.1.3'],
+      ],
+      [table(['| LTS | ✅ |']), ['v1.13.3']],
+      [table(['| <SEMVER> | ✅ |']), ['v0.4.4']],
+    ];
+    for (const [text, tags] of infos) expect([text, verdict(text, tags)[0]]).toEqual([text, 'info']);
+  });
+
+  it('never fails or warns on a policy the scan cannot read', async () => {
+    const odd = [
+      '',
+      '\u{1F512}',
+      '<html><body><p>Security</p></body></html>',
+      '..\n   just an RST comment',
+      '////\nan AsciiDoc comment\n////',
+      '| a | b |\n|---|---|\n| ✅ | ❌ |',
+      '## Supported Versions\n\n| Version | Supported |\n| --- | --- |\n| ??? | ??? |',
+      '安全策略：请联系我们。',
+      'Безопасность: свяжитесь с нами.',
+      'See https://octo-project.org.',
+    ];
+    for (const text of odd) {
+      const got = await both({ 'SECURITY.md': text }, { '/releases?per_page=10': releases('v2.3.0') });
+      expect([text, got.rel?.[0]]).toEqual([text, 'info']);
+      // The reporting check warns only when it read the policy in English and found no way to report.
+      if (got.disc?.[0] === 'warn') expect(readPolicy(text, 'SECURITY.md').english).toBe(true);
+      expect(got.disc?.[0]).not.toBe('fail');
+    }
+  });
+
+  it('gives the coming text checks sections, sentences and links to search', () => {
+    const p = readPolicy(
+      [
+        '# Security',
+        '',
+        '## Response times',
+        '',
+        'We acknowledge reports within 2 business days. We aim to fix critical issues in 30 days.',
+        '',
+        '### Embargo',
+        '',
+        'We notify downstream distributions under embargo.',
+        '',
+        '## Post-mortems',
+        '',
+        'Read [the 2025 incident review](https://github.com/octo/tiny/blob/main/docs/incident-2025.md).',
+      ].join('\n'),
+      'SECURITY.md',
+    );
+    expect(sections(p, /response/i).map((s) => [s.heading.text, s.text.trim()])).toEqual([
+      [
+        'Response times',
+        'We acknowledge reports within 2 business days. We aim to fix critical issues in 30 days.\n\nEmbargo\n\nWe notify downstream distributions under embargo.',
+      ],
+    ]);
+    expect(mentions(p, /\b\d+ business days\b/)).toEqual([
+      { heading: 'Response times', sentence: 'We acknowledge reports within 2 business days.' },
+    ]);
+    expect(mentions(p, /embargo/i).map((m) => m.heading)).toEqual(['Embargo']);
+    expect(p.links).toEqual([
+      { text: 'the 2025 incident review', url: 'https://github.com/octo/tiny/blob/main/docs/incident-2025.md' },
+    ]);
+    // The one file in the same repository a check may read next.
+    expect(
+      sameRepoLink(
+        readPolicy('Full policy: [here](docs/policy.md)', 'SECURITY.md'),
+        'Full policy: [here](docs/policy.md)',
+        'octo/tiny',
+        { report: true, versions: false },
+      ),
+    ).toBe('docs/policy.md');
+    expect(
+      sameRepoLink(
+        readPolicy('Full policy: [here](https://github.com/other/repo/blob/main/SECURITY.md)', 'SECURITY.md'),
+        '',
+        'octo/tiny',
+        { report: true, versions: true },
+      ),
+    ).toBeNull();
   });
 });
