@@ -17,6 +17,7 @@ import {
   reportVerdict,
   sameRepoLink,
   sections,
+  sentences,
 } from '../lib/scanner/policy.ts';
 import { readSupport, releaseLine, supportVerdict } from '../lib/scanner/versions.ts';
 
@@ -274,6 +275,7 @@ describe('reading a security policy takes linear time', () => {
       reportVerdict(p, r, null);
       supportVerdict(s, releaseLine(tags, 'widget'), path, null, 'widget');
       paragraphs(p);
+      sentences(p);
       mentions(p, /report/);
       sections(p, /./);
     };

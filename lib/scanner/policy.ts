@@ -1677,6 +1677,19 @@ export function paragraphs(p: Policy): string[] {
   return blocks(p).map((b) => b.text);
 }
 
+/**
+ * The sentences of the policy's paragraphs and table rows, each with the heading it sits under: what a check can
+ * quote (new in 0.5.2). A wrapped sentence reads whole; headings and code blocks aren't sentences.
+ */
+export function sentences(p: Policy): { heading: string | null; sentence: string }[] {
+  const out: { heading: string | null; sentence: string }[] = [];
+  for (const b of blocks(p)) {
+    if (b.kind !== 'text' && b.kind !== 'table') continue;
+    for (const s of sentencesOf(b.text)) if (s.trim()) out.push({ heading: b.heading, sentence: s.trim() });
+  }
+  return out;
+}
+
 interface Block {
   text: string;
   heading: string | null;
