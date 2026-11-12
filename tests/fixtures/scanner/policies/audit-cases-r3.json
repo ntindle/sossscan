@@ -1,0 +1,86 @@
+[
+  {
+    "id": "A01 ssh-port-443-login",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nPlease do not open public issues for vulnerabilities. If port 22 is blocked, clone with `ssh -p 443 git@ssh.github.com`.\n"
+  },
+  {
+    "id": "A02 ssh-url-login",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Mirror: ssh://git@ssh.github.com:443/acme/widget.git\n"
+  },
+  {
+    "id": "A03 codeberg-ssh-remote",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Our mirror is at git@codeberg.org:acme/widget.git\n"
+  },
+  {
+    "id": "A04 gnome-gitlab-remote",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Upstream: git@gitlab.gnome.org:GNOME/widget.git\n"
+  },
+  {
+    "id": "A05 sourcehut-remote",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Patches: git@git.sr.ht:~acme/widget\n"
+  },
+  {
+    "id": "A06 https-url-user-no-password",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Signed builds: https://deploy@files.acme-widgets.org/releases/\n"
+  },
+  {
+    "id": "A07 docker-digest",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Verify the image registry.acme-widgets.org/widget@sha256:0123456789abcdef before use.\n"
+  },
+  {
+    "id": "A08 npm-version-pin",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Fixed in npm install widget@4.2.1.\n"
+  },
+  {
+    "id": "A09 actions-pin",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Pin actions/checkout@v4.2.2 in your workflows.\n"
+  },
+  {
+    "id": "A10 git-at-self-hosted",
+    "disc": "warn|info",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nDo not open public issues. Clone: git@git.acme-widgets.org:acme/widget.git\n"
+  },
+  {
+    "id": "A11 real-address-control",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org. Do not open public issues.\n"
+  },
+  {
+    "id": "V01 fragment-version-follow-ssh",
+    "disc": "warn|info",
+    "text": "# Security\n\nThis tool sandboxes agents. See [keyring access](docs/notes.md#keyring-access-depends-on-the-agent-version) for limits.\n\nDo not open public issues for vulnerabilities.\n",
+    "files": {
+      "docs/notes.md": "# Notes\n\n## Keyring access depends on the agent version\n\nIf port 22 is blocked, use ssh -p 443 git@ssh.github.com.\n\n| Command | Works |\n| --- | --- |\n| npm install | yes |\n| npm test | no |\n"
+    },
+    "tags": ["v1.0.0"]
+  },
+  {
+    "id": "V02 fragment-version-install-doc",
+    "disc": "pass",
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\nSee [installing](docs/install.md#install-a-specific-version).\n",
+    "files": {
+      "docs/install.md": "# Install\n\n## Install a specific version\n\n| Command | Works |\n| --- | --- |\n| npm install | yes |\n| npm test | no |\n"
+    },
+    "tags": ["v1.0.0"],
+    "rel": "info|warn"
+  },
+  {
+    "id": "V03 lifecycle-heading-table",
+    "disc": "pass",
+    "rel": "info",
+    "tags": ["v1.0.0"],
+    "text": "# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@acme-widgets.org.\n\nKnown limits: see [agent notes](docs/notes.md#pin-the-agent-version).\n",
+    "files": {
+      "docs/notes.md": "# Notes\n\n## Pin the agent version\n\nUse the latest agent.\n\n## Lifecycle scripts (postinstall hooks)\n\n| Operation | Impact |\n| --- | --- |\n| `npm install` (download only) | ✅ Works |\n| `npm install` (with native deps) | ⚠️ May fail |\n"
+    }
+  }
+]

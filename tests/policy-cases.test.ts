@@ -1,11 +1,12 @@
 // Security policies as people write them. An independent audit tried the reader on 627 repositories it hadn't seen and
 // on 135 policies it wrote to be hard; these tests run all 135 (tests/fixtures/scanner/policies/audit-cases.json, the
-// auditor's text), the 78 of its second round (audit-cases-r2.json, and the four of over 256 KB built here), and a
-// short policy in the manner of each real repository it found the reader got wrong.
+// auditor's text), the 78 of its second round (audit-cases-r2.json, and the four of over 256 KB built here), the 14
+// of its third (audit-cases-r3.json), and a short policy in the manner of each real repository it found the reader
+// got wrong.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { decodeReplace, decodeText } from '../lib/scanner/http.ts';
-import { howToReport, readPolicy, reportVerdict, sameRepoLink } from '../lib/scanner/policy.ts';
+import { howToReport, readPolicy, reportVerdict, sameRepoLink, sameRepoLinkFor } from '../lib/scanner/policy.ts';
 import { readSupport, releaseLine, statusOf, supportVerdict } from '../lib/scanner/versions.ts';
 
 const REPO = 'octo/tiny';
@@ -89,12 +90,11 @@ function bigCases(): Case2[] {
     { id: 'T04 address-first-then-filler', disc: 'pass', text: `${reporting}${rows}\n` },
   ];
 }
-const cases2: Case2[] = [
-  ...JSON.parse(readFileSync(new URL('./fixtures/scanner/policies/audit-cases-r2.json', import.meta.url), 'utf8')),
-  ...bigCases(),
-];
+const fixture = (name: string) =>
+  JSON.parse(readFileSync(new URL(`./fixtures/scanner/policies/${name}`, import.meta.url), 'utf8'));
+const cases2: Case2[] = [...fixture('audit-cases-r2.json'), ...bigCases(), ...fixture('audit-cases-r3.json')];
 
-describe("the audit's second round of policies", () => {
+describe("the audit's second and third rounds of policies", () => {
   it.each(cases2.map((c) => [c.id, c] as const))('%s', (_, c) => {
     const path = c.path ?? 'SECURITY.md';
     // Bytes are read as a policy is (decodeText: UTF-16, or Windows-1252 when it isn't UTF-8).
@@ -102,23 +102,23 @@ describe("the audit's second round of policies", () => {
     const p = readPolicy(text, path);
     const r = howToReport(p, 'acme/widget', 'acme/widget');
     const s = readSupport(p, NOW);
-    // The one file the policy leads to, from the case's files: its text, or the HTTP status it gives.
-    const next = sameRepoLink(p, text, 'acme/widget', { report: !r.channels.length, versions: !s.section });
+    // The one file the policy leads to, from the case's files: its text, or the HTTP status it gives. As in the
+    // scan, a file it leads to for the supported versions says nothing about how to report.
+    const link = sameRepoLinkFor(p, text, 'acme/widget', { report: !r.channels.length, versions: !s.section });
+    const next = link?.path;
     const file = next && c.files ? c.files[next] : undefined;
+    const fp = typeof file === 'string' ? readPolicy(file, next!) : null;
     const followed =
       next && c.files
-        ? typeof file === 'string'
-          ? {
-              path: next,
-              policy: readPolicy(file, next),
-              reporting: howToReport(readPolicy(file, next), 'acme/widget'),
-            }
+        ? fp
+          ? { path: next, policy: fp, reporting: howToReport(fp, 'acme/widget') }
           : { path: next, status: typeof file === 'number' ? file : 404 }
         : null;
-    if (c.disc) expect(c.disc.split('|')).toContain(reportVerdict(p, r, followed).status);
+    if (c.disc) expect(c.disc.split('|')).toContain(reportVerdict(p, r, link?.report ? followed : null).status);
     if (c.rel && c.tags) {
+      const there = fp ? readSupport(fp, NOW) : null;
       const rel = supportVerdict(
-        s,
+        !s.section && there?.section ? there : s,
         releaseLine(
           c.tags.map((tag) => ({ tag })),
           'widget',
@@ -128,6 +128,76 @@ describe("the audit's second round of policies", () => {
         'widget',
       );
       expect(c.rel.split('|')).toContain(rel.status);
+    }
+  });
+});
+
+describe("the audit's third round: what the reader got wrong", () => {
+  it('never reads a git login, or an address in an ssh or git command, as an inbox', () => {
+    for (const text of [
+      'If port 22 is blocked, clone with `ssh -p 443 git@ssh.github.com`.',
+      'Our mirror is at git@codeberg.org:acme/widget.git',
+      'Patches: git@git.sr.ht:~acme/widget',
+      'Clone: git@git.acme-widgets.org:acme/widget.git',
+      'Deploy with ssh -i deploy.pem admin@build.acme-widgets.org and scp files to ops@acme-widgets.org:/srv.',
+      'Run git clone deploy@acme-widgets.org:widget.git first.',
+    ]) {
+      const p = readPolicy(`## Reporting a Vulnerability\n\nDo not open public issues. ${text}`, 'SECURITY.md');
+      expect([text, p.emails, verdict(p.text).kinds]).toEqual([text, [], []]);
+    }
+    // A real address is still one, in the same sentence as a login or after an ssh command that failed.
+    expect(readPolicy('Email security@acme-widgets.org, not git@codeberg.org.', 'SECURITY.md').emails).toEqual([
+      'security@acme-widgets.org',
+    ]);
+    expect(readPolicy('If ssh fails, email ops@acme-widgets.org.', 'SECURITY.md').emails).toEqual([
+      'ops@acme-widgets.org',
+    ]);
+    // git@ is an inbox when the policy asks to mail it, as abiosoft/colima's does ("send an email to git[@]abiosoft.com").
+    for (const text of [
+      'Instead, please send an email to git[@]abiosoft.com.',
+      'Please send an email to git@abiosoft.com.',
+    ]) {
+      expect([text, readPolicy(text, 'SECURITY.md').emails]).toEqual([text, ['git@abiosoft.com']]);
+    }
+  });
+
+  it('follows a link for how to report only when it is about security, and never reports from a link for the versions (navikt/cplt)', () => {
+    // cplt links its known impacts (#...-depends-on-the-agent-version) before a security page.
+    const cplt = readPolicy(
+      '# Security\n\nSee [Linux keyring access](docs/known-impacts.md#keyring-access-depends-on-the-agent-version), and the [gh guard security boundaries](docs/gh-guard.md#security-boundaries).',
+      'SECURITY.md',
+    );
+    expect(sameRepoLinkFor(cplt, '', REPO, { report: true, versions: true })).toEqual({
+      path: 'docs/gh-guard.md',
+      report: true,
+    });
+    // One version, or "lifecycle" alone, isn't about which versions get fixes; "supported versions" is, and that link
+    // is followed for the versions only.
+    const notes = readPolicy(
+      '# Security\n\nEmail security@acme-widgets.org. See [notes](docs/notes.md#pin-the-agent-version) and [hooks](docs/notes.md#lifecycle-scripts).',
+      'SECURITY.md',
+    );
+    expect(sameRepoLinkFor(notes, '', REPO, { report: false, versions: true })).toBeNull();
+    const versions = readPolicy('# Security\n\nSee [supported versions](docs/versions.md).', 'SECURITY.md');
+    expect(sameRepoLinkFor(versions, '', REPO, { report: true, versions: true })).toEqual({
+      path: 'docs/versions.md',
+      report: false,
+    });
+  });
+
+  it('reads a lifecycle heading as the supported versions only when it is the lifecycle of versions or support', () => {
+    // A table that isn't one of versions, as cplt's lifecycle scripts have, so only the heading can make it one.
+    const table = '\n\n| Operation | Impact |\n| --- | --- |\n| `npm install` | ✅ Works |\n';
+    for (const [heading, section] of [
+      ['## Lifecycle scripts (postinstall hooks)', false],
+      ['## Lifecycle', false],
+      ['## Support lifecycle', true],
+      ['## Release lifecycle', true],
+      ['## Version lifecycle', true],
+      ['## Lifecycle policy', true],
+    ] as const) {
+      const s = readSupport(readPolicy(`# Notes\n\n${heading}${table}`, 'SECURITY.md'), NOW);
+      expect([heading, !!s.section]).toEqual([heading, section]);
     }
   });
 });

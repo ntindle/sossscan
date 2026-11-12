@@ -3551,6 +3551,28 @@ describe('security policies in any format', () => {
     }
     const csp = '# Security\n\n## Content Security Policy\n\nThe app sends a strict CSP header.\n';
     expect((await both({ 'skills/stripe/security.md': csp })).disc?.[0]).toBe('fail');
+    // A page about features isn't a policy for a heading alone, or an address for something else: it takes a private
+    // way to report next to words about reporting.
+    const feature = (h: string) => `# Security\n\n${h}\n\nThe gateway enforces TLS 1.2 and rejects weak ciphers.\n`;
+    for (const [path, text] of [
+      ['docs/k8s/security.md', feature('## Pod Security Policy')],
+      ['docs/net/security.md', feature('## Network security policy')],
+      [
+        'docs/changes/security.md',
+        '# Security\n\n## Security issues fixed in 2.0\n\n- CVE-2024-1234: XSS in the editor, fixed in 2.0.1\n',
+      ],
+      [
+        'docs/api/security.md',
+        '# API security\n\nAPI keys are rotated monthly. To get a key, write to api-access@octo-project.org.\n',
+      ],
+      ['docs/deploy/security.md', '# Deploy security\n\nUse ssh -p 443 git@ssh.github.com when port 22 is blocked.\n'],
+      [
+        'docs/vault/SECURITY.md',
+        '## Reporting Security Issues\n\nDo not open public issues. Contact: security@vault.example (update with real contact)\n',
+      ],
+    ]) {
+      expect([path, (await both({ [path]: text })).disc?.[0]]).toEqual([path, 'fail']);
+    }
     // A page about security features nearer the root doesn't hide a policy deeper down; of the three nearest, the
     // first that reads like a policy is named.
     const deeper = await both({
@@ -3564,6 +3586,18 @@ describe('security policies in any format', () => {
       'warn',
       'No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; .github/ISSUE_TEMPLATE/security.md reads like the policy: copy what it says about reporting into a SECURITY.md in one of those folders so GitHub shows it',
     ]);
+  });
+
+  it('reads a file it links to for the supported versions, but never takes a way to report from it', async () => {
+    const versions =
+      '# Versions\n\n## Supported Versions\n\n| Version | Supported |\n| --- | --- |\n| 2.x | :white_check_mark: |\n\nMaintainer: ann@octo-project.org\n';
+    const { disc, rel, rep } = await both({
+      'SECURITY.md': '# Security\n\nWe take security seriously. See [supported versions](docs/versions.md).',
+      'docs/versions.md': versions,
+    });
+    expect(disc).toEqual(['warn', 'SECURITY.md found but it does not say how to report privately']);
+    expect(rep.results['disc-security-md'].details.followed).toBeUndefined();
+    expect(rel?.[1]).toContain('docs/versions.md');
   });
 
   it("doesn't ask for a file the policy links to that the tree doesn't list", async () => {

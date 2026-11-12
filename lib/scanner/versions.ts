@@ -9,9 +9,13 @@ import { finditer, match, re, search } from './py.ts';
 import { readPolicy, sections } from './policy.ts';
 import type { Policy, Table } from './policy.ts';
 
-/** A heading that starts the supported-versions section, in English or a few other languages. */
+/**
+ * A heading that starts the supported-versions section, in English or a few other languages. A lifecycle is one of
+ * versions, releases, support, a product or maintenance ("Support lifecycle", "Lifecycle policy"), never "Lifecycle
+ * scripts".
+ */
 export const SUPPORT_HEADING = re(
-  String.raw`(?i)\bsupported[ \t]+(?:versions?|releases?|branches|lines|platforms)\b|\bversions?[ \t]+(?:support(?:ed)?|policy|lifecycle)\b|\bsecurity[ \t]+(?:updates|support|fixes|releases|patches|maintenance)\b|\bmaintained[ \t]+(?:versions?|releases?|branches)\b|\bsupport(?:ed)?[ \t]+(?:policy|releases?|lifecycle|status|matrix|period|window|timeline|schedule)\b|\bend[- ]of[- ](?:life|support)\b|\blong[- ]term[ \t]+support\b|\brelease[ \t]+(?:support|lines|lifecycle)\b|\blifecycle\b|^(?:versions?|releases|support)$|\bLTS\b`,
+  String.raw`(?i)\bsupported[ \t]+(?:versions?|releases?|branches|lines|platforms)\b|\bversions?[ \t]+(?:support(?:ed)?|policy|lifecycle)\b|\bsecurity[ \t]+(?:updates|support|fixes|releases|patches|maintenance)\b|\bmaintained[ \t]+(?:versions?|releases?|branches)\b|\bsupport(?:ed)?[ \t]+(?:policy|releases?|lifecycle|status|matrix|period|window|timeline|schedule)\b|\bend[- ]of[- ](?:life|support)\b|\blong[- ]term[ \t]+support\b|\brelease[ \t]+(?:support|lines|lifecycle)\b|\b(?:product|maintenance)[ \t]+lifecycle\b|\blifecycle[ \t]+policy\b|^(?:versions?|releases|support)$|\bLTS\b`,
 );
 /** The same, for headings with letters (?i) can't fold: German, Spanish, Portuguese, French, and scripts without case. */
 const SUPPORT_HEADING_OTHER = re(

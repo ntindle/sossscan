@@ -60,7 +60,7 @@ import {
 } from './self-checks.ts';
 import type { Outcome } from './self-checks.ts';
 import type { Evidence, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
-import { howToReport, looksLikePolicy, readPolicy, reportVerdict, sameRepoLink } from './policy.ts';
+import { howToReport, looksLikePolicy, readPolicy, reportVerdict, sameRepoLinkFor } from './policy.ts';
 import type { Followed, Policy, Reporting } from './policy.ts';
 import { readSupport, releaseLine, supportVerdict } from './versions.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
@@ -655,10 +655,11 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   if (policy) {
     doc = readPolicy(policy.text, policy.path);
     const reporting = howToReport(doc, policy.repo, repo);
-    const next = sameRepoLink(doc, policy.text, policy.repo, {
+    const link = sameRepoLinkFor(doc, policy.text, policy.repo, {
       report: !reporting.channels.length,
       versions: !readSupport(doc).section,
     });
+    const next = link?.path ?? null;
     /** The file it led to, when it couldn't be read: its path and the HTTP status. */
     let unreadNext: Followed | null = null;
     // A file the whole tree doesn't list isn't there: no need to ask for it (a link to N/A, a moved file).
@@ -682,7 +683,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         };
       } else unreadNext = { path: policy.own ? next : `${next} in ${policy.repo}`, status };
     }
-    let v = reportVerdict(doc, reporting, followed ?? unreadNext);
+    // A file it led to for the supported versions says nothing about how to report.
+    const forReport = link?.report ? (followed ?? unreadNext) : null;
+    let v = reportVerdict(doc, reporting, forReport);
     let shown = '';
     if (!githubShows(policy.path)) {
       // GitHub's Security tab doesn't show this file. For a repository without a SECURITY.md it shows the account's
@@ -711,7 +714,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         length: pyLen(policy.text),
         ...(policy.own ? {} : { account_default: true }),
         ...(v.channels.length ? { report: v.channels } : {}),
-        ...(followed ? { followed: followed.path } : {}),
+        ...(followed && link?.report ? { followed: followed.path } : {}),
       },
     );
   }

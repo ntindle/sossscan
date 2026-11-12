@@ -203,6 +203,12 @@ const SPELLED_EMAIL = re(
 const SPELLED_AT = re(
   String.raw`(?<![\w.+-])([A-Za-z0-9][\w.+-]*)[ \t]+AT[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])|(?<![\w.+-])(?=[\w.+-]*?(?:secur|vuln|abuse|psirt|cert|info|contact|support|report|disclos|admin|team|hello|maint|oss))([\w.+-]+)[ \t]+at[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])`,
 );
+/**
+ * Words of a paragraph (or its heading) about reporting a vulnerability, in English and a few other languages. A
+ * plain JavaScript test: it only marks where a way to report is about reporting.
+ */
+const REPORTING_CONTEXT =
+  /\breport|\bdisclos|vulnerab|\bsecurity[ \t]+(?:issues?|bugs?|problems?|flaws?|holes?|concerns?|incidents?|findings?)\b|漏洞|报告|報告|脆弱性|취약점|보고|신고|schwachstelle|sicherheitsl[üu]cke|\bmelde|vuln[ée]rabilit|signal(?:er|ez|ement)|reportar|relatar|segnal|уязвим|сообщ/i;
 /** A word before "open issue" that makes it an issue that is open: "no open issue", "an open issue". */
 const OPEN_ADJECTIVE = /\b(?:no|an?|the|any|all|each|every|existing|other|some|many|several|current)[ \t]+$/i;
 /** An article or a possessive right before a word: "the team", "our security team". */
@@ -235,6 +241,25 @@ const NOT_AN_INBOX = re(
 
 /** Just before an address, a URL's user and password (https://user:token@github.com): not an address. */
 const URL_USER = re(String.raw`://[^\s/@]*:$`);
+/**
+ * A login, not an inbox: an address right after an ssh, scp or sftp command and its options ("ssh -p 443
+ * deploy@host"), or after a git command, or one written as a remote, with a path after a colon (deploy@host:repo.git).
+ */
+const SSH_BEFORE = /\b(?:ssh|scp|sftp|mosh|rsync)(?:[ \t]+-[\w-]+(?:[ \t]+(?!-)[^\s@]+)?)*[ \t]+$/;
+const GIT_BEFORE =
+  /\bgit[ \t]+(?:clone|push|pull|fetch|remote[ \t]+(?:add|set-url)(?:[ \t]+[\w.-]+)?|submodule[ \t]+add)(?:[ \t]+-[\w-]+)*[ \t]+$/;
+/** Asking for mail right before an address: "email", "send an email to", "write to". */
+const MAIL_BEFORE = /\b(?:e-?mail(?:ing)?|mail|write|send|contact|reach)\b[^.;:\n]{0,30}$/i;
+/**
+ * Whether the address written at [at, end) of s is a login rather than an inbox: in an ssh or git command, written as
+ * a remote, or git@ anything (git@codeberg.org, git@git.sr.ht), unless the sentence asks to mail it ("send an email
+ * to git@abiosoft.com", as colima's policy does).
+ */
+const loginAt = (s: string, at: number, end: number) => {
+  const before = s.slice(Math.max(0, at - 120), at);
+  if (SSH_BEFORE.test(before) || GIT_BEFORE.test(before) || /^:[\w~/.]/.test(s.slice(end, end + 2))) return true;
+  return /^git@/i.test(s.slice(at, end)) && !MAIL_BEFORE.test(before);
+};
 /** Words that make a sentence one about writing to someone, which a spelled-out address ("team at github.com") needs. */
 const CONTACT_VERB = re(
   String.raw`(?i)\b(?:e-?mail(?:ing|ed)?|mail|contact(?:ing)?|write|writing|send|sending|reach(?:ing)?|message|notify|ping|address)\b|\breport\w*\b[^.\n]{0,40}?\bto\b`,
@@ -1167,8 +1192,9 @@ function addressesOf(
       const ctx = contextOf(s, heading);
       if (atSign) {
         for (const m of finditer(EMAIL, s)) {
-          if (!search(URL_USER, s.slice(Math.max(0, m.index - 200), m.index)))
-            add(m[1], ctx, m.index, s.slice(0, m.index));
+          if (search(URL_USER, s.slice(Math.max(0, m.index - 200), m.index))) continue;
+          if (loginAt(s, m.index, m.index + m[0].length)) continue;
+          add(m[1], ctx, m.index, s.slice(0, m.index));
         }
         for (const m of finditer(MAILTO_TEXT, s)) add(m[1], ctx, m.index, s.slice(0, m.index));
         for (const m of finditer(SPACED_AT, s)) add(`${m[1]}@${m[2]}`, ctx, m.index, s.slice(0, m.index));
@@ -1461,6 +1487,8 @@ export interface Reporting {
   foreign?: boolean;
   /** The file in the same repository it points to for how to report (or is a link to), when it says nothing itself. */
   local?: string | null;
+  /** A private way to report (not a page) is in a paragraph about reporting, or under a heading about it. */
+  inContext?: boolean;
 }
 
 /** GitHub's private vulnerability reporting: the Security tab, its advisories page or the "Report a vulnerability" form. */
@@ -1539,7 +1567,7 @@ const PROFILE_URL = re(
   String.raw`(?i)^https?://(?:www\.)?github\.com/([A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38})/?$`,
 );
 const CHAT_TEXT = re(
-  String.raw`(?i)\b(?:signal|threema|session|wire|keybase|element)\b[^.\n]{0,40}(?:@[\w.-]+|\+\d[\d \t-]{6,}|\busername\b|\bnumber\b)|@[\w.-]+:[\w-]+(?:\.[\w-]+)+\b|\b(?:dm|mp|direct[ \t]+message|private[ \t]+message|privately[ \t]+message|message[ \t]+(?:me|us|them|him|her|one[ \t]+of[ \t]+(?:us|the[ \t]+maintainers))[ \t]+privately|pm|private(?:ly)?)\b[^\n]{0,80}\b(?:discord|zulip|slack|matrix|gitter|telegram|mastodon|twitter|irc|libera|wechat|qq)\b|\b(?:discord|zulip|slack|matrix|gitter|telegram|mastodon|irc|wechat|qq)\b[^.\n]{0,80}\b(?:dm|mp|pm|direct[ \t]+message|private[ \t]+message|privately)\b|\b(?:discord|zulip|slack|telegram|gitter|wechat|qq|keybase)\b[^.\n]{0,40}(?:@[\w.-]{2,}|\b[\w.]{2,32}#\d{4}\b|` +
+  String.raw`(?i)\b(?:signal|threema|session|wire|keybase|element)\b[^.\n]{0,40}(?:@[\w.-]+|\+\d[\d \t-]{6,}|\busername\b|\bnumber\b)|(?<![\w.])@[\w.-]+:[\w-]+(?:\.[\w-]+)+\b|\b(?:dm|mp|direct[ \t]+message|private[ \t]+message|privately[ \t]+message|message[ \t]+(?:me|us|them|him|her|one[ \t]+of[ \t]+(?:us|the[ \t]+maintainers))[ \t]+privately|pm|private(?:ly)?)\b[^\n]{0,80}\b(?:discord|zulip|slack|matrix|gitter|telegram|mastodon|twitter|irc|libera|wechat|qq)\b|\b(?:discord|zulip|slack|matrix|gitter|telegram|mastodon|irc|wechat|qq)\b[^.\n]{0,80}\b(?:dm|mp|pm|direct[ \t]+message|private[ \t]+message|privately)\b|\b(?:discord|zulip|slack|telegram|gitter|wechat|qq|keybase)\b[^.\n]{0,40}(?:@[\w.-]{2,}|\b[\w.]{2,32}#\d{4}\b|` +
     '`' +
     String.raw`[\w.#-]{2,32}` +
     '`' +
@@ -1764,14 +1792,33 @@ function sameRepoUrl(url: string, repo: string): boolean {
 export function howToReport(p: Policy, repo: string, scanned = repo): Reporting {
   const found: Channel[] = [];
   const have = new Set<string>();
+  // The lines of the paragraphs about reporting (their words, or their heading's), and whether a private way to
+  // report was found in one: "Email security@..." under "Reporting a vulnerability", not an address for API keys.
+  const about = new Set<number>();
+  for (const b of blocks(p)) {
+    if (REPORTING_CONTEXT.test(`${b.heading ?? ''} ${b.text}`)) for (let n = b.start; n < b.end; n++) about.add(n);
+  }
+  const aboutBlock = (b: Block) => about.has(b.start);
+  let here = false;
+  let inContext = false;
   const add = (kind: ChannelKind, label: string, other?: string) => {
+    if (here && kind !== 'page') inContext = true;
     const key = kind + '\u0000' + label;
     if (have.has(key)) return;
     have.add(key);
     found.push(other ? { kind, label, repo: other } : { kind, label });
   };
-  for (const e of p.emails) add('email', e);
-  for (const x of p.xmpp ?? []) add('chat', x);
+  /** Whether an address is in a paragraph about reporting. */
+  const addressAbout = (a: string) =>
+    blocks(p).some((b) => aboutBlock(b) && b.text.toLowerCase().includes(a.toLowerCase()));
+  for (const e of p.emails) {
+    here = addressAbout(e);
+    add('email', e);
+  }
+  for (const x of p.xmpp ?? []) {
+    here = addressAbout(x);
+    add('chat', x);
+  }
   /** Links to the issue tracker: public issues, unless their sentence says not to use them. */
   const issueLinks: Link[] = [];
   const others: Link[] = [];
@@ -1789,6 +1836,7 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
   for (const l of p.links) {
     const u = l.url;
     if (/^mailto:/i.test(u)) continue;
+    here = !!l.lines?.some((n) => about.has(n));
     if (search(GITHUB_REPORTING_URL, u) && !/\/security\/policy\b/i.test(u)) {
       if (/\/advisories\/new\/?(?:[?#]|$)/i.test(u)) add('github', u, elsewhereRepo(u));
       else githubPages.push(l);
@@ -1840,7 +1888,9 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
   let readme = false;
   /** A request to write on a chat platform it gives a handle on. */
   let chatRequest = false;
+  let chatAbout = false;
   for (const b of blocks(p)) {
+    here = aboutBlock(b);
     const para = b.text;
     // The heading a paragraph sits under says what it's about ("Reporting a vulnerability").
     const heading = b.heading ?? '';
@@ -1878,7 +1928,11 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
           add('maintainer', 'a maintainer named in it');
         const word = !!search(REPORT_WORD, s);
         if (word && TRIGGER.readme.test(s) && search(README_CONTACT, s) && search(REPORT_SENTENCE, s)) readme = true;
-        if (word && at) for (const m of finditer(SHORT_EMAIL, s)) add('email', m[1]);
+        if (word && at) {
+          for (const m of finditer(SHORT_EMAIL, s)) {
+            if (!search(NOT_AN_INBOX, m[1]) && !loginAt(s, m.index, m.index + m[0].length)) add('email', m[1]);
+          }
+        }
         // "No open issue tracks it" or "an open issue" is an issue that is open, not a request to open one.
         const pi = TRIGGER.issues.test(s)
           ? finditer(PUBLIC_ISSUE_TEXT, s).find(
@@ -1898,7 +1952,10 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
           if (!/\bgithub\b/i.test(s)) noAddress = true;
         }
         const cr = handles.size && TRIGGER.chat.test(s) ? search(CHAT_REQUEST, s) : null;
-        if (cr && handles.has(cr[1].toLowerCase())) chatRequest = true;
+        if (cr && handles.has(cr[1].toLowerCase())) {
+          chatRequest = true;
+          chatAbout ||= here;
+        }
       }
     }
     // A private message on a chat platform; not a channel, group or community, which anyone can read. The platform
@@ -1967,6 +2024,7 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
       }
     }
   }
+  here = chatAbout;
   if (chatRequest && !found.some((c) => c.kind === 'chat')) add('chat', 'a private message');
   // A link to GitHub's form says which repository it's in, so it comes before the feature named in words; a page
   // whose link doesn't say it's about reports comes after those that do.
@@ -2003,6 +2061,7 @@ export function howToReport(p: Policy, repo: string, scanned = repo): Reporting 
     readme: !found.length && readme,
     foreign: other,
     local: found.length ? null : localPolicy(p, repo),
+    inContext,
   };
 }
 
@@ -2297,16 +2356,14 @@ function verdictOf(p: Policy, r: Reporting, followed: Followed | null): ReportVe
 }
 
 /**
- * Whether a file reads like a security policy rather than a page about security features: it gives a way to report
- * (other than a link), or a heading is about reporting vulnerabilities or a security policy.
+ * Whether a file reads like a security policy rather than a page about security features: it gives a private way to
+ * report (not a link to a page) in a paragraph about reporting, or under a heading about it. A heading alone ("Pod
+ * Security Policy", "Security issues fixed in 2.0") or an address for something else ("To get a key, write to
+ * api-access@...") isn't one.
  */
-export function looksLikePolicy(p: Policy, r: Reporting): boolean {
-  return r.channels.some((c) => c.kind !== 'page') || p.headings.some((h) => !!search(POLICY_HEADING, h.text));
+export function looksLikePolicy(_p: Policy, r: Reporting): boolean {
+  return !!r.inContext;
 }
-/** A heading of a security policy. "Content Security Policy" (CSP, a web page's script rules) isn't one. */
-const POLICY_HEADING = re(
-  String.raw`(?i)\breport(?:ing)?[ \t]+(?:a[ \t]+|an[ \t]+)?(?:security|vulnerab)|\bvulnerabilit(?:y|ies)[ \t]+(?:report|disclos)|(?<!\bcontent[ \t])\bsecurity[ \t]+(?:policy|contacts?|issues?|reports?)\b|\bresponsible[ \t]+disclosure\b|\bdisclosure[ \t]+policy\b`,
-);
 
 /** Whether a policy is about reporting: a heading or a sentence about reporting vulnerabilities. */
 function aboutReporting(p: Policy): boolean {
@@ -2376,8 +2433,13 @@ const REPO_URL = re(String.raw`(?i)^https?://(?:www\.)?github\.com/([\w.-]+)/([\
 const DOC_FILE = re(String.raw`(?i)\.(?:md|markdown|rst|adoc|asciidoc|txt)$|(?:^|/)security$`);
 /** Words in a link (its text or path) that make it about security reports: the only links worth following. */
 const POLICY_WORDS = re(String.raw`(?i)secur|vulnerab|disclos|report|advisor|bounty`);
+/**
+ * Words in a link that make it about which versions get fixes: "supported versions", "version policy", "release
+ * lifecycle", "LTS", "end of life", or "versions". Not one version ("#pin-the-agent-version") or "lifecycle" alone
+ * ("#lifecycle-scripts").
+ */
 const VERSION_WORDS = re(
-  String.raw`(?i)support(?:ed)?[ \t_-]*(?:versions?|tiers?|polic(?:y|ies)|matrix|life.?cycle|releases?)|\bversions?\b|\blts\b|life.?cycle|end.of.life|\beol\b`,
+  String.raw`(?i)support(?:ed)?[ \t_-]*(?:versions?|tiers?|polic(?:y|ies)|matrix|life.?cycle|releases?)|\bversions?[ \t_-]*(?:support|polic(?:y|ies)|matrix|table|life.?cycle)|\b(?:release|version|support|maintenance)[ \t_-]*life.?cycle|\bversions\b|\blts\b|end.of.life|\beol\b`,
 );
 
 /** A link's target as a path in the same repository (owner/name), or null for anything else. */
@@ -2409,24 +2471,41 @@ function safePath(p: string): string | null {
 }
 
 /**
- * The one other file in the same repository worth reading for this policy, or null. A policy that is only a path
- * (a symlink served as text) names it; otherwise it's a linked document that looks like the full policy, when this
- * one says neither how to report nor which versions get fixes.
+ * The one other file in the same repository worth reading for this policy, and whether it's for how to report, or
+ * null. A policy that is only a path (a symlink served as text) names it, for both. Otherwise, when this one doesn't
+ * say how to report, a linked document about security, vulnerabilities, disclosure or reports (its text, path or the
+ * part of the page it goes to); else, when it doesn't say which versions get fixes, one about that. A link for the
+ * versions is never where the scan learns how to report.
  */
+export function sameRepoLinkFor(
+  p: Policy,
+  raw: string,
+  repo: string,
+  needs: { report: boolean; versions: boolean },
+): { path: string; report: boolean } | null {
+  const sym = symlinkTarget(raw);
+  if (sym) {
+    const path = repoPath(sym, repo, p.path);
+    return path ? { path, report: true } : null;
+  }
+  const docs: { path: string; words: string }[] = [];
+  for (const l of p.links) {
+    const path = repoPath(l.url, repo, p.path);
+    if (!path || path.toLowerCase() === p.path.toLowerCase() || !search(DOC_FILE, path)) continue;
+    docs.push({ path, words: linkWords(l, path) });
+  }
+  const report = needs.report ? docs.find((d) => reportingLink(p, d.words)) : undefined;
+  if (report) return { path: report.path, report: true };
+  const versions = needs.versions ? docs.find((d) => search(VERSION_WORDS, d.words)) : undefined;
+  return versions ? { path: versions.path, report: false } : null;
+}
+
+/** The path sameRepoLinkFor gives, whatever it's for. */
 export function sameRepoLink(
   p: Policy,
   raw: string,
   repo: string,
   needs: { report: boolean; versions: boolean },
 ): string | null {
-  const sym = symlinkTarget(raw);
-  if (sym) return repoPath(sym, repo, p.path);
-  if (!needs.report && !needs.versions) return null;
-  for (const l of p.links) {
-    const path = repoPath(l.url, repo, p.path);
-    if (!path || path.toLowerCase() === p.path.toLowerCase() || !search(DOC_FILE, path)) continue;
-    const words = linkWords(l, path);
-    if ((needs.report && reportingLink(p, words)) || (needs.versions && search(VERSION_WORDS, words))) return path;
-  }
-  return null;
+  return sameRepoLinkFor(p, raw, repo, needs)?.path ?? null;
 }
