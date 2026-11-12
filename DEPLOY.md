@@ -96,6 +96,8 @@ Its permissions. Write access is only used for a fix that a signed-in admin of t
 | Members | Organization | `members` | Read-only |
 | Administration | Organization | `organization_administration` | Read-only |
 
+The app doesn't ask for Issues. A public repository's issues can be read without it, so only in a Deep scan of a private repository does `repo-settings-review` say it couldn't read them; the CLI with an admin's token can.
+
 Repository security advisories is the one to think about before asking for it: with it, a token can read every unpublished advisory in an installed repository, including private vulnerability reports other people sent. Deep scan reads three lists of one repository with it (the reports in triage, the drafts and the closed advisories), and the published advisories a public scan reads too. It keeps only these numbers and dates:
 - the reports in triage: how many have waited over 14 days with no comment, and the age of the oldest (`disc-triage-sla`);
 - the closed advisories: the date the latest one titled DRILL was closed (`plan-irp-exercise`);

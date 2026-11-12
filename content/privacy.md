@@ -8,7 +8,7 @@ The site has no user accounts and no database. There are no analytics, ads or tr
 
 When you scan a repository on the home page, your browser sends the repository's name to this site. The server then reads the repository on GitHub, using a token of the site's own, never yours. Its requests go to:
 
-- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, languages, releases, open pull requests, public settings and dependents;
+- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, languages, releases, open pull requests, closed issues labeled settings-review, public settings and dependents;
 - the OpenSSF Scorecard API (api.securityscorecards.dev) and the OpenSSF Best Practices badge site (www.bestpractices.dev), which receive the repository's name;
 - Anthropic's OSS Scanner project list on GitHub, only for repositories with more than 1,000 stars or 200 dependents.
 
