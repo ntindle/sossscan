@@ -610,6 +610,32 @@ describe('two apps: the main app reads, and the fix app changes things', () => {
     expect((await r.json()).error.message).toBe(`The ${CFG.slug} app is not installed on octo/demo.`);
   });
 
+  it("carries on with Deep scan when the advisories' token can't be had, and says why", async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    w.perms = { ...MAIN_READ };
+    const summary = async () => {
+      const r = await c.post('/api/app/check', { repo: 'octo/demo' });
+      expect(r.status).toBe(200);
+      return (await r.json()).results['disc-triage-sla'].summary;
+    };
+    // GitHub refuses the fix app's token: the rest of the scan goes on, and the check gives GitHub's answer.
+    w.fixTokenStatus = 500;
+    expect(await summary()).toBe(
+      `Couldn't read the private vulnerability reports: GitHub didn't give the ${FIX_CFG.slug} app a token for ` +
+        "octo/demo (HTTP 500). Run Deep scan again in a minute, or use the CLI with an admin's token",
+    );
+    // A fix app key that isn't one: the same, without quoting it.
+    configureFix({ ...FIX_CFG, pem: '-----BEGIN PRIVATE KEY-----\nnot-really-a-key\n-----END PRIVATE KEY-----\n' });
+    const said = await summary();
+    expect(said).toBe(
+      "Couldn't read the private vulnerability reports: the server couldn't make a token for them. Run Deep scan " +
+        "again in a minute, or use the CLI with an admin's token",
+    );
+    expect(w.used.filter(([, , p]) => /security-advisories\?state=(?:triage|closed|draft)/.test(p))).toEqual([]);
+  });
+
   it('reads the advisories through the main app while only it may, and otherwise says how to let the fix app', async () => {
     configure();
     configureFix();

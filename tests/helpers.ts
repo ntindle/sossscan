@@ -182,9 +182,10 @@ export class FakeWorld {
   installationLists = 0;
   /** Bodies of the token requests for installation 5, which answers with tokenStatus. */
   tokenRequests: any[] = [];
-  /** Bodies of the token requests for the fix app's installation, 7. */
+  /** Bodies of the token requests for the fix app's installation, 7, which answers with fixTokenStatus. */
   fixTokenRequests: any[] = [];
   tokenStatus = 201;
+  fixTokenStatus = 201;
   /** Name each token apart (inst-token-1, fix-token-2…), so a test can tell which one made a call. */
   distinctTokens = false;
   /** Every token handed out: its installation and the permissions it holds. */
@@ -243,7 +244,8 @@ export class FakeWorld {
       // An app can only mint tokens for its own installations.
       if ((id === 7) !== (jwtApp(headers) === 'fix')) return reply(404, { message: 'Not Found' });
       (id === 7 ? this.fixTokenRequests : this.tokenRequests).push(body);
-      if (this.tokenStatus !== 201) return reply(this.tokenStatus, { message: 'Not Found' });
+      const status = id === 7 ? this.fixTokenStatus : this.tokenStatus;
+      if (status !== 201) return reply(status, { message: 'Not Found' });
       // GitHub's tokens last an hour, and it says until when (no milliseconds), and what the token may do: what the
       // request asked for, or all the installation has.
       const expires = new Date(Date.now() + 3600_000).toISOString().replace(/\.\d{3}Z$/, 'Z');

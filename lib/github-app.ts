@@ -465,29 +465,36 @@ export async function previewToken(cfg: AppConfig, repo: string, writer: AppInst
  * What Deep scan reads the security advisories with (the private-report checks): a token that may read them and
  * nothing else, from the fix app's installation when the site has one that can; otherwise from the main app's while it
  * still can (an installation from before there were two apps). Otherwise no token, and why, which those checks say.
+ * The rest of Deep scan doesn't need this token, so a failure to get one (a broken fix app key, say) only costs them.
  */
 export async function advisoryAccess(cfg: AppConfig, repo: string, mainInst: Installation): Promise<AdvisoryAccess> {
   const fix = fixAppConfig();
-  const fixInst = fix ? await installation(fix, repo) : null;
-  const candidates: [TokenApp | null, Installation | null][] = [
-    [fix, fixInst],
-    [cfg, mainInst],
-  ];
-  for (const [app, inst] of candidates) {
-    if (app && inst && holds(inst, 'repository_advisories', 'read')) {
-      const { token, permissions } = await installationAccess(app, repo, { inst, permissions: ADVISORY_PERMISSIONS });
-      return { token, grants: permissions };
+  try {
+    const fixInst = fix ? await installation(fix, repo) : null;
+    const candidates: [TokenApp | null, Installation | null][] = [
+      [fix, fixInst],
+      [cfg, mainInst],
+    ];
+    for (const [app, inst] of candidates) {
+      if (app && inst && holds(inst, 'repository_advisories', 'read')) {
+        const { token, permissions } = await installationAccess(app, repo, { inst, permissions: ADVISORY_PERMISSIONS });
+        return { token, grants: permissions };
+      }
     }
+    const approve =
+      "An owner can approve the new permission in the installation's settings, or use the CLI with an admin's token";
+    const why = !fix
+      ? `the GitHub App hasn't been given access to security advisories on this installation. ${approve}`
+      : !fixInst
+        ? `Deep scan reads them through ${fix.slug}, the app for one-click fixes, which isn't installed on this ` +
+          "repository. Install it if you want this check, or use the CLI with an admin's token"
+        : `${fix.slug} hasn't been given access to security advisories on this installation. ${approve}`;
+    return { token: null, why };
+  } catch (e) {
+    // Only an HttpError's words: an error about a bad private key can quote it.
+    const what = e instanceof HttpError ? e.message.replace(/\.$/, '') : "the server couldn't make a token for them";
+    return { token: null, why: `${what}. Run Deep scan again in a minute, or use the CLI with an admin's token` };
   }
-  const approve =
-    "An owner can approve the new permission in the installation's settings, or use the CLI with an admin's token";
-  const why = !fix
-    ? `the GitHub App hasn't been given access to security advisories on this installation. ${approve}`
-    : !fixInst
-      ? `Deep scan reads them through ${fix.slug}, the app for one-click fixes, which isn't installed on this ` +
-        "repository. Install it if you want this check, or use the CLI with an admin's token"
-      : `${fix.slug} hasn't been given access to security advisories on this installation. ${approve}`;
-  return { token: null, why };
 }
 
 /**
