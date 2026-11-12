@@ -240,8 +240,20 @@ function notInstalled(cfg: AppConfig, repo: string): HttpError {
 export async function installationToken(
   cfg: AppConfig,
   repo: string,
-  { permissions, inst }: { permissions?: Record<string, string>; inst?: Installation | null } = {},
+  opts: { permissions?: Record<string, string>; inst?: Installation | null } = {},
 ): Promise<string> {
+  return (await installationAccess(cfg, repo, opts)).token;
+}
+
+/**
+ * A token of the app's installation for one repo, and the permissions GitHub gave it (null if it didn't say). Deep
+ * scan passes them to the scanner, so a check whose permission an installation hasn't accepted says so.
+ */
+export async function installationAccess(
+  cfg: AppConfig,
+  repo: string,
+  { permissions, inst }: { permissions?: Record<string, string>; inst?: Installation | null } = {},
+): Promise<{ token: string; permissions: Record<string, string> | null }> {
   const found = inst || (await installation(cfg, repo));
   if (!found) throw notInstalled(cfg, repo);
   const body: Record<string, unknown> = { repositories: [repo.split('/')[1]] };
@@ -255,7 +267,12 @@ export async function installationToken(
       'Try again in a minute.',
     );
   }
-  return r.data.token;
+  const given: unknown = r.data.permissions;
+  const listed =
+    given && typeof given === 'object' && !Array.isArray(given)
+      ? Object.fromEntries(Object.entries(given).filter((e): e is [string, string] => typeof e[1] === 'string'))
+      : null;
+  return { token: r.data.token, permissions: listed };
 }
 
 /** What one signed-in person can do on one repo, cached for a minute (a speed-up only; per process, safe to lose). */
