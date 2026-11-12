@@ -44,7 +44,17 @@ export interface PrivateContext {
   scopes?: string[] | null;
   /** The published advisories the public layer listed. */
   published?: unknown[];
+  /**
+   * What reads the unpublished advisories, when it isn't `http`: the Http of a token of their own, with that token's
+   * permissions, or none (http null), with why (ScanOptions.advisories). The private-report checks then go by these.
+   */
+  reports?: { http: Http; grants: Record<string, string> | null } | { http: null; why: string };
 }
+
+/** The three lists of unpublished advisories. */
+const REPORT_LISTS = new Set(['triage', 'closed', 'drafts']);
+/** A list nothing asked GitHub for, since nothing here may read it. */
+const NOT_ASKED: Answer = [0, null, {}];
 
 /**
  * noBlock: the findings for workflows without a permissions block. Their token gets the repository's default, which
@@ -98,9 +108,15 @@ export async function privateLayer(
       ['config_defaults', `/orgs/${owner}/code-security/configurations/defaults`],
     );
   }
-  const answers = await mapLimit(calls, 8, ([, path]) => http.json(path));
+  // The unpublished advisories go through their own token when there is one, and aren't asked for when nothing may read
+  // them.
+  const reportHttp = ctx.reports ? ctx.reports.http : http;
+  const asked = reportHttp ? calls : calls.filter(([key]) => !REPORT_LISTS.has(key));
+  const answers = await mapLimit(asked, 8, ([key, path]) =>
+    (REPORT_LISTS.has(key) && reportHttp ? reportHttp : http).json(path),
+  );
   const got: Record<string, [number, any, Record<string, string>]> = Object.fromEntries(
-    calls.map(([key], i) => [key, answers[i]]),
+    asked.map(([key], i) => [key, answers[i]]),
   );
   const ok = (k: string) => got[k][0] === 200 && got[k][1] !== null;
   // An item only this layer can check, whose call failed: report that it couldn't be read and why, instead of leaving
@@ -376,7 +392,13 @@ export async function privateLayer(
   } else {
     unreadable('ci-secrets-hygiene', 'the repository Actions secrets', 'secrets');
   }
-  unpublishedAdvisories({ triage: got.triage, closed: got.closed, drafts: got.drafts }, repo, ctx, R, res);
+  unpublishedAdvisories(
+    { triage: got.triage ?? NOT_ASKED, closed: got.closed ?? NOT_ASKED, drafts: got.drafts ?? NOT_ASKED },
+    repo,
+    ctx,
+    R,
+    res,
+  );
   if (Object.hasOwn(got, 'org')) {
     const org = ok('org') ? got.org[1] : {};
     const req = get(org, 'two_factor_requirement_enabled');
@@ -425,6 +447,7 @@ function granted(grants: Record<string, string> | null | undefined, name: string
  * temporary private fork. Each list is reduced to counts and dates first (advisoryFacts), and the results say nothing
  * else about any report. An empty list means something only when the token is known to read unpublished advisories,
  * or GitHub listed one: a token that can't gets an empty list too. Each adds to what the public layer found (in R).
+ * With ctx.reports, the advisories' own token is the one whose permissions count.
  */
 export function unpublishedAdvisories(
   answers: { triage: Answer; closed: Answer; drafts: Answer },
@@ -437,7 +460,12 @@ export function unpublishedAdvisories(
   const triage = advisoryFacts(answers.triage, 'triage');
   const closed = advisoryFacts(answers.closed, 'closed');
   const drafts = advisoryFacts(answers.drafts, 'draft');
-  const known = canReadUnpublished(ctx.grants, ctx.scopes);
+  const reports = ctx.reports;
+  const known = !reports
+    ? canReadUnpublished(ctx.grants, ctx.scopes)
+    : reports.http === null
+      ? false
+      : canReadUnpublished(reports.grants, null);
   const access =
     known === true ||
     showsUnpublished(answers.triage, 'triage') ||
@@ -481,13 +509,15 @@ export function unpublishedAdvisories(
     res(
       'disc-triage-sla',
       'unknown',
-      known === false && ctx.app
-        ? "Couldn't read the private vulnerability reports: the GitHub App hasn't been given access to security " +
+      reports && reports.http === null
+        ? `Couldn't read the private vulnerability reports: ${reports.why}`
+        : known === false && ctx.app
+          ? "Couldn't read the private vulnerability reports: the GitHub App hasn't been given access to security " +
             "advisories on this installation. An owner can approve the new permission in the installation's " +
             "settings, or use the CLI with an admin's token"
-        : known === false
-          ? "Couldn't read the private vulnerability reports: the token needs the repo scope"
-          : `Could not read the private vulnerability reports (HTTP ${answers.triage[0]})`,
+          : known === false
+            ? "Couldn't read the private vulnerability reports: the token needs the repo scope"
+            : `Could not read the private vulnerability reports (HTTP ${answers.triage[0]})`,
       null,
       null,
       P,

@@ -90,6 +90,8 @@ export const CFG = {
   owner: 'octo',
   public: false,
 };
+/** The fix app's settings: no client ID or secret, since it signs no one in. Its installation on octo/demo is 7. */
+export const FIX_CFG = { id: 12, slug: 'secure-oss-fix-test', pem: PEM };
 export const ADMIN = 'user-admin';
 export const READER = 'user-reader';
 export const ALL_WRITE: Record<string, string | null> = {
@@ -98,6 +100,46 @@ export const ALL_WRITE: Record<string, string | null> = {
   pull_requests: 'write',
   workflows: 'write',
   metadata: 'read',
+};
+/** The live main app's permissions before the split (gh api apps/sossscan): reads, and five that write. */
+export const BEFORE_SPLIT: Record<string, string> = {
+  actions: 'read',
+  administration: 'write',
+  contents: 'write',
+  environments: 'read',
+  members: 'read',
+  metadata: 'read',
+  organization_administration: 'read',
+  pull_requests: 'write',
+  repository_advisories: 'read',
+  secret_scanning_alerts: 'read',
+  secrets: 'read',
+  security_events: 'write',
+  vulnerability_alerts: 'read',
+  workflows: 'write',
+};
+/** The main app's permissions after the split (DEPLOY.md): read only, and no security advisories. */
+export const MAIN_READ: Record<string, string> = {
+  actions: 'read',
+  administration: 'read',
+  contents: 'read',
+  members: 'read',
+  metadata: 'read',
+  organization_administration: 'read',
+  pull_requests: 'read',
+  secret_scanning_alerts: 'read',
+  secrets: 'read',
+  security_events: 'read',
+  vulnerability_alerts: 'read',
+};
+/** The fix app's permissions (DEPLOY.md). */
+export const FIX_PERMS: Record<string, string> = {
+  administration: 'write',
+  contents: 'write',
+  metadata: 'read',
+  pull_requests: 'write',
+  repository_advisories: 'read',
+  workflows: 'write',
 };
 export const H = { 'x-requested-with': 'sosf' };
 
@@ -110,10 +152,27 @@ export class FakeModel {
   }
 }
 
+/** Which app signed a JWT: the fix app (by its ID, FIX_CFG) or the main app (by its client ID). */
+function jwtApp(headers: Headers): 'main' | 'fix' {
+  const jwt = (headers.get('authorization') || '').replace(/^Bearer /, '');
+  try {
+    const iss = JSON.parse(Buffer.from(jwt.split('.')[1] || '', 'base64url').toString()).iss;
+    return iss === String(FIX_CFG.id) ? 'fix' : 'main';
+  } catch {
+    return 'main';
+  }
+}
+
 /** Everything outside the server: GitHub's API as each token sees it, GitHub's sign-in pages, and the AI service. */
 export class FakeWorld {
+  /** The main app's installation on octo/demo (5): is it there, and with which permissions. */
   installed = true;
   perms: Record<string, string | null> = { ...ALL_WRITE };
+  /** The fix app's (7). */
+  fixInstalled = true;
+  fixPerms: Record<string, string | null> = { ...FIX_PERMS };
+  /** The account both are installed on. */
+  account = { login: 'octo', type: 'User' };
   repo = new FakeGitHub({
     ...repoRoutes({ tree: ['README.md'] }),
     'GET /repos/octo/demo/private-vulnerability-reporting': [200, { enabled: true }],
@@ -123,10 +182,29 @@ export class FakeWorld {
   installationLists = 0;
   /** Bodies of the token requests for installation 5, which answers with tokenStatus. */
   tokenRequests: any[] = [];
+  /** Bodies of the token requests for the fix app's installation, 7, which answers with fixTokenStatus. */
+  fixTokenRequests: any[] = [];
   tokenStatus = 201;
+  fixTokenStatus = 201;
+  /** Name each token apart (inst-token-1, fix-token-2…), so a test can tell which one made a call. */
+  distinctTokens = false;
+  /** Every token handed out: its installation and the permissions it holds. */
+  issued = new Map<string, { installation: number; permissions: Record<string, string> }>();
+  /** Every API call a token made: [token, method, path]. */
+  used: [string, string, string][] = [];
   oauthAnswer: [number, unknown] = [200, { access_token: ADMIN }];
   model: FakeModel | null = null;
   aiAnswer: ((body: any) => Response) | null = null;
+
+  /** The calls one token made, as "METHOD path". */
+  callsBy(token: string): string[] {
+    return this.used.filter(([t]) => t === token).map(([, m, p]) => `${m} ${p}`);
+  }
+
+  /** The tokens handed out for one installation, in order. */
+  tokensOf(installation: number): string[] {
+    return [...this.issued].filter(([, v]) => v.installation === installation).map(([k]) => k);
+  }
 
   fetch = async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
@@ -151,23 +229,37 @@ export class FakeWorld {
       if (url.pathname === '/repos/octo/demo') return reply(200, { permissions: { admin: token === ADMIN } });
     }
     if (url.pathname === '/repos/octo/demo/installation') {
-      if (!this.installed) return reply(404, { message: 'Not Found' });
-      return reply(200, { id: 5, permissions: this.perms, account: { login: 'octo', type: 'User' } });
+      // Each app sees its own installation.
+      const fix = jwtApp(headers) === 'fix';
+      if (!(fix ? this.fixInstalled : this.installed)) return reply(404, { message: 'Not Found' });
+      return reply(200, { id: fix ? 7 : 5, permissions: fix ? this.fixPerms : this.perms, account: this.account });
     }
     if (url.pathname === '/app/installations') {
       this.installationLists += 1;
       return reply(...this.installations);
     }
-    if (url.pathname === '/app/installations/5/access_tokens') {
-      this.tokenRequests.push(body);
-      if (this.tokenStatus !== 201) return reply(this.tokenStatus, { message: 'Not Found' });
+    const minting = /^\/app\/installations\/(5|7)\/access_tokens$/.exec(url.pathname);
+    if (minting) {
+      const id = Number(minting[1]);
+      // An app can only mint tokens for its own installations.
+      if ((id === 7) !== (jwtApp(headers) === 'fix')) return reply(404, { message: 'Not Found' });
+      (id === 7 ? this.fixTokenRequests : this.tokenRequests).push(body);
+      const status = id === 7 ? this.fixTokenStatus : this.tokenStatus;
+      if (status !== 201) return reply(status, { message: 'Not Found' });
       // GitHub's tokens last an hour, and it says until when (no milliseconds), and what the token may do: what the
       // request asked for, or all the installation has.
       const expires = new Date(Date.now() + 3600_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const permissions = (body as { permissions?: unknown } | null)?.permissions ?? this.perms;
-      return reply(201, { token: 'inst-token', expires_at: expires, permissions });
+      const permissions =
+        (body as { permissions?: unknown } | null)?.permissions ?? (id === 7 ? this.fixPerms : this.perms);
+      const kind = id === 7 ? 'fix-token' : 'inst-token';
+      const name = this.distinctTokens ? `${kind}-${this.issued.size + 1}` : kind;
+      this.issued.set(name, { installation: id, permissions: permissions as Record<string, string> });
+      return reply(201, { token: name, expires_at: expires, permissions });
     }
-    if (token !== 'inst-token') throw new Error(`unexpected call ${method} ${apiPath} with ${token}`);
+    if (!this.issued.has(token) && token !== 'inst-token') {
+      throw new Error(`unexpected call ${method} ${apiPath} with ${token}`);
+    }
+    this.used.push([token, method, apiPath]);
     const { status, data } = await this.repo.call(method, apiPath, body);
     return reply(status, data);
   };
@@ -294,7 +386,8 @@ export function setCookie(res: Response, name: string): string | null {
 }
 
 // ------------------------------------------------------------------------------------ test setup
-const ENV_KEYS = /^(SOSF_|GITHUB_APP_|AGENT_|VERCEL$|SITE_BASE_URL$|TRUST_PROXY_HEADERS$|GITHUB_TOKEN$|GH_TOKEN$)/;
+const ENV_KEYS =
+  /^(SOSF_|GITHUB_APP_|GITHUB_FIX_APP_|AGENT_|VERCEL$|SITE_BASE_URL$|TRUST_PROXY_HEADERS$|GITHUB_TOKEN$|GH_TOKEN$)/;
 
 /** SOSF_SECRET for the tests: long enough (32 characters or more) for lib/sealed.ts to use. */
 export const TEST_SECRET = 'test-secret-0123456789abcdef-0123456789';
@@ -346,6 +439,15 @@ export function configure(cfg: Omit<typeof CFG, 'html_url'> = CFG): void {
     GITHUB_APP_PRIVATE_KEY: cfg.pem,
     GITHUB_APP_OWNER: cfg.owner,
     GITHUB_APP_PUBLIC: String(cfg.public),
+  });
+}
+
+/** Configure the fix app, the same way: its three GITHUB_FIX_APP_* settings. */
+export function configureFix(cfg: typeof FIX_CFG = FIX_CFG): void {
+  Object.assign(process.env, {
+    GITHUB_FIX_APP_ID: String(cfg.id),
+    GITHUB_FIX_APP_SLUG: cfg.slug,
+    GITHUB_FIX_APP_PRIVATE_KEY: cfg.pem,
   });
 }
 

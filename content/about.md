@@ -10,7 +10,7 @@ The public scan covers 38 of the checks, using what anyone can see, and a scan w
 
 Each check also has a tier: the size of project at which it's worth doing, from "Just you" to "Critical infrastructure". Your repository's tier comes from its stars and dependents, and checks above it wait in a list called "Later, as you grow".
 
-For each check a scan reads, you get a status and its findings, with file and line. Every check has steps to follow yourself. Most also have a prompt to paste into your AI coding agent, and some can be fixed by the GitHub App, which changes a setting in one click or opens a pull request that you preview first.
+For each check a scan reads, you get a status and its findings, with file and line. Every check has steps to follow yourself. Most also have a prompt to paste into your AI coding agent, and some can be fixed by the site's fix app, a GitHub App that changes a setting in one click or opens a pull request that you preview first.
 
 ## Where the guide comes from
 
@@ -26,7 +26,7 @@ The public scan runs on this site. Type owner/repo on the [home page](/) and the
 
 The private scan runs on your machine. Download the [sossscan CLI](/docs/cli), run it with Node.js and your own GitHub token, then load the JSON report it writes into the page. With a token that has admin access, it also checks settings only admins can see, such as secret scanning and Dependabot alerts. The page reads the report in your browser and doesn't upload it.
 
-Deep scan checks the same admin settings from the site, through the [GitHub App](https://github.com/apps/sossscan). It signs you in with GitHub, and if the app isn't on the repository yet, it asks you to install it there. The app can also fix some of them: nine settings in one click, and pull requests that add a missing file such as SECURITY.md or pin your actions to commit SHAs. You see each change before it's made. The app never merges anything and never pushes to an existing branch.
+Deep scan checks the same admin settings from the site, through the [GitHub App](https://github.com/apps/sossscan), which only reads. It signs you in with GitHub, and if the app isn't on the repository yet, it asks you to install it there. A second app, the fix app, can fix some of them: nine settings in one click, and pull requests that add a missing file such as SECURITY.md or pin your actions to commit SHAs. You install it only if you want that, and you see each change before it's made. It never merges anything and never pushes to an existing branch.
 
 ## Who made it
 

@@ -26,7 +26,7 @@ import { Hops, PUBLISH_SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import { Http, decodeReplace, decodeText } from './http.ts';
 import { ossScannerCheck } from './oss-scanner.ts';
 import { privateLayer } from './private-layer.ts';
-import type { AddFinding, AddResult } from './private-layer.ts';
+import type { AddFinding, AddResult, PrivateContext } from './private-layer.ts';
 import {
   findall,
   findallTuples,
@@ -219,9 +219,17 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     assumeAdmin = false,
     allowPrivate = true,
     grants = null,
+    advisories,
   } = opts;
   const log = opts.log || (() => {});
   const http = new Http(token);
+  /** The security advisories' own token, when the caller gave one, or (http null) none that may read them. */
+  const reports: PrivateContext['reports'] =
+    advisories === undefined
+      ? undefined
+      : advisories.token === null
+        ? { http: null, why: advisories.why }
+        : { http: new Http(advisories.token), grants: advisories.grants };
   let repo = repoArg;
   if (!repo.includes('/')) throw new Error('not enough values to unpack (expected 2, got 1)');
   let owner = repo.slice(0, repo.indexOf('/'));
@@ -564,7 +572,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       ['bestpractices', `https://www.bestpractices.dev/projects.json?url=${quote('https://github.com/' + repo)}`],
     );
   }
-  const answers = await mapLimit(lookups, 8, ([, path]) => http.json(path));
+  // The published advisories go through the advisories' own token when there is one: it's the token that may read them.
+  const answers = await mapLimit(lookups, 8, ([key, path]) =>
+    (key === 'advisories' && reports?.http ? reports.http : http).json(path),
+  );
   const got: Got = Object.fromEntries(lookups.map(([key], i) => [key, answers[i]]));
   /**
    * The HTTP status of a lookup GitHub didn't answer, or null when it did. A 404 answers that there's nothing there (no
@@ -1699,6 +1710,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       grants,
       scopes,
       published: advs,
+      reports,
     });
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
@@ -1720,12 +1732,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       res(it, 'unknown', readable.length ? `${why}; ${others}: ${r.summary}` : why, r.evidence, r.details, r.layer);
     }
   }
-  if (http.rateLimited) rep.errors.push(RATE_LIMITED);
+  if (http.rateLimited || reports?.http?.rateLimited) rep.errors.push(RATE_LIMITED);
   rep.summary = Object.fromEntries(
     STATUSES.map((s) => [s, Object.values(R).filter((r) => r.status === s).length]),
   ) as Record<Status, number>;
-  rep.api_calls = http.calls;
-  log(`done: ${pyRepr(rep.summary)} (${http.calls} requests)`);
+  rep.api_calls = http.calls + (reports?.http?.calls ?? 0);
+  log(`done: ${pyRepr(rep.summary)} (${rep.api_calls} requests)`);
   return rep;
 }
 

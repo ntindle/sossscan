@@ -5,8 +5,8 @@ import { client } from '@/lib/github.ts';
 import {
   configOr404,
   countAgentFix,
-  installationToken,
   prReady,
+  previewToken,
   type Session,
   sessionOf,
   setSession,
@@ -20,7 +20,7 @@ export const maxDuration = 300;
 
 /**
  * Build the pull request without opening it. Returns what it will contain, and the sealed plan that opens it.
- * An AI agent fix runs here too, so this can take a minute or two.
+ * An AI agent fix runs here too, so this can take a minute or two. It only reads, with a read-only token (previewToken).
  */
 export const POST = route(async (req: NextRequest) => {
   const limited = rateLimit(req, 'app');
@@ -31,7 +31,7 @@ export const POST = route(async (req: NextRequest) => {
   const sess = sessionOf(req);
   const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   const itemId = field(body, 'item_id', { max: 60 });
-  const { inst } = await prReady(cfg, sess, repo, itemId);
+  const writer = await prReady(cfg, sess, repo, itemId);
   const isAgent = available()[itemId].kind === 'agent';
   // Today's AI fixes ride in the sign-in cookie, so every answer from here on carries the updated count.
   const counted: Session | null = isAgent ? countAgentFix(sess) : null;
@@ -40,7 +40,7 @@ export const POST = route(async (req: NextRequest) => {
     return res;
   };
   try {
-    const token = await installationToken(cfg, repo, { inst });
+    const token = await previewToken(cfg, repo, writer);
     let p;
     try {
       p = await plan(client(token), repo, itemId, sess.login);

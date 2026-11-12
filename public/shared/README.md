@@ -101,6 +101,8 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 - `fixItForMe(item, {ctx, report, cls})` is the GitHub App block on its own, for a page that builds its own fix panel.
   - It covers one-click settings (`item.app_fix`) and pull request fixes (`pr_fixes` from `/api/app/status`).
   - It's hidden when the app can't fix the item or the item already passes. When it can't act, it says why: sign in, be an admin, install the app, or a missing permission.
+  - On a site with a fix app (`fix_app.configured` in `/api/app/status`), the fixes go through that app, the only one that can change a repository, so it's the one to install. Where it isn't installed, the block says that one-click fixes need a second GitHub App, which can change settings and open pull requests, to install only if you want that, and offers "Install it on GitHub". Without a fix app, the main app makes the fixes, as before.
+  - `fixerOf(status)` says which app makes the fixes (`{fix, name, slug, install_url}`), and `fixerOn(status, repoInfo)` adds whether it's installed on the repo and its `manage_url`. The page calls the fix app by its name on GitHub, `fix_app.slug`, or else `FIX_APP_NAME`, "the sossscan fix app".
   - Its sign-in and install links stay in the same tab and save an intent with the check's id (below), so the page opens this check again when GitHub sends the person back.
   - `cls = {btn, primary}` passes the page's own button classes.
 - `promptBlock(item, {report, ctx, cls})`, `agentPrompt(item, {report, ctx})`, `promptKind(item)`:
@@ -120,6 +122,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - `lib/fixes.ts` has a copy for pull requests, and a test keeps the two identical.
 - `store.get(repo, id)`, `store.set(repo, id, {done, dismissed, note, pr, …})` (localStorage). This fires a `sg:progress` event. `pr` is `{url, number}` once the app has opened a pull request for the item. `at` is when the item was last marked done or not done; setting `pr` leaves it as it was. A self-check that repeats counts from it, so nothing else is stored for due dates.
 - `app.status()` (one request per page load), `app.repo(repo, {fresh})` (admin? installed? permissions? Cached per page load unless `fresh`; a failure comes back as `{error, code}`), `app.check(repo)`, `app.fix(repo, fixId)`, `app.prPreview(repo, itemId)`, `app.prCreate(plan)`, `app.loginUrl()`.
+  - `status().fix_app` is `{configured, slug, install_url}`. `repo().installed` is the main app's installation, which Deep scan needs; `repo().fix_app` is `{configured, installed, install_url, manage_url}`; and `can_settings`, `can_pr` and `can_pr_workflows` are what the app that makes fixes may do there: the fix app when the site has one.
   - `status().pr_fixes[itemId].kind` is `file`, `pin` or `agent`.
   - Agent fixes appear only when the site has an AI service configured. Their `prPreview` takes a minute or so, because the agent runs inside that request.
   - `prPreview` returns a sealed `plan` along with the preview. `prCreate(plan)` sends it back, and only the person who previewed it can use it, for 15 minutes.

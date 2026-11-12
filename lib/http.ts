@@ -22,8 +22,9 @@ export const ERROR_CODES = {
   sign_in_required: "There's no GitHub sign-in, or it has expired.",
   not_admin: 'The signed-in person is not an admin of the repository.',
   app_not_configured: 'This copy of the site has no GitHub App, so sign-in is off.',
-  app_not_installed: "The GitHub App isn't installed on the repository.",
-  app_permission_missing: "The GitHub App doesn't have a permission the fix needs.",
+  app_not_installed:
+    "The GitHub App the request needs isn't installed on the repository: for a fix, the fix app when the site has one.",
+  app_permission_missing: "The GitHub App that makes the fix doesn't have a permission the fix needs.",
   preview_expired: 'The pull request preview is more than 15 minutes old, or someone else made it.',
   fix_failed: "The fix can't be made on the repository as it is now, or the AI agent didn't finish it.",
   ai_limit_reached: "Today's AI fixes for this person, or the site's monthly budget for them, are used up.",
