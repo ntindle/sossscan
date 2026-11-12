@@ -502,7 +502,7 @@ describe('Http', () => {
       'https://x.test/err': { status: 422, json: { message: 'bad' }, headers: { 'x-thing': '1' } },
     });
     const http = new Http();
-    expect(await http.text('https://x.test/created')).toEqual([201, null]);
+    expect(await http.text('https://x.test/created')).toEqual([201, null, false]);
     expect(await http.json('https://x.test/err')).toEqual([422, { message: 'bad' }, { 'x-thing': '1' }]);
   });
 
@@ -527,7 +527,7 @@ describe('Http', () => {
       'https://elsewhere.test/x': { text: 'hi' },
     });
     const http = new Http('tok');
-    expect(await http.text('https://api.github.com/repos/old/name')).toEqual([200, 'hi']);
+    expect(await http.text('https://api.github.com/repos/old/name')).toEqual([200, 'hi', false]);
     expect(calls.map((c) => c[2])).toEqual(['Bearer tok', 'Bearer tok', null]);
     expect(http.calls).toBe(1);
   });
@@ -1827,7 +1827,7 @@ const TINY_RAW = 'https://raw.githubusercontent.com/octo/tiny/main/';
 function tiny(
   files: Record<string, string>,
   api: Record<string, Route | Route[]> = {},
-  { meta = {}, tree = [] as { path: string; type: string }[], truncated = false } = {},
+  { meta = {}, tree = [] as { path: string; type: string; size?: number }[], truncated = false } = {},
 ): Record<string, Route | Route[]> {
   return {
     [TINY]: {
@@ -1864,7 +1864,7 @@ const statusOf = (rep: Report, id: string) =>
 async function cacheCheck(
   workflows: Record<string, string[]>,
   files: Record<string, string | null> = {},
-  extra: { unread?: { path: string; status: number }[]; treeRead?: boolean } = {},
+  extra: { unread?: { path: string; why: string }[]; treeRead?: boolean } = {},
 ) {
   const all: Record<string, string | null> = {
     ...Object.fromEntries(Object.entries(workflows).map(([n, l]) => [`.github/workflows/${n}`, workflow(l)])),
@@ -1948,6 +1948,11 @@ describe('yaml-lite reads workflows as the yaml package does', () => {
         '      py: ["3.12"] }',
       ]),
     );
+  });
+
+  it('with quoted strings and flow collections over many lines', () => {
+    same('x: "one \\\n  two\\\\\n  three"\ny: \'it\'\'s\n  here\'\nz: [a, "b, ]", {c: d,\n  e: "f"}, # g\n  h]\n');
+    same("a: {b: [1, 2],\n  c: 'x'''}\nd: \"\\\n  e\"\n");
   });
 
   it('never throws on text that is not YAML', () => {
@@ -2329,7 +2334,7 @@ describe('ci-untrusted-artifacts-caches', () => {
       { 'release.yml': publishJob(['      - run: cargo publish']) },
       {},
       {
-        unread: [{ path: '.github/workflows/other.yml', status: 500 }],
+        unread: [{ path: '.github/workflows/other.yml', why: 'HTTP 500' }],
       },
     );
     expect([unread.status, unread.summary]).toEqual([
@@ -2913,6 +2918,149 @@ describe('code-secret-handling', () => {
         { path: 'w.yml', text: workflow(['on: push', 'jobs:', '  a:', '    steps:', '      - run: set -x']) },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe('files built to be slow, or too big to read', () => {
+  const KB = 1024;
+  const MB = 1024 * KB;
+  const fill = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const raw = (calls: Call[]) => calls.map((c) => c[0]).filter((u) => u.startsWith(TINY_RAW));
+
+  it('scans a repository full of them in a few seconds, with unknown for what it could not read', async () => {
+    // Ten aliases of the level before at each level: a billion nodes in under a kilobyte.
+    let laughs = 'on: push\njobs:\n  j:\n    runs-on: x\n    x0: &l0\n' + '      - lol\n'.repeat(10);
+    for (let l = 1; l <= 9; l++) laughs += `    x${l}: &l${l}\n` + `      - *l${l - 1}\n`.repeat(10);
+    laughs += '    steps:\n      - run: echo hi\n';
+    let deep = 'on: push\n';
+    for (let d = 0; deep.length < MB; d++) deep += ' '.repeat(d) + 'a:\n';
+    let chain = 'on:\n  release:\n    types: [published]\njobs:\n';
+    for (let i = 0; chain.length < MB; i++) {
+      chain +=
+        `  j${i}:\n` +
+        (i ? `    needs: [j${i - 1}]\n` : '') +
+        `    steps:\n      - uses: actions/upload-artifact@v4\n        with: {name: a${i}}\n` +
+        `      - uses: actions/download-artifact@v4\n        with: {pattern: "a*"}\n      - run: cargo publish\n`;
+    }
+    const files: Record<string, string> = {
+      '.github/workflows/blank.yml': 'on: push\n' + fill('\n', MB),
+      '.github/workflows/laughs.yml': laughs,
+      '.github/workflows/deep.yml': deep,
+      '.github/workflows/chain.yml': chain,
+      '.github/workflows/flow.yml': 'on: push\nx: [\n' + fill('  a,\n', MB),
+      '.github/workflows/huge.yml': 'on: push\n' + fill('# a comment\n', 3 * MB),
+      '.github/workflows/options.yml':
+        'on: push\njobs:\n  j:\n    steps:\n      - uses: ./.github/actions/a\n' +
+        `      - run: make${' --a'.repeat(5000)} !\n      - run: mvn${' mvn'.repeat(100_000)}\n`,
+      '.github/actions/a/action.yml':
+        'runs:\n  using: composite\n  steps:\n' + fill('    - run: echo hi\n      shell: bash\n', MB),
+      '.github/CODEOWNERS': fill('\n', MB + 1),
+      '.github/dependabot.yml': 'version: 2\nupdates:\n' + fill('  \n', MB / 2) + 'cooldown:\n',
+      'package.json': JSON.stringify({ scripts: { publish: fill('npm --a ', MB / 2) } }),
+      Makefile: 'release:\n' + fill('\tmvn mvn mvn\n', MB / 2),
+      '.npmrc': fill(' \n', MB / 2),
+      'pyproject.toml': fill('[a]\n', MB / 2),
+      'deny.toml': fill('[licenses]\n', MB / 2),
+      'SECURITY.md': '# Security\n\n' + fill('Please report it to the maintainers privately. ', 2 * MB),
+    };
+    const t0 = performance.now();
+    const { rep, calls } = await scanTiny(tiny(files));
+    expect(performance.now() - t0).toBeLessThan(10_000);
+    // Each workflow was downloaded once, and none past 2 MB.
+    expect(raw(calls).filter((u) => u.includes('/workflows/')).length).toBe(7);
+    expect(rep.errors[0]).toBe(
+      'Could not read 3 workflow files, such as .github/workflows/laughs.yml (its aliases or merge keys expand too ' +
+        'far), so the checks skipped them',
+    );
+    // What says something is in no workflow can't be said; what was found in the others still counts.
+    const unread =
+      'Could not read 3 workflow files, such as .github/workflows/laughs.yml (its aliases or merge keys expand too ' +
+      'far); in the others: ';
+    expect(statusOf(rep, 'ci-script-injection')).toEqual([
+      'unknown',
+      unread + 'No untrusted expressions inside run steps',
+    ]);
+    expect(statusOf(rep, 'sast-codeql')![0]).toBe('unknown');
+    expect(statusOf(rep, 'ci-untrusted-artifacts-caches')).toEqual([
+      'unknown',
+      'Could not trace the release jobs: the workflows have too many jobs, steps and artifacts to trace',
+    ]);
+    expect(statusOf(rep, 'repo-codeowners')).toEqual([
+      'unknown',
+      'Could not read .github/CODEOWNERS (larger than 1 MB)',
+    ]);
+    for (const r of Object.values(rep.results))
+      expect(['pass', 'warn', 'fail', 'info', 'unknown', 'na']).toContain(r.status);
+  }, 60_000);
+
+  it('says unknown, without downloading them, for workflows the tree says are over the limits', async () => {
+    const big = (k: number) => ({ path: `.github/workflows/big${k}.yml`, type: 'blob', size: 1.9 * MB });
+    const { rep, calls } = await scanTiny(
+      tiny(
+        { '.github/workflows/ok.yml': workflow(['on: push', 'permissions: {}', 'jobs: {}']) },
+        {},
+        {
+          tree: [
+            { path: '.github/workflows/huge.yml', type: 'blob', size: 3 * MB },
+            ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(big),
+          ],
+        },
+      ),
+    );
+    const fetched = raw(calls);
+    expect(fetched).not.toContain(TINY_RAW + '.github/workflows/huge.yml');
+    // Nine files of 1.9 MB: the first 16 MB of workflows hold eight. (They aren't on the fake GitHub: HTTP 404.)
+    expect(fetched.filter((u) => u.includes('/workflows/big')).length).toBe(8);
+    expect(fetched).not.toContain(TINY_RAW + '.github/workflows/big9.yml');
+    expect(rep.errors[0]).toBe(
+      'Could not read 10 workflow files, such as .github/workflows/huge.yml (larger than 2 MB), so the checks skipped them',
+    );
+    expect(statusOf(rep, 'ci-token-permissions')![0]).toBe('unknown');
+  });
+
+  it('reads at most 500 workflow files, and says so', async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 501 }, (_, k) => [
+        `.github/workflows/w${String(k).padStart(3, '0')}.yml`,
+        workflow(['on: push', 'permissions: {}', 'jobs: {}']),
+      ]),
+    );
+    const { rep, calls } = await scanTiny(tiny(files));
+    expect(raw(calls).filter((u) => u.includes('/workflows/')).length).toBe(500);
+    expect(rep.errors[0]).toBe(
+      'Could not read .github/workflows/w500.yml (past the first 500 workflow files), so the checks skipped it',
+    );
+    expect(statusOf(rep, 'ci-token-permissions')).toEqual([
+      'unknown',
+      'Could not read .github/workflows/w500.yml (past the first 500 workflow files); in the other workflows: ' +
+        'All 500 workflows declare permissions',
+    ]);
+  }, 60_000);
+
+  it('reads at most 200 other files in a scan', async () => {
+    const steps = Array.from({ length: 300 }, (_, k) => [
+      '      - uses: github/codeql-action/init@v3',
+      `        with: {config-file: ./c${k}.yml}`,
+    ]).flat();
+    const configs = Object.fromEntries(Array.from({ length: 300 }, (_, k) => [`c${k}.yml`, 'queries: []\n']));
+    const wf = workflow(['on: push', 'jobs:', '  a:', '    steps:', ...steps]);
+    const { calls } = await scanTiny(tiny({ '.github/workflows/codeql.yml': wf, ...configs }));
+    expect(raw(calls).filter((u) => /\/c\d+\.yml$/.test(u)).length).toBeLessThanOrEqual(200);
+  }, 60_000);
+
+  it('stops downloading a file past the limit', async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(KB).fill(97));
+        if (pulled >= 1000) c.close();
+      },
+    });
+    vi.stubGlobal('fetch', async () => new Response(body as BodyInit));
+    const [status, text, cut] = await new Http().text('https://x.test/big', { limit: 4 * KB });
+    expect([status, text?.length, cut]).toEqual([200, 4 * KB, true]);
+    expect(pulled).toBeLessThan(10);
   });
 });
 

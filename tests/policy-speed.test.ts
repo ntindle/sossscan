@@ -232,7 +232,9 @@ describe('reading a security policy takes linear time', () => {
     expect(readPolicy('# Security\n\nEmail security@example.org.', 'SECURITY.md').truncated).toBe(false);
   });
 
-  it('runs every reader on each 1 MB policy built to be slow in under 250 ms', () => {
+  // 500 ms, as for the other parsers (tests/scanner-speed.test.ts): about 150 ms alone, it can take twice that while
+  // the other test files load every core.
+  it('runs every reader on each 1 MB policy built to be slow in under 500 ms', () => {
     // Warm up: compile the patterns and the code, as a running server has.
     for (const text of Object.values(policies(4000))) {
       const p = readPolicy(text, 'SECURITY.md');
@@ -253,8 +255,8 @@ describe('reading a security policy takes linear time', () => {
           paragraphs(p);
           mentions(p, /report/);
           sections(p, /./);
-        }, 250);
-        if (ms > 250) slow.push(`${name} as ${path}: ${Math.round(ms)} ms`);
+        }, 500);
+        if (ms > 500) slow.push(`${name} as ${path}: ${Math.round(ms)} ms`);
       }
     }
     expect(slow).toEqual([]);

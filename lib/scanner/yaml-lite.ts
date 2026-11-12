@@ -2,7 +2,31 @@
 // plain, quoted and block scalars, and flow collections. New in 0.5.0, for the checks that need a workflow's jobs and
 // steps rather than its lines; there's no Python original. It never throws on bad input: what it can't read becomes
 // a scalar, or is skipped, so a check reading the tree finds less, never more.
+//
+// Anyone can write the files it reads, and public scans read them on our server, so it takes time in proportion to
+// the text, and stops at a document that nests too deep or that aliases and merge keys make too big (TooComplex).
 import { splitLines } from './py.ts';
+
+/**
+ * A document too deep, or too big with its aliases and merge keys expanded, to read: each alias holds a whole node
+ * again, so a few lines of them can stand for billions of nodes. What needs the document can't be checked.
+ */
+export class TooComplex extends Error {
+  constructor(why: string) {
+    super(why);
+    this.name = 'TooComplex';
+  }
+}
+
+/** How deep a document may nest. A real workflow nests less than 20 deep. */
+export const MAX_DEPTH = 200;
+/**
+ * How big a document may be with its aliases and merge keys expanded, counting each character of a key or a scalar
+ * and each node: 4 times the text, and 256K more. A real workflow, aliases and all, comes to about its own size.
+ */
+export const maxExpanded = (text: string) => 262_144 + 4 * text.length;
+/** How many entries merge keys may copy: 64K, and one for each 8 characters. A real file copies a few hundred. */
+const maxMerged = (text: string) => 65_536 + (text.length >> 3);
 
 export interface YScalar {
   kind: 'scalar';
@@ -117,7 +141,8 @@ function keyOf(text: string): { key: string; rest: number } | null {
 }
 
 /** Parse a flow collection or scalar ("[a, b]", "{k: v}") that starts at text[i]. Returns the node and the end. */
-function parseFlow(text: string, i: number, line: number): [YNode, number] {
+function parseFlow(text: string, i: number, line: number, depth = 0): [YNode, number] {
+  if (depth > MAX_DEPTH) throw new TooComplex(`it nests more than ${MAX_DEPTH} deep`);
   const skip = (k: number) => {
     while (k < text.length && (isBlank(text[k]) || text[k] === '\n')) k++;
     return k;
@@ -127,7 +152,7 @@ function parseFlow(text: string, i: number, line: number): [YNode, number] {
     const items: YNode[] = [];
     i = skip(i + 1);
     while (i < text.length && text[i] !== ']') {
-      const [node, k] = parseFlow(text, i, line);
+      const [node, k] = parseFlow(text, i, line, depth + 1);
       items.push(node);
       i = skip(k);
       if (text[i] === ',') i = skip(i + 1);
@@ -139,10 +164,10 @@ function parseFlow(text: string, i: number, line: number): [YNode, number] {
     const entries: YMap['entries'] = [];
     i = skip(i + 1);
     while (i < text.length && text[i] !== '}') {
-      const [k, ki] = parseFlow(text, i, line);
+      const [k, ki] = parseFlow(text, i, line, depth + 1);
       i = skip(ki);
       let value: YNode = scalar(line);
-      if (text[i] === ':') [value, i] = parseFlow(text, i + 1, line);
+      if (text[i] === ':') [value, i] = parseFlow(text, i + 1, line, depth + 1);
       i = skip(i);
       if (k.kind === 'scalar') entries.push({ key: k.text, line, value });
       if (text[i] === ',') i = skip(i + 1);
@@ -164,20 +189,65 @@ function parseFlow(text: string, i: number, line: number): [YNode, number] {
   return [scalar(line, text.slice(i, k).trim()), k];
 }
 
-/** The open and close brackets of a flow collection, outside quotes: positive while it's still open. */
-function flowDepth(text: string): number {
-  let depth = 0;
-  for (let k = 0; k < text.length; k++) {
-    const c = text[k];
-    if (c === '"' || c === "'") {
-      const e = quoteEnd(text, k);
-      if (e < 0) return depth;
-      k = e - 1;
-    } else if (c === '[' || c === '{') depth++;
-    else if (c === ']' || c === '}') depth--;
-    else if (c === '#' && (k === 0 || isBlank(text[k - 1]))) break;
+/**
+ * The open and close brackets of a flow collection, outside quotes, as its lines come: positive while it's still
+ * open. Each new part is scanned once, keeping the quote it's inside and whether a comment ended the scan (a # at
+ * the start or after a space or tab). Rescanning the whole text for every line took time squared on a collection
+ * that never closes.
+ */
+class FlowScan {
+  private depth = 0;
+  /** The quote the scan is inside, and whether the character before was a backslash in a double-quoted string. */
+  private quote: string | null = null;
+  private escaped = false;
+  private stopped = false;
+  private prev: string | undefined = undefined;
+
+  feed(part: string): number {
+    for (let k = 0; k < part.length && !this.stopped; k++) {
+      const c = part[k];
+      if (this.quote) {
+        if (this.escaped) this.escaped = false;
+        else if (this.quote === '"' && c === '\\') this.escaped = true;
+        else if (c === this.quote) {
+          // '' inside a single-quoted string is a quote; at the end of the text it closes the string, as quoteEnd says.
+          if (this.quote === "'" && part[k + 1] === "'") k++;
+          else this.quote = null;
+        }
+      } else if (c === '"' || c === "'") this.quote = c;
+      else if (c === '[' || c === '{') this.depth++;
+      else if (c === ']' || c === '}') this.depth--;
+      else if (c === '#' && (this.prev === undefined || isBlank(this.prev))) this.stopped = true;
+      this.prev = part[k];
+    }
+    return this.depth;
   }
-  return depth;
+}
+
+/**
+ * Whether a quoted string closes, fed its lines one at a time: quoteEnd() on the joined text, scanning each line once.
+ * A backslash at the end of a double-quoted line escapes what comes next, unless the caller drops it.
+ */
+class QuoteScan {
+  closed = false;
+  /** A backslash ended the last part, so the next character is escaped. */
+  escaped = false;
+  private q: string;
+  constructor(quote: string) {
+    this.q = quote;
+  }
+
+  feed(part: string): boolean {
+    for (let k = 0; k < part.length && !this.closed; k++) {
+      if (this.escaped) this.escaped = false;
+      else if (this.q === '"' && part[k] === '\\') this.escaped = true;
+      else if (part[k] === this.q) {
+        if (this.q === "'" && part[k + 1] === "'") k++;
+        else this.closed = true;
+      }
+    }
+    return this.closed;
+  }
 }
 
 /** text without a trailing comment, outside quotes (for the lines of a flow collection). */
@@ -205,9 +275,15 @@ class Reader {
   n: number;
   /** Nodes by anchor name, for the aliases (*name) after them. */
   anchors = new Map<string, YNode>();
+  /** How deep block() is, and how many more entries merge keys may copy. */
+  depth = 0;
+  work: number;
+  max: number;
   constructor(text: string) {
     this.lines = splitLines(text);
     this.n = this.lines.length;
+    this.max = maxExpanded(text);
+    this.work = maxMerged(text);
   }
 
   /** The node an alias names, placed where the alias is, or an empty scalar for an unknown name. */
@@ -226,6 +302,9 @@ class Reader {
       const sources = m.value.kind === 'seq' ? m.value.items : [m.value];
       for (const src of sources) {
         if (src.kind !== 'map') continue;
+        // Merge keys that merge maps built by merge keys copy more each time, which a chain of them makes squared.
+        this.work -= src.entries.length;
+        if (this.work < 0) throw new TooComplex('its merge keys copy too many entries');
         for (const e of src.entries) {
           if (!keys.has(e.key)) {
             keys.add(e.key);
@@ -259,11 +338,22 @@ class Reader {
     const i = this.nextSignificant(0);
     if (i >= this.n) return null;
     const col = this.indent(i);
-    return this.block(i, col, this.lines[i].slice(col))[0];
+    const doc = this.block(i, col, this.lines[i].slice(col))[0];
+    measure(doc, this.max);
+    return doc;
   }
 
   /** The node at line i, column col, whose text (from col) is text. Returns it and the line after it. */
   block(i: number, col: number, text: string): [YNode, number] {
+    if (++this.depth > MAX_DEPTH) throw new TooComplex(`it nests more than ${MAX_DEPTH} deep`);
+    try {
+      return this.blockAt(i, col, text);
+    } finally {
+      this.depth--;
+    }
+  }
+
+  blockAt(i: number, col: number, text: string): [YNode, number] {
     if (text[0] === '&' || text[0] === '!') {
       const [prop, rest] = property(text);
       const at = col + (text.length - rest.length);
@@ -372,24 +462,45 @@ class Reader {
     if (rest[0] === '[' || rest[0] === '{') {
       let text = dropComment(rest);
       let j = i;
-      while (flowDepth(text) > 0 && j + 1 < this.n) {
+      const scan = new FlowScan();
+      let depth = scan.feed(text);
+      while (depth > 0 && j + 1 < this.n) {
         j++;
-        text += '\n' + dropComment(this.lines[j]);
+        const more = '\n' + dropComment(this.lines[j]);
+        text += more;
+        depth = scan.feed(more);
       }
       const [node] = parseFlow(text, 0, i);
       node.end = j + 1;
       return [node, j + 1];
     }
     if (rest[0] === '"' || rest[0] === "'") {
-      let text = rest;
+      // The string's lines, joined by spaces. Each is scanned once for the closing quote, and kept apart until the end
+      // (cutting a backslash off the joined text on every line took time squared).
+      const parts = [rest];
+      const scan = new QuoteScan(rest[0]);
+      scan.feed(rest.slice(1));
       let j = i;
-      while (quoteEnd(text, 0) < 0 && j + 1 < this.n) {
+      while (!scan.closed && j + 1 < this.n) {
         if (this.lines[j + 1].trim() !== '' && this.indent(j + 1) <= col) break;
         j++;
-        // A double-quoted line that ends in a backslash goes on without a space.
-        const joined = rest[0] === '"' && text.endsWith('\\') && !text.endsWith('\\\\');
-        text = (joined ? text.slice(0, -1) : text + ' ') + this.lines[j].trim();
+        // A double-quoted line that ends in a backslash goes on without a space (and without the backslash).
+        let last = parts[parts.length - 1];
+        const before = last.length > 1 ? last[last.length - 2] : parts[parts.length - 2]?.at(-1);
+        const line = this.lines[j].trim();
+        if (rest[0] === '"' && last.endsWith('\\') && before !== '\\') {
+          last = last.slice(0, -1);
+          scan.escaped = false;
+          if (last) parts[parts.length - 1] = last;
+          else parts.pop();
+          if (line) parts.push(line);
+          scan.feed(line);
+        } else {
+          parts.push(' ' + line);
+          scan.feed(' ' + line);
+        }
       }
+      const text = parts.join('');
       const e = quoteEnd(text, 0);
       if (e < 0) return [scalar(i, text.slice(1), true, j + 1), j + 1];
       return [scalar(i, unquote(text.slice(0, e)), true, j + 1), j + 1];
@@ -437,10 +548,63 @@ class Reader {
   }
 }
 
-/** The YAML document in text, or null when it holds none. */
-export function parseYaml(text: string): YNode | null {
+/**
+ * Throw TooComplex when a document, its aliases expanded, nests deeper than MAX_DEPTH or holds more than max
+ * characters and nodes. Each node is visited once however many aliases share it, with a stack of its own (an alias
+ * of an alias of an alias... would overflow the call stack).
+ */
+function measure(root: YNode | null, max: number): void {
+  if (!root || root.kind === 'scalar') return;
+  type Kids = YNode[] | YMap['entries'];
+  const kids = (n: YNode): Kids | null => (n.kind === 'seq' ? n.items : n.kind === 'map' ? n.entries : null);
+  const valueOf = (k: YNode | YMap['entries'][number]): YNode => ('kind' in k ? k : k.value);
+  // The size and depth of the nodes done so far, by their list of items or entries (an alias shares its anchor's).
+  const done = new Map<Kids, { size: number; depth: number }>();
+  const stack: { list: Kids; next: number }[] = [{ list: kids(root)!, next: 0 }];
+  while (stack.length) {
+    const top = stack[stack.length - 1];
+    if (top.next < top.list.length) {
+      const child = kids(valueOf(top.list[top.next++]));
+      if (child && !done.has(child)) {
+        if (stack.length >= MAX_DEPTH) throw new TooComplex(`it nests more than ${MAX_DEPTH} deep`);
+        stack.push({ list: child, next: 0 });
+      }
+      continue;
+    }
+    let size = 1;
+    let depth = 0;
+    for (const k of top.list) {
+      const v = valueOf(k);
+      const got = v.kind === 'scalar' ? { size: 1 + v.text.length, depth: 0 } : done.get(kids(v)!)!;
+      size += got.size + ('key' in k ? k.key.length : 0);
+      depth = Math.max(depth, got.depth);
+    }
+    if (size > max) throw new TooComplex('its aliases or merge keys expand too far');
+    if (depth + 1 > MAX_DEPTH) throw new TooComplex(`it nests more than ${MAX_DEPTH} deep`);
+    done.set(top.list, { size, depth: depth + 1 });
+    stack.pop();
+  }
+}
+
+/**
+ * The YAML document in text, or null when it holds none. Throws TooComplex for a document too deep, or too big with
+ * its aliases expanded, to read.
+ */
+export function readYaml(text: string): YNode | null {
   try {
     return new Reader(text).document();
+  } catch (e) {
+    if (e instanceof TooComplex) throw e;
+    // The reader nests a call for each level (MAX_DEPTH keeps it well within the stack), so this is a safety net.
+    if (e instanceof RangeError) throw new TooComplex(String(e));
+    throw e;
+  }
+}
+
+/** The YAML document in text, or null when it holds none, or is too deep or too big to read (see readYaml). */
+export function parseYaml(text: string): YNode | null {
+  try {
+    return readYaml(text);
   } catch {
     return null;
   }

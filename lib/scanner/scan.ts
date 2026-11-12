@@ -64,6 +64,8 @@ import { howToReport, looksLikePolicy, readPolicy, reportVerdict, sameRepoLink }
 import type { Followed, Policy, Reporting } from './policy.ts';
 import { readSupport, releaseLine, supportVerdict } from './versions.ts';
 import { analyzeWorkflow, envVarHint } from './workflow.ts';
+import { workflowOf } from './jobs.ts';
+import { TooComplex } from './yaml-lite.ts';
 
 const STATUSES: Status[] = ['pass', 'warn', 'fail', 'info', 'unknown', 'na'];
 /** The folders whose contents are listed when the full file tree is too big for one response. */
@@ -77,6 +79,42 @@ const NO_WORKFLOW_ITEMS = [
   'ci-workflow-audit',
 ];
 const NO_RELEASE_ITEMS = ['rel-sbom', 'rel-provenance', 'rel-signing', 'rel-trusted-publishing'];
+/**
+ * The workflow checks, and the results among theirs that say something is in no workflow: a workflow the scan
+ * couldn't read may hold it, so those become unknown.
+ */
+const IF_ALL_READ: Record<string, Status[]> = {
+  'ci-token-permissions': ['pass', 'na'],
+  'ci-pin-actions': ['pass', 'na'],
+  'ci-persist-credentials': ['pass', 'na'],
+  'ci-dangerous-triggers': ['pass', 'na'],
+  'ci-script-injection': ['pass', 'na'],
+  'ci-workflow-audit': ['fail', 'na'],
+  'ci-oidc': ['fail', 'na'],
+  'sast-codeql': ['fail', 'na'],
+  'sast-codeql-actions': ['fail', 'na'],
+  'rel-sbom': ['fail', 'na'],
+  'rel-provenance': ['fail', 'na'],
+  'rel-signing': ['info', 'na'],
+  'rel-trusted-publishing': ['fail', 'na'],
+};
+
+const MB = 1024 * 1024;
+/**
+ * What the scan reads of the files anyone can commit (one can be 100 MB) on our server, far above real repositories.
+ * The largest in the 193 repositories of the Fund's list: a workflow, 480 KB (openclaw's ci.yml); any other file the
+ * scan reads, 156 KB (openclaw's package.json; CLAUDE.md files reach 130 KB, CODEOWNERS 112 KB); workflow files, 127
+ * in one repository (openclaw), 3.4 MB in all. Past a limit a file is too large to read, and the checks that need it
+ * are unknown. A security policy is downloaded up to 1 MB, of which the reader reads the first 256 KB.
+ */
+const MAX_WORKFLOW = 2 * MB;
+const MAX_FILE = MB;
+const MAX_POLICY_BYTES = MB;
+const MAX_WORKFLOWS = 500;
+const MAX_WORKFLOW_TEXT = 16 * MB;
+/** How many other files a scan reads, at most: a real scan reads under 40 (composite actions, configs, manifests). */
+const MAX_READS = 200;
+const mb = (n: number) => `${n / MB} MB`;
 const NEEDS_PRIVATE_LAYER: [string, string][] = [
   ['deps-alerts', 'Dependabot alerts'],
   ['ci-fork-pr-approval', 'Fork PR approval policy'],
@@ -226,7 +264,11 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   if (treeStatus !== 200 && treeStatus !== 409) {
     rep.errors.push(`Could not read the repository's files (HTTP ${treeStatus}), so the file checks may be wrong`);
   }
-  const entry = (t: any, prefix = '') => ({ path: prefix + item(t, 'path'), file: get(t, 'type') === 'blob' });
+  const entry = (t: any, prefix = '') => ({
+    path: prefix + item(t, 'path'),
+    file: get(t, 'type') === 'blob',
+    size: Number(get(t, 'size')) || 0,
+  });
   let entries = pyIter(get(pyOr(tree, {}), 'tree', [])).map((t) => entry(t));
   // A truncated tree lists only some files, so no check may conclude from it that a kind of file is absent.
   let treeTruncated = false;
@@ -245,6 +287,8 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const paths = entries.map((e) => e.path);
   const files = entries.filter((e) => e.file).map((e) => e.path);
+  /** Each file's size in bytes, as the tree gives it (0 when it doesn't). */
+  const sizes = new Map(entries.filter((e) => e.file).map((e) => [e.path, e.size]));
   /** Submodules: the tree lists each as a commit (a gitlink), whose files aren't in it. */
   const gitlinks = pyIter(get(pyOr(tree, {}), 'tree', []))
     .filter((t) => isDict(t) && get(t, 'type') === 'commit')
@@ -253,32 +297,71 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   const treeComplete = (treeStatus === 200 || treeStatus === 409) && !treeTruncated;
 
   /**
-   * A file on the default branch: the HTTP status, and the text unless the status isn't 200. decode reads the bytes
-   * (UTF-8; a security policy can also be UTF-16, which decodeText reads).
+   * A file on the default branch: the HTTP status, the text unless the status isn't 200, and whether the file went on
+   * past limit bytes (only those are downloaded). decode reads the bytes (UTF-8; a security policy can also be
+   * UTF-16, which decodeText reads).
    */
-  const fetchFile = async (p: string, decode = decodeReplace): Promise<[number, string | null]> => {
+  const fetchFile = async (
+    p: string,
+    decode = decodeReplace,
+    limit = MAX_FILE,
+  ): Promise<[number, string | null, boolean]> => {
     if (privateRepo) {
-      const [s, body] = await http.req(
+      const [s, body, , cut] = await http.req(
         `${API}/repos/${repo}/contents/${quote(p)}?ref=${quote(branch)}`,
         'application/vnd.github.raw',
+        true,
+        limit,
       );
-      return [s, s === 200 ? decode(body) : null];
+      return [s, s === 200 ? decode(body) : null, cut];
     }
-    return http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`, { decode });
+    return http.text(`https://raw.githubusercontent.com/${repo}/${quote(branch)}/${quote(p)}`, { decode, limit });
   };
   /**
-   * The files that couldn't be read, with the HTTP status. The tree lists each one, so a check must say it couldn't
-   * read the file, never that the file is missing or empty.
+   * The files that couldn't be read, and why: "HTTP 404", "larger than 1 MB", or what made one too complex to read.
+   * The tree lists each one, so a check must say it couldn't read the file, never that the file is missing or empty.
    */
-  const unread = new Map<string, number>();
-  const read = async (p: string, decode = decodeReplace): Promise<string | null> => {
-    const [s, text] = await fetchFile(p, decode);
-    if (text === null) unread.set(p, s);
-    return text;
+  const unread = new Map<string, string>();
+  let reads = 0;
+  /**
+   * A file's text, or null when it can't be read: a failed request, a file over cap bytes (unless cut, which keeps
+   * its start), or one past the MAX_READS files a scan reads.
+   */
+  const read = async (
+    p: string,
+    {
+      decode = decodeReplace,
+      cap = MAX_FILE,
+      cut = false,
+    }: { decode?: typeof decodeReplace; cap?: number; cut?: boolean } = {},
+  ): Promise<string | null> => {
+    if (++reads > MAX_READS) {
+      unread.set(p, `past the ${MAX_READS} files a scan reads`);
+      return null;
+    }
+    const [s, text, over] = await fetchFile(p, decode, cap);
+    if (text === null) unread.set(p, `HTTP ${s}`);
+    else if (over && !cut) unread.set(p, `larger than ${mb(cap)}`);
+    else return text;
+    return null;
   };
-  const couldNotRead = (p: string) => `Could not read ${p} (HTTP ${unread.get(p)})`;
+  /** How a security policy is read: as UTF-8 or UTF-16, and its start when it's large (the reader reads 256 KB). */
+  const POLICY_FILE = { decode: decodeText, cap: MAX_POLICY_BYTES, cut: true };
+  const couldNotRead = (p: string) => `Could not read ${p} (${unread.get(p)})`;
   /** One hop from a workflow step into package.json scripts and Makefile targets, each read once. */
-  const hops = new Hops(files, read);
+  const hops = new Hops(files, (p) => read(p));
+  /**
+   * A check that reads what a repository's owner wrote: an error in it leaves its result out, with a note in the
+   * errors, rather than failing the scan.
+   */
+  const attempt = async <T>(what: string, run: () => Promise<T> | T): Promise<T | null> => {
+    try {
+      return await run();
+    } catch (e) {
+      rep.errors.push(`Could not finish ${what}: ${String(e)}`);
+      return null;
+    }
+  };
   /** A detection's result: its evidence names repository files, which become links. */
   const outcome = (itemId: string, o: Outcome) =>
     res(
@@ -319,7 +402,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     if (!hits.length) return null;
     const [bs, body] = await http.text(
       `https://raw.githubusercontent.com/${owner}/.github/${quote(br)}/${quote(hits[0])}`,
-      { decode: decodeText },
+      { decode: decodeText, limit: MAX_POLICY_BYTES },
     );
     return {
       label: `${hits[0]} in ${owner}/.github`,
@@ -341,7 +424,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       .filter((p) => p.includes('/') && search(NESTED_POLICY, p) && !search(VENDORED, p) && !search(SECURITY_MD, p))
       .sort((a, b) => a.split('/').length - b.split('/').length || a.length - b.length);
     if (!named.length) return null;
-    const text = await read(named[0], decodeText);
+    const text = await read(named[0], POLICY_FILE);
     if (text === null) return null;
     const p = readPolicy(text, named[0]);
     return looksLikePolicy(p, howToReport(p, repo)) ? named[0] : null;
@@ -353,19 +436,59 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   const ecos = pySorted([...new Set(ECOSYSTEM_FILES.filter(([rx]) => find(rx).length).map(([, eco]) => eco))]);
   const wfPaths = find(WORKFLOW_FILE);
-  const texts = await mapLimit(wfPaths, 8, (p) => read(p));
-  // dict(zip(paths, texts)): one entry per path, in first-seen order.
-  const wfText = new Map<string, string | null>();
-  wfPaths.forEach((p, i) => wfText.set(p, texts[i]));
-  const wfs: WorkflowAnalysis[] = [...wfText].filter(([, t]) => t).map(([p, t]) => analyzeWorkflow(p, t!));
-  // A workflow that couldn't be read is left out of every check, like an empty one, though it may hold what they look
-  // for: say so.
-  const wfUnread = [...wfText.keys()].filter((p) => unread.has(p));
+  // At most MAX_WORKFLOWS files, none over MAX_WORKFLOW, and MAX_WORKFLOW_TEXT in all, by the sizes in the tree.
+  const toRead: string[] = [];
+  let planned = 0;
+  for (const p of wfPaths) {
+    const size = sizes.get(p) ?? 0;
+    if (toRead.length >= MAX_WORKFLOWS) unread.set(p, `past the first ${MAX_WORKFLOWS} workflow files`);
+    else if (size > MAX_WORKFLOW) unread.set(p, `larger than ${mb(MAX_WORKFLOW)}`);
+    else if (planned + size > MAX_WORKFLOW_TEXT) unread.set(p, `past the first ${mb(MAX_WORKFLOW_TEXT)} of workflows`);
+    else {
+      toRead.push(p);
+      planned += size;
+    }
+  }
+  const texts = await mapLimit(toRead, 8, async (p) => {
+    const [s, text, over] = await fetchFile(p, decodeReplace, MAX_WORKFLOW);
+    if (text === null) unread.set(p, `HTTP ${s}`);
+    else if (over) unread.set(p, `larger than ${mb(MAX_WORKFLOW)}`);
+    else return text;
+    return null;
+  });
+  // Each workflow read once for every check (workflowOf), and analyzed line by line. One too deep, or too big with
+  // its aliases expanded, to read is left out like one that couldn't be downloaded. An empty one is left out too.
+  const wfText = new Map<string, string>();
+  const wfs: WorkflowAnalysis[] = [];
+  const readable: { path: string; text: string }[] = [];
+  let total = 0;
+  toRead.forEach((p, i) => {
+    const text = texts[i];
+    if (!text) return;
+    total += text.length;
+    if (total > MAX_WORKFLOW_TEXT) {
+      unread.set(p, `past the first ${mb(MAX_WORKFLOW_TEXT)} of workflows`);
+      return;
+    }
+    const file = { path: p, text };
+    try {
+      workflowOf(file);
+      wfs.push(analyzeWorkflow(p, text));
+    } catch (e) {
+      unread.set(p, e instanceof TooComplex ? e.message : `the scan failed to read it: ${String(e)}`);
+      return;
+    }
+    wfText.set(p, text);
+    readable.push(file);
+  });
+  // A workflow that couldn't be read is left out of every check, though it may hold what they look for: say so, and
+  // the results that say something is in no workflow become unknown (IF_ALL_READ, at the end).
+  const wfUnread = wfPaths.filter((p) => unread.has(p));
   if (wfUnread.length) {
     const one = wfUnread.length === 1;
     rep.errors.push(
       `Could not read ${one ? wfUnread[0] : `${wfUnread.length} workflow files, such as ${wfUnread[0]}`} ` +
-        `(HTTP ${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
+        `(${unread.get(wfUnread[0])}), so the checks skipped ${one ? 'it' : 'them'}`,
     );
   }
   // A workflow that runs the package.json script named publish publishes to npm only when that script does: npm's,
@@ -419,7 +542,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     const [s, body] = got[key];
     return s === 200 || s === 404 || notInPlan(s, body) ? null : s;
   };
-  const [, depPage] = await http.text(`https://github.com/${repo}/network/dependents`, { auth: false });
+  const [, depPage] = await http.text(`https://github.com/${repo}/network/dependents`, { auth: false, limit: 4 * MB });
 
   let deps: { repositories: number; packages: number } | null = null;
   if (depPage) {
@@ -470,7 +593,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   } | null = null;
   let policyTrouble: string | null = null;
   if (sec.length) {
-    const body = await read(sec[0], decodeText);
+    const body = await read(sec[0], POLICY_FILE);
     if (body === null) {
       res('disc-security-md', 'unknown', couldNotRead(sec[0]), fileLink(sec[0]));
       policyTrouble = couldNotRead(sec[0]);
@@ -528,9 +651,10 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     let unreadNext: Followed | null = null;
     if (next) {
       const [status, text] = policy.own
-        ? await fetchFile(next, decodeText)
+        ? await fetchFile(next, decodeText, MAX_POLICY_BYTES)
         : await http.text(`https://raw.githubusercontent.com/${policy.repo}/${quote(policy.branch)}/${quote(next)}`, {
             decode: decodeText,
+            limit: MAX_POLICY_BYTES,
           });
       if (text !== null) {
         const fp = readPolicy(text, next);
@@ -952,15 +1076,16 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
         : 'No publishing workflow detected',
   );
   // ---- release jobs and the caches and artifacts they build from (new in 0.5.0)
-  const readable = wfs.map((w) => ({ path: w.path, text: wfText.get(w.path) ?? '' }));
-  const caches = await releaseCacheCheck({
-    workflows: readable,
-    unread: wfUnread.map((p) => ({ path: p, status: unread.get(p) ?? 0 })),
-    files,
-    treeRead: treeStatus === 200 || treeStatus === 409,
-    read,
-    hops,
-  });
+  const caches = (await attempt('the check of release jobs and caches', () =>
+    releaseCacheCheck({
+      workflows: readable,
+      unread: wfUnread.map((p) => ({ path: p, why: unread.get(p) ?? '' })),
+      files,
+      treeRead: treeStatus === 200 || treeStatus === 409,
+      read: (p) => read(p),
+      hops,
+    }),
+  )) ?? { status: 'unknown', summary: 'Could not finish this check', evidence: [], details: {}, findings: [] };
   res(
     'ci-untrusted-artifacts-caches',
     caches.status,
@@ -973,7 +1098,7 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
   }
   const publishingJobs = (caches.details.publishing_jobs as unknown[] | undefined)?.length ?? 0;
   // A run step that traces its commands while it has a secret prints what the secret expands into.
-  const traced = tracedSecrets(readable);
+  const traced = (await attempt('the check of traced secrets', () => tracedSecrets(readable))) ?? [];
   if (traced.length) {
     const one = traced.length === 1;
     res(
@@ -1064,7 +1189,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     otherSast ? otherSast.flatMap(fileLink) : [],
   );
   // Custom CodeQL queries count once CI runs them; queries kept elsewhere can't be seen, so there's no result then.
-  const queries = await customQueries({ workflows: readable, files, read });
+  const queries = await attempt('the check of custom CodeQL queries', () =>
+    customQueries({ workflows: readable, files, read: (p) => read(p) }),
+  );
   if (queries) outcome('sast-custom-queries', queries);
   const copilot = got.rules[0] === 200 ? copilotReview(got.rules[1]) : null;
   if (copilot) {
@@ -1196,7 +1323,9 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     null,
     locks,
   );
-  const licenses = await licenseGate({ workflows: readable, files, read, hops });
+  const licenses = await attempt('the check of license gates', () =>
+    licenseGate({ workflows: readable, files, read: (p) => read(p), hops }),
+  );
   if (licenses) outcome('deps-licenses', licenses);
 
   // ---- releases
@@ -1431,6 +1560,21 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);
     }
   }
+  // A workflow the scan couldn't read may hold what a result says is in none of them. What the others hold is said
+  // after the reason, unless the scan read none.
+  if (wfUnread.length) {
+    const first = `${wfUnread[0]} (${unread.get(wfUnread[0])})`;
+    const why =
+      wfUnread.length === 1
+        ? `Could not read ${first}`
+        : `Could not read ${wfUnread.length} workflow files, such as ${first}`;
+    const others = wfUnread.length === 1 ? 'in the other workflows' : 'in the others';
+    for (const [it, statuses] of Object.entries(IF_ALL_READ)) {
+      const r = R[it];
+      if (!r || !statuses.includes(r.status)) continue;
+      res(it, 'unknown', readable.length ? `${why}; ${others}: ${r.summary}` : why, r.evidence, r.details, r.layer);
+    }
+  }
   if (http.rateLimited) rep.errors.push(RATE_LIMITED);
   rep.summary = Object.fromEntries(
     STATUSES.map((s) => [s, Object.values(R).filter((r) => r.status === s).length]),
@@ -1525,7 +1669,7 @@ async function ossFuzzGuess(http: Http, owner: string, name: string): Promise<st
   for (const cand of candidates) {
     const [, body] = await http.text(
       `https://raw.githubusercontent.com/google/oss-fuzz/master/projects/${quote(cand)}/project.yaml`,
-      { auth: false },
+      { auth: false, limit: MB },
     );
     if (!body) continue;
     mainRepo ??= re(
