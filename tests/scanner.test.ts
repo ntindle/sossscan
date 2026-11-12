@@ -3279,6 +3279,13 @@ describe('security policies in any format', () => {
         ],
         ['info', "SECURITY.md doesn't say which versions get security fixes"],
       ],
+      // An invitation to a chat server isn't a private message to anyone.
+      [
+        'invite-only.md',
+        'SECURITY.md',
+        ['warn', 'SECURITY.md found but it only says to report in public issues, not privately'],
+        ['info', "SECURITY.md doesn't say which versions get security fixes"],
+      ],
     ];
     for (const [name, path, disc, rel] of cases) {
       const got = await both({ [path]: fixturePolicy(name) });
