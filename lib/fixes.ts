@@ -106,6 +106,13 @@ export const PR_FIXES: Record<string, PrFix> = {
     workflow: true,
     public_only: true,
   },
+  'repo-settings-review': {
+    kind: 'file',
+    label: 'Open a pull request that adds the settings review workflow',
+    title: 'Open a settings review issue twice a year',
+    alts: ['.github/workflows/settings-review.yml', '.github/workflows/settings-review.yaml'],
+    workflow: true,
+  },
   'ci-pin-actions': { kind: 'pin', label: 'Open a pull request that pins your actions', workflow: true },
   ...Object.fromEntries(
     Object.entries(agent.FIXES).map(([id, spec]) => [

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import { OSS_SCANNER_DEPENDENTS, OSS_SCANNER_STARS } from '@/lib/scanner/index.ts';
+import { REVIEW_LABEL, reviewWorkflows } from '@/lib/scanner/self-checks.ts';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
 
@@ -152,5 +153,37 @@ describe('the support programs item (people-support-programs, no scanner check)'
     const claude = item.steps.find((s: string) => s.startsWith('Claude for Open Source'));
     expect(claude).toContain("separate from Anthropic's OSS Scanner");
     expect(guide.items.some((i: { id: string }) => i.id === 'sast-oss-scanner')).toBe(true);
+  });
+});
+
+describe('the settings review workflow (repo-settings-review)', () => {
+  const item = guide.items.find((i: { id: string }) => i.id === 'repo-settings-review');
+  const file = { path: item.new_file.path, text: item.new_file.template };
+
+  it('is valid YAML that the scan recognizes as the workflow that opens settings review issues', () => {
+    expect(file.path).toBe('.github/workflows/settings-review.yml');
+    const wf = YAML.parse(file.text);
+    expect(Object.keys(wf.on)).toEqual(['schedule', 'workflow_dispatch']);
+    expect(reviewWorkflows([file])).toEqual([file.path]);
+    // The label the scan looks for is the one the workflow puts on its issue.
+    expect(wf.jobs['open-issue'].steps[0].run).toContain(`--label ${REVIEW_LABEL}`);
+    // No placeholder to fill: the script reads the repository from the runner.
+    const ctx = sg.ctxFromReport({ repo: 'octo/demo', meta: { default_branch: 'main' } });
+    expect(sg.fill(file.text, ctx)).toBe(file.text);
+  });
+
+  it('is offered as a prefilled file on GitHub', () => {
+    const ctx = sg.ctxFromReport({ repo: 'octo/demo', meta: { default_branch: 'main' } });
+    const url = new URL(sg.newFileUrl(item, ctx)!);
+    expect(url.origin + url.pathname).toBe('https://github.com/octo/demo/new/main');
+    expect(url.searchParams.get('filename')).toBe('.github/workflows/settings-review.yml');
+    expect(url.searchParams.get('value')).toBe(file.text);
+  });
+
+  it('warns that GitHub turns off scheduled workflows in a public repository after 60 days without activity', () => {
+    expect(item.pitfalls).toContain(
+      'GitHub turns off scheduled workflows in a public repository after 60 days with no activity in it. If the ' +
+        'settings review issue stops coming, turn the workflow back on in the Actions tab.',
+    );
   });
 });

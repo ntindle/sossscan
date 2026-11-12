@@ -298,7 +298,8 @@
   ],
   "pitfalls": [
    "Some settings, such as security_and_analysis, are only visible to admins. Run the review with admin rights or everything will look switched off.",
-   "A setting that's wrong in one repo is usually wrong in all of them. Fix it everywhere, or with an org configuration."
+   "A setting that's wrong in one repo is usually wrong in all of them. Fix it everywhere, or with an org configuration.",
+   "GitHub turns off scheduled workflows in a public repository after 60 days with no activity in it. If the settings review issue stops coming, turn the workflow back on in the Actions tab."
   ],
   "docs": [
    {
