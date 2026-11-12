@@ -1127,7 +1127,28 @@ export function promptDialog(choices, opts = {}) {
 }
 
 // ------------------------------------------------------------------------- fix it for me (app)
-// One-click fixes through the GitHub App for the repo on screen: a setting changed now, or a pull request opened after a
+// The app that makes the one-click fixes, from app.status(): the fix app when the site has one (it alone can change a
+// repository, so people install it only if they want fixes), otherwise the main app. name is what the page calls it:
+// the fix app's name on GitHub, from status, or FIX_APP_NAME.
+export const FIX_APP_NAME = 'the sossscan fix app';
+export function fixerOf(st) {
+  const f = (st && st.fix_app) || {};
+  if (f.configured) return { fix: true, name: f.slug || FIX_APP_NAME, slug: f.slug || null, install_url: f.install_url || null };
+  return { fix: false, name: 'the GitHub App', slug: (st && st.slug) || null, install_url: (st && st.install_url) || null };
+}
+
+// The same on one repository, with app.repo()'s answer: whether that app is installed there, and its pages to install
+// it and to manage the installation.
+export function fixerOn(st, info) {
+  const who = fixerOf(st);
+  const on = (who.fix ? info && info.fix_app : info) || {};
+  return { ...who, installed: Boolean(on.installed), install_url: on.install_url || who.install_url, manage_url: on.manage_url || null };
+}
+
+// The app's name in a sentence. The fix app's name on GitHub isn't for translating.
+const appName = (fx) => (fx.fix && fx.slug ? el('span', { translate: 'no' }, fx.slug) : fx.name);
+
+// One-click fixes through the app for the repo on screen: a setting changed now, or a pull request opened after a
 // preview. Says what's missing when it can't (sign-in, an admin, the app installed, a permission). Signing in and
 // installing the app happen in this tab, and the page opens this check again when GitHub sends the person back (see
 // "a trip to GitHub and back"). Empty when the app can't fix this check at all. cls lets a page pass its own button
@@ -1163,14 +1184,17 @@ export function fixItForMe(item, { ctx, report, cls = {} } = {}) {
       show(el('p', {}, `Only an admin of ${ctx.full} can use these. You’re signed in as @${st.user}. `, el('a', { href: '/app/logout' }, 'Sign out'), ' to switch accounts.'));
       return true;
     }
-    if (!info.installed) {
-      show(el('p', {}, `The GitHub App can ${what} for you once it’s installed on ${ctx.full}. GitHub shows what it can access before anything is installed.`),
-        el('a', { class: B.primary, href: info.install_url, onclick: () => leaveFor(ctx.full, item.id) }, 'Install the app on GitHub'));
+    const fx = fixerOn(st, info);
+    if (!fx.installed) {
+      show(fx.fix
+        ? el('p', {}, 'One-click fixes need a second GitHub App, ', appName(fx), '. It can change settings and open pull requests, so install it only if you want that.')
+        : el('p', {}, `The GitHub App can ${what} for you once it’s installed on ${ctx.full}. GitHub shows what it can access before anything is installed.`),
+        el('a', { class: B.primary, href: fx.install_url, onclick: () => leaveFor(ctx.full, item.id) }, fx.fix ? 'Install it on GitHub' : 'Install the app on GitHub'));
       return true;
     }
     const buttons = el('div', { class: 'sg-fixit__buttons' });
-    for (const id of settings) buttons.append(settingButton(item, id, st.fixes[id], info, ctx, B, note));
-    if (pr && !(pr.public_only && report && report.meta && report.meta.private)) buttons.append(prButton(item, pr, st, info, ctx, B, note, link));
+    for (const id of settings) buttons.append(settingButton(item, id, st.fixes[id], info, ctx, B, note, fx));
+    if (pr && !(pr.public_only && report && report.meta && report.meta.private)) buttons.append(prButton(item, pr, st, info, ctx, B, note, link, fx));
     const how = !pr || settings.length ? 'The app makes the change after you confirm.'
       : pr.kind === 'agent' ? 'An AI model drafts the change, this site checks it, and you see it before any pull request opens. It takes about a minute. Nothing is merged.'
         : 'The app builds the change on a new branch and shows it to you before it opens the pull request. Nothing is merged.';
@@ -1187,8 +1211,8 @@ function busy(b, text) { b.dataset.label = b.dataset.label || b.textContent; b.t
 function unbusy(b) { b.textContent = b.dataset.label || b.textContent; b.removeAttribute('aria-disabled'); }
 const isBusy = (b) => b.getAttribute('aria-disabled') === 'true';
 
-function settingButton(item, id, f, info, ctx, B, note) {
-  if (!info.can_settings) return el('p', { class: 'sg-fixit__note' }, `The app on ${ctx.full} can’t change settings: it doesn’t have the Administration permission there.`);
+function settingButton(item, id, f, info, ctx, B, note, fx) {
+  if (!info.can_settings) return el('p', { class: 'sg-fixit__note' }, `On ${ctx.full}, `, appName(fx), ' can’t change settings: it doesn’t have the Administration permission there.');
   const b = el('button', { type: 'button', class: B.primary }, f.label);
   b.addEventListener('click', async () => {
     if (isBusy(b)) return;
@@ -1221,16 +1245,16 @@ function settingButton(item, id, f, info, ctx, B, note) {
   return b;
 }
 
-function prButton(item, pr, st, info, ctx, B, note, link) {
+function prButton(item, pr, st, info, ctx, B, note, link, fx) {
   const open = store.get(ctx.full, item.id).pr;
   const opened = (p, already) => el('p', { class: 'sg-fixit__done' }, already ? 'A pull request for this is already open: ' : 'Pull request opened: ',
     link(p.url, `#${p.number}`, 'sg-fixit__pr'), '. Review it and merge it on GitHub, then rescan.');
   if (open && open.url) return opened(open, true);
   if (!info.can_pr || (pr.workflow && !info.can_pr_workflows)) {
     const need = pr.workflow ? 'contents, pull requests and workflows' : 'contents and pull requests';
-    const own = st.owner && st.user && st.owner.toLowerCase() === st.user.toLowerCase() && st.slug;
-    return el('p', { class: 'sg-fixit__note' }, `The app on ${ctx.full} can’t open this pull request yet: it needs write access to ${need}. `,
-      own ? [link(`https://github.com/settings/apps/${st.slug}/permissions`, 'Add the permissions'), ', then accept them on ', link(info.manage_url || `https://github.com/settings/installations`, 'the installation'), '.']
+    const own = st.owner && st.user && st.owner.toLowerCase() === st.user.toLowerCase() && fx.slug;
+    return el('p', { class: 'sg-fixit__note' }, `On ${ctx.full}, `, appName(fx), ` can’t open this pull request yet: it needs write access to ${need}. `,
+      own ? [link(`https://github.com/settings/apps/${fx.slug}/permissions`, 'Add the permissions'), ', then accept them on ', link(fx.manage_url || `https://github.com/settings/installations`, 'the installation'), '.']
         : 'The app’s owner can add them.');
   }
   const b = el('button', { type: 'button', class: B.primary }, pr.label);
