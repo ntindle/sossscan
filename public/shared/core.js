@@ -828,7 +828,9 @@ export function selfCheckView(item, report, repo, now = Date.now()) {
   else if (!item.no_result) saw = { kind: 'unseen', text: UNSEEN, evidence: [] };
   else if (report) saw = { kind: 'none', text: item.no_result, evidence: [] };
   const mark = doneState(item, store.get(repo || (report && report.repo), item.id), now);
-  return { saw, check: item.check || '', habit: item.habit || '', mark, when: markText(item, mark) };
+  // An info result is the scan finding the habit's trace ("Looks done: …"), so the advice to start it would repeat it.
+  const habit = saw && saw.kind === 'scan' && saw.status === 'info' ? '' : item.habit || '';
+  return { saw, check: item.check || '', habit, mark, when: markText(item, mark) };
 }
 
 // A line of the guide's copy in parts: text, `code`, and [links](https://…). A link that needs the repository

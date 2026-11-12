@@ -162,12 +162,15 @@ describe('what the "Check it yourself" block says the scan saw', () => {
     const rep = report({ [triage.id]: { status: 'info', summary: said, evidence, layer: 'public' } });
     const view = sg.selfCheckView(triage, rep, REPO);
     expect(view.saw).toEqual({ kind: 'scan', status: 'info', text: said, evidence });
-    expect([view.check, view.habit]).toEqual([triage.check, triage.habit]);
-    // A warning and a refused lookup show the same way.
+    // The scan found the habit's trace, so the block doesn't also say to start it.
+    expect([view.check, view.habit]).toEqual([triage.check, '']);
+    // A warning and a refused lookup show the same way, and keep the habit.
     const warn = report({
       [triage.id]: { status: 'warn', summary: '1 private vulnerability report has waited 20 days', evidence: [] },
     });
     expect(sg.selfCheckView(triage, warn, REPO).saw.kind).toBe('scan');
+    expect(sg.selfCheckView(triage, warn, REPO).habit).toBe(triage.habit);
+    expect(sg.selfCheckView(triage, report(), REPO).habit).toBe(triage.habit);
   });
 
   it('says what the scan looks for and didn’t find, for a check it can sometimes settle', () => {
