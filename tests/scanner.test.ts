@@ -30,7 +30,7 @@ import {
   stepBlock,
   tierFor,
 } from '../lib/scanner/index.ts';
-import type { Report } from '../lib/scanner/index.ts';
+import type { AdvisoryAccess, Report } from '../lib/scanner/index.ts';
 import { COMPILED, match, pyLen, quote, re, search } from '../lib/scanner/py.ts';
 import { fundFromGuide } from '../lib/fund-data.ts';
 import { fundEntry, sharingResult, trainingResult } from '../lib/scanner/fund.ts';
@@ -4217,6 +4217,49 @@ describe('private vulnerability reports, drills and coordinated disclosure (0.5.
     );
   });
 
+  it('reads the advisories with a token of their own, by its permissions, and asks nothing when none may read them', async () => {
+    const PUBLISHED = `${SOLO}/security-advisories?state=published&per_page=100`;
+    const own = { token: 'reports-token', grants: { repository_advisories: 'read', metadata: 'read' } };
+    const deepWith = async (advisories: AdvisoryAccess, replace: Record<string, Route | Route[]> = {}) => {
+      const calls = stubFetch({ ...routesFor('assume-admin'), ...replace });
+      // The scan's own token can't read them (WITHOUT has no repository_advisories).
+      const rep = await scan('solo/tool', {
+        token: 'app-token',
+        assumeAdmin: true,
+        grants: WITHOUT,
+        advisories,
+        ossFuzzLookup: () => [],
+      });
+      const by = (token: string) => calls.filter(([, , auth]) => auth === `Bearer ${token}`).map(([url]) => url);
+      return { rep, calls, by };
+    };
+    // Every advisory list goes through their own token, and nothing else does.
+    let { rep, by, calls } = await deepWith(own, { [APP.triage]: { json: [report(40, 0)] } });
+    expect(statusOf(rep, 'disc-triage-sla')?.[0]).toBe('warn');
+    expect(by('reports-token').sort()).toEqual([PUBLISHED, APP.triage, APP.closed, APP.drafts].sort());
+    expect(by('app-token').filter((url) => url.includes('/security-advisories'))).toEqual([]);
+    expect(rep.api_calls).toBe(calls.length); // both tokens' requests count
+    // Its permissions decide whether an empty list means none.
+    ({ rep } = await deepWith(own));
+    expect(statusOf(rep, 'disc-triage-sla')).toEqual([
+      'info',
+      'No private vulnerability reports are waiting in triage',
+    ]);
+    ({ rep } = await deepWith({ token: 'reports-token', grants: null }));
+    expect(statusOf(rep, 'disc-triage-sla')).toBeNull();
+    // None may read them: the three lists aren't asked for, the published ones are read as a public scan reads them,
+    // and the checks say why.
+    const why = 'they need the second app, which isn’t installed here. Install it, or use the CLI';
+    ({ rep, by, calls } = await deepWith({ token: null, why }, { [APP.triage]: { json: [report(40, 0)] } }));
+    expect(calls.filter(([url]) => /security-advisories\?state=(?:triage|closed|draft)/.test(url))).toEqual([]);
+    expect(by('app-token')).toContain(PUBLISHED);
+    expect(statusOf(rep, 'disc-triage-sla')).toEqual([
+      'unknown',
+      `Couldn't read the private vulnerability reports: ${why}`,
+    ]);
+    expect(statusOf(rep, 'plan-irp-exercise')).toBeNull();
+  });
+
   it("goes by an admin's classic token's scopes, and a fine-grained token's lists only when they show a report", async () => {
     const none = ['info', 'No private vulnerability reports are waiting in triage'];
     expect(statusOf(await cli('gist, read:org, repo, workflow'), 'disc-triage-sla')).toEqual(none);
@@ -4619,6 +4662,18 @@ describe('private vulnerability reports, drills and coordinated disclosure (0.5.
     });
     expect(kept(app)).toEqual(want);
     expect(leaks(JSON.stringify(app) + logs.join('\n'))).toEqual([]);
+    // The same, read with the advisories' own token, as the site's Deep scan reads them.
+    stubFetch({ ...routesFor('assume-admin'), ...served(APP) });
+    const own = await scan('solo/tool', {
+      token: 'app-token',
+      assumeAdmin: true,
+      grants: WITHOUT,
+      advisories: { token: 'reports-token', grants: { repository_advisories: 'read', metadata: 'read' } },
+      ossFuzzLookup: () => [],
+      log: (m) => logs.push(m),
+    });
+    expect(kept(own)).toEqual(want);
+    expect(leaks(JSON.stringify(own) + logs.join('\n'))).toEqual([]);
 
     // The CLI: the JSON file it writes, and what it prints.
     const dir = mkdtempSync(join(tmpdir(), 'sosf-adv-'));

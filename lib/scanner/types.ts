@@ -108,6 +108,13 @@ export interface WorkflowAnalysis {
   workflow_run_untrusted?: true;
 }
 
+/**
+ * What reads a repository's security advisories, when the scan's own token isn't the one to read them with: a second
+ * token that may read them and nothing else, with the permissions GitHub gave it, or none at all (`token: null`), and
+ * then `why` says so in the checks that need them. It ends "Couldn't read the private vulnerability reports: ".
+ */
+export type AdvisoryAccess = { token: string; grants: Record<string, string> | null } | { token: null; why: string };
+
 export interface ScanOptions {
   token?: string | null;
   /** 'public' skips admin-only checks even if the token could see them. */
@@ -125,6 +132,12 @@ export interface ScanOptions {
    * them with it. An admin check whose permission is missing then says so, and an empty list it gets isn't read as none.
    */
   grants?: Record<string, string> | null;
+  /**
+   * The site's Deep scan reads the security advisories (other people's private vulnerability reports among them) with
+   * a token of their own, so the scan's token never holds that permission. Without this, `token` reads them, as the
+   * CLI's does.
+   */
+  advisories?: AdvisoryAccess;
   /** false refuses private repositories (the shared web server, whose token must not expose them). */
   allowPrivate?: boolean;
 }

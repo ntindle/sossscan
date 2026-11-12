@@ -14,4 +14,4 @@ export {
 export { splitLines } from './py.ts';
 export { RATE_LIMITED, scan } from './scan.ts';
 export { analyzeWorkflow, envVarHint, parentKey, parentKeys, stepBlock } from './workflow.ts';
-export type { Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
+export type { AdvisoryAccess, Finding, Report, Result, ScanOptions, Status, WorkflowAnalysis } from './types.ts';
