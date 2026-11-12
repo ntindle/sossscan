@@ -55,6 +55,18 @@
 .sg-remedy li { margin: 4px 0; }
 .sg-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
 .sg-check { font-size: 14px; color: var(--sg-muted); cursor: pointer; }
+/* "Check it yourself": a self-check's own block, in place of the status line */
+.sg-self { margin: 10px 0 12px; padding: 10px 14px 10px; border: 1px solid var(--sg-border); border-left: 4px solid var(--sg-manual);
+  border-radius: calc(var(--sg-radius) - 2px); background: var(--sg-surface); }
+.sg-self__title { margin: 0 0 4px !important; }
+.sg-self > p { margin: 6px 0; }
+.sg-self__saw { font-weight: 500; }
+.sg-self__none { color: var(--sg-muted); font-weight: 400; }
+.sg-self__mark { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 8px; }
+.sg-self .sg-check { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--sg-fg); font-size: 15px; font-weight: 600; }
+.sg-self .sg-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--sg-accent); }
+.sg-self__when { color: var(--sg-muted); font-size: 14px; }
+.sg-self__when.is-due { color: var(--sg-fg); font-weight: 600; }
 .sg-quote { margin: 4px 0 2px; padding-left: 10px; border-left: 3px solid var(--sg-border); color: var(--sg-muted); font-style: italic; }
 .sg-src { font-size: .85em; }
 .sg-examples li { overflow-wrap: anywhere; }

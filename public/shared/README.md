@@ -31,6 +31,12 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - `category`, `category_label`, `stage`, `attacks[]`, `week`, `tags[]` (`actions`, `publishes`, `npm`, `org`, `ai`, `parses_input`, `multi_maintainer`).
   - `tier` (0–7: the tier at which you should do it), `effort` (1 = minutes … 5 = weeks), `impact` (1–5), `layer` (which scan layer can check it).
   - `links[] {label, url, when?}` (settings deep links with `{owner}`/`{repo}` placeholders), `cli` (a `gh` command), `app_fix[]`, `new_file {path, template}`.
+  - For a self-check (layer `manual`), the lines of its "Check it yourself" block. They're empty (`recurs_months` is `null`) on the other checks:
+    - `check`: how to check it yourself, in one or two sentences: where to look and what you should see there.
+    - `no_result`: for a self-check the scan can sometimes settle, what the scan didn't find when it gave no result, naming what it looks for.
+    - `habit`: for one whose convention the scan reads, how to do it so the scan sees it, such as a practice advisory titled DRILL.
+    - `recurs_months`: how many months after it's marked done it comes due again, only where the item's own text gives a cadence.
+    - `check` and `habit` may hold `[a link](https://…)` and `` `code` ``. A link with `{owner}` or `{repo}` in it needs the repository.
   - `stats`: `teams_did`, `teams_planned`, `teams_recommend`, `repo_present`, `repo_total`, `repo_added_in_window`, `window_commit_teams`, `repo_risk`.
   - `peer_adoption`: `{overall %, by_tier {tierId: %}}`. This is the share of the 193 Fund projects that have the control, by stars tier. It's `null` when the scan of the Fund's repositories didn't measure the control. For `secrets-scanning`, which a scan from outside can't see, it and `stats.repo_present` count a secret scanner (gitleaks or TruffleHog) in CI instead. `peerHave(item)` gives the words for what a check's count measures, to end "n% of the 193 Fund projects …": "have this", or for that check, "run a secret scanner (gitleaks or TruffleHog) in CI".
   - `from_teams[]`: `{team, status, detail, quote, source_url, source_title}`, what Fund teams wrote.
@@ -70,7 +76,9 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 
 **Status and context**
 - `ctxFromReport(report, repo)` returns `{owner, repo, full, branch, ecosystems, ownerType, stars, dependents, tier, publishes, hasActions, workflowCount}`. `workflowCount` is `null` unless the report counted the workflows. `tierFor(stars, dependents, guide.tiers)`.
-- `itemStatus(item, report, repo)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). A self-check (layer `manual`) shows the scan's result when the report has one, which happens only on a sure sign; otherwise it's `manual`. `STATUS[status].label` / `.tone`.
+- `itemStatus(item, report, repo, now)` returns `{status, summary, evidence, layer, source, self}`. Statuses also include `manual`, `done` (self-marked) and `todo` (not scanned). A self-check (layer `manual`) shows the scan's result when the report has one, which happens only on a sure sign; otherwise it's `manual`. `STATUS[status].label` / `.tone`.
+  - A pass from the scan wins over a mark. A mark wins over any other result, until a self-check with `recurs_months` comes due again, that many calendar months after it was marked (`addMonths`; `now` defaults to the time). Then it's `manual` again, as before anyone marked it, with `due: true` and a summary that says when it was done, so the map lists it under "Still to check" and counts it as open.
+  - `doneState(item, self, now)` is where a mark stands: `{done, at, due, overdue}` (dates, or `null`). `markText(item, mark)` is the line next to "Mark done": "Done on …, due again …", "Done on …. It’s due again.", or how often one repeats before it's marked. `dateText(date)` writes a date in the reader's language.
 - `statusLabel(st)` is the label to show for one of those: `STATUS[status].label`, except for a check the scan couldn't read ("Could not read …"), which is "Couldn’t check, try again" from the public checks and "Couldn’t check" from the private layer, not "Needs a deeper scan".
 - `findingsFor(item, report)`, `applies(item, ctx)`, `progress(items, report, repo)` (returns `{pass, warn, fail, open, total, pct}`).
 - `checkRow(item, report, ctx, tierId)` is where one check stands, for a page that sorts and groups the checks: `{item, st, finds, bucket, lost, sev}`.
@@ -80,11 +88,15 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 
 **The fix**
 - `renderRemediation(item, {guide, report, ctx, onChange})` is the full fix panel:
-  - why it matters, the scan status and the specific findings;
+  - for a self-check the scan didn't pass (or find not applicable), "Check it yourself" in place of the status line: what the scan saw, how to check (`check`), how to make it count (`habit`), and "Mark done" with when it was done and when it's due again. Otherwise the status line;
+  - why it matters, and the specific findings;
   - "Fix it for me";
   - settings deep links, a prefilled "Create file on GitHub" link, a prefilled tracking issue and "mark done";
   - "Hand it to an AI agent", the `gh` command, steps and snippets;
   - how other teams did it: quotes, their repo files and their fix commits.
+- `selfCheckView(item, report, repo, now)` is what that block holds, or `null`: `{saw, check, habit, mark, when}`.
+  - `saw` is the scan's own result (`kind: 'scan'`, with its `status`, `text` and `evidence`); otherwise, for a self-check the scan can sometimes settle, `no_result` (`kind: 'none'`); for one it never reads, `UNSEEN`, "The scan doesn’t check this." (`kind: 'unseen'`). Before any scan, one the scan can settle has no `saw`.
+  - `richParts(text, ctx)` splits `check` and `habit` into text, `{code}` and `{text, url}` parts, filling in a link for the repository; until the page knows the repository, such a link stays text.
 - `fixItForMe(item, {ctx, report, cls})` is the GitHub App block on its own, for a page that builds its own fix panel.
   - It covers one-click settings (`item.app_fix`) and pull request fixes (`pr_fixes` from `/api/app/status`).
   - It's hidden when the app can't fix the item or the item already passes. When it can't act, it says why: sign in, be an admin, install the app, or a missing permission.
@@ -105,7 +117,7 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
   - It also replaces `{maintainer}` (`@user`, or `@org/maintainers` for an organization), `{person}` (`@user`, or "(name a maintainer)" for an organization) and `{ecosystem_blocks}`.
   - When `ctx.workflowCount` is 0, the dependabot.yml template (the one with `{ecosystem_blocks}`) leaves out its github-actions entry, which Dependabot calls an error in a repository with no workflows.
   - `lib/fixes.ts` has a copy for pull requests, and a test keeps the two identical.
-- `store.get(repo, id)`, `store.set(repo, id, {done, dismissed, note, pr, …})` (localStorage). This fires a `sg:progress` event. `pr` is `{url, number}` once the app has opened a pull request for the item.
+- `store.get(repo, id)`, `store.set(repo, id, {done, dismissed, note, pr, …})` (localStorage). This fires a `sg:progress` event. `pr` is `{url, number}` once the app has opened a pull request for the item. `at` is when the item was last marked done or not done; setting `pr` leaves it as it was. A self-check that repeats counts from it, so nothing else is stored for due dates.
 - `app.status()` (one request per page load), `app.repo(repo, {fresh})` (admin? installed? permissions? Cached per page load unless `fresh`; a failure comes back as `{error, code}`), `app.check(repo)`, `app.fix(repo, fixId)`, `app.prPreview(repo, itemId)`, `app.prCreate(plan)`, `app.loginUrl()`.
   - `status().pr_fixes[itemId].kind` is `file`, `pin` or `agent`.
   - Agent fixes appear only when the site has an AI service configured. Their `prPreview` takes a minute or so, because the agent runs inside that request.

@@ -21,7 +21,8 @@ Reports are sanitized on the way in: markup characters are neutralized and only 
 The page then shows:
 - a status for every check (pass, warn, fail, unknown, and so on) and specific findings with file and line;
 - the one check to fix first: a high-severity finding, then medium, then the most impact lost, then the quickest fix;
-- the repo's tier ("grows with you"; see [Tiers](#tiers)), and the gaps along the route from your keyboard to your users, worst first.
+- the repo's tier ("grows with you"; see [Tiers](#tiers)), and the gaps along the route from your keyboard to your users, worst first;
+- for each self-check the scan didn't settle, "Check it yourself": what the scan saw, how to check, how to make the scan see it where it can, and "Mark done". For a check that repeats, such as a yearly drill, it says when it's due again, and once that date passes the check is open again. The marks stay in your browser.
 
 ## Three ways to fix
 

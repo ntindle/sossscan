@@ -581,15 +581,16 @@ function rowEl(r) {
   return li;
 }
 
-// Status label plus the scan's own words; before a scan, the item's one-line summary instead.
+// Status label plus the scan's own words, or for a self-check that's due again, when it was done; before a scan, the
+// item's one-line summary instead.
 function statusLine(r, tag, cls) {
   const { item, st } = r;
-  if (!S.report && st.status !== 'done') {
+  if (!S.report && st.status !== 'done' && !st.due) {
     const short = item.short && norm(item.short) !== norm(item.title) ? item.short : '';
     return short ? el(tag, { class: 'row__short' }, short) : null;
   }
   const label = sg.statusLabel(st);
-  const detail = st.source === 'scan' && st.summary ? st.summary : '';
+  const detail = (st.source === 'scan' || st.due) && st.summary ? st.summary : '';
   return el(tag, { class: cls }, el('strong', { class: `tone--${ITEM_TONE[st.status] || 'open'}` }, label), detail ? `: ${detail}` : '');
 }
 

@@ -55,7 +55,7 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 
 The page saves a few things in your browser's storage, on your device:
 
-- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done, with any pull request the app opened for them;
+- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done and when, with any pull request the app opened for them. The page counts from that date to say when a check that repeats, such as a yearly drill, is due again;
 - in sessionStorage: reports from deep scans, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
 
 While you sign in with GitHub or install the app, sessionStorage also holds what you asked for: the repository to deep scan, or the check whose fix you had open, with its repository and the time. The page deletes it the next time it loads, and after 15 minutes it isn't used.
