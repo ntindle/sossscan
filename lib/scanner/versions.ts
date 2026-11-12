@@ -86,11 +86,15 @@ const YES_WORD_OTHER = re(
   String.raw`^(?:Sí|sí|Có|có|Да|да|是)(?![\w])|[Uu]nterst[üÜ]tzt|[Ss]oportad[ao]|[Ss]oporte[ \t]+(?:completo|LTS|activo)|[Ss]uportad[ao]|[Ss]upport[ée]e?\b|[Пп]оддерживается|[Аа]ктивн|[Dd]esteklen(?:iyor|ir)\b|积极维护|接受安全更新|长期支持|安全补丁|关键问题修复|当前维护|支持|サポート中|サポート対象|지원[ \t]*중|지원됨|^지원$|[Pp]atches[ \t]+de[ \t]+seguran|[Cc]orre[cç][õo]es[ \t]+de[ \t]+seguran`,
 );
 const NO_WORD = re(
-  String.raw`(?i)^(?:no|nein|non|nao|none|false|n|nope)\b|\b(?:not[ \t]+(?:supported|maintained|provided|receiving)|unsupported|unmaintained|no[ \t]+longer|no[ \t]+(?:security[ \t]+)?(?:support|updates|fixes|patches)|end[ -]of[ -](?:life|support)|eol|ended|retired|superseded|obsolete|out[ \t]+of[ \t]+support|discontinued|archived|dropped|expired)\b`,
+  String.raw`(?i)^(?:no|nein|non|nao|none|false|n|nope)\b|\b(?:not[ \t-]+(?:[\w']+[ \t-]+){0,2}?(?:supported|maintained|provided|receiving)|unsupported|unmaintained|no[ \t]+longer|no[ \t]+(?:security[ \t]+)?(?:support|updates|fixes|patches)|end[ -]of[ -](?:life|support)|eol|ended|retired|superseded|obsolete|out[ \t]+of[ \t]+support|discontinued|archived|dropped|expired)\b`,
 );
 const NO_WORD_OTHER = re(
   String.raw`^(?:Não|não)\b|[Nn]icht[ \t]+(?:mehr[ \t]+)?unterst|[Ss]in[ \t]+soporte|[Nn]o[ \t]+soportad|[Ff]in[ \t]+de[ \t]+vi[de]a?|[Nn]ão[ \t]+suportad|[Нн]е[ \t]+поддерж|прекращен|[Dd]esteklenmiyor|否|不支持|不再|停止|サポート外|サポート終了|미지원|지원[ \t]*안|지원[ \t]*종료|지원[ \t]*중단|지원하지[ \t]*않|않음`,
 );
+/** The no-words that are an end of life, which a date to come makes a "yes, until then" ("EOL 2028"). */
+const EOL_WORD = re(String.raw`(?i)\b(?:end[ -]of[ -](?:life|support)|eol|superseded|retired|discontinued|sunset)\b`);
+/** An end of life to come without a date: "superseded soon". */
+const SOON = re(String.raw`(?i)\b(?:soon|planned|scheduled|upcoming|expected|next)\b`);
 /** A date after "until" (or "till", "bis") in a status cell: supported until then. */
 const UNTIL_DATE = re(String.raw`(?i)\b(?:until|till|bis|through)[ \t]+(?:at[ \t]+least[ \t]+)?([^;,()|]{4,40})`);
 /** A cell that means no end date has been set yet, in a column of end dates. */
@@ -135,17 +139,59 @@ export function endDate(cell: string): Date | null {
 
 export type Status = 'yes' | 'no' | 'unknown';
 
-/** What a status cell says: supported, not supported, or something the scan can't read as either. */
-export function statusOf(cell: string, now: Date = new Date()): Status {
+/** A cell's yes and no signals: marks, and words (the words for no read first and set aside). */
+function signals(cell: string): { yes: boolean; no: boolean; eolOnly: boolean } {
   const yesMark = !!search(YES_MARK, cell);
   const noMark = !!search(NO_MARK, cell);
-  let st: Status = 'unknown';
-  if (noMark && !yesMark) st = 'no';
-  else if (yesMark && !noMark) st = 'yes';
-  else if (!yesMark && !noMark) {
-    if (search(NO_WORD, cell) || search(NO_WORD_OTHER, cell)) st = 'no';
-    else if (search(YES_WORD, cell) || search(YES_WORD_OTHER, cell)) st = 'yes';
+  // "not supported" is a no, and isn't read as "supported" as well.
+  const noWords = finditer(NO_WORD, cell);
+  let rest = '';
+  let last = 0;
+  for (const m of noWords) {
+    rest += cell.slice(last, m.index) + ' ';
+    last = m.index + m[0].length;
   }
+  rest += cell.slice(last);
+  const noOther = !!search(NO_WORD_OTHER, cell);
+  return {
+    yes: yesMark || !!search(YES_WORD, rest) || (!noOther && !!search(YES_WORD_OTHER, rest)),
+    no: noMark || noWords.length > 0 || noOther,
+    eolOnly: !noMark && !noOther && noWords.length > 0 && noWords.every((m) => !!search(EOL_WORD, m[0])),
+  };
+}
+
+/** A cell without what's in brackets: "❌ (critical fixes may still be backported)" is a ❌ with a note. */
+function outsideBrackets(cell: string): string {
+  let out = '';
+  let depth = 0;
+  for (const c of cell) {
+    if (c === '(' || c === '[') depth++;
+    else if ((c === ')' || c === ']') && depth > 0) depth--;
+    else if (!depth) out += c;
+  }
+  return out;
+}
+
+/**
+ * What a status cell says: supported, not supported, or something the scan can't read as either. A cell with words
+ * (or marks) for both, such as "Current, EOL 2028" or "❌ security fixes only", goes by its date if it has one; without
+ * one, by what's outside its brackets ("Supported (no longer in beta)"), and is unknown if that has both too. An end
+ * of life with a date to come ("EOL 2028") is supported until then.
+ */
+export function statusOf(cell: string, now: Date = new Date()): Status {
+  const { yes, no, eolOnly } = signals(cell);
+  let st: Status = 'unknown';
+  if (yes && no) {
+    const end = endDate(cell);
+    if (end) st = end < now ? 'no' : 'yes';
+    else {
+      const main = signals(outsideBrackets(cell));
+      st = main.yes && !main.no ? 'yes' : main.no && !main.yes ? 'no' : 'unknown';
+    }
+  } else if (no) {
+    const end = eolOnly ? endDate(cell) : null;
+    st = end ? (end < now ? 'no' : 'yes') : eolOnly && search(SOON, cell) ? 'unknown' : 'no';
+  } else if (yes) st = 'yes';
   if (st === 'yes') {
     const until = search(UNTIL_DATE, cell);
     const end = until ? endDate(until[1]) : null;
@@ -358,8 +404,8 @@ export interface Row {
 interface Columns {
   version: number;
   component: number | null;
-  /** Status columns, most telling first, each marked when it holds end dates. */
-  status: { index: number; until: boolean }[];
+  /** Status columns, most telling first, each marked when it holds end dates or is about security. */
+  status: { index: number; until: boolean; security?: boolean }[];
 }
 
 function columnsOf(header: string[] | null, width: number): Columns {
@@ -389,7 +435,11 @@ function columnsOf(header: string[] | null, width: number): Columns {
     if (rank > 0) ranked.push({ index: k, until, rank });
   });
   ranked.sort((a, b) => a.rank - b.rank || a.index - b.index);
-  return { version, component, status: ranked.map(({ index, until }) => ({ index, until })) };
+  return {
+    version,
+    component,
+    status: ranked.map(({ index, until, rank }) => ({ index, until, security: rank === 1 })),
+  };
 }
 
 /** Whether a headerless table's first row is its header (Version | Supported). */
@@ -416,6 +466,7 @@ function rowsOf(t: Table, example: boolean, now: Date): Row[] {
     const untilPast = cols.status.some(
       (c) => c.until && untilStatus(r[c.index] ?? '', now) === 'no' && endDate(r[c.index] ?? ''),
     );
+    let bySecurity = false;
     for (const c of cols.status) {
       const cell = (r[c.index] ?? '').trim();
       const st = c.until ? untilStatus(cell, now) : statusOf(cell, now);
@@ -423,10 +474,13 @@ function rowsOf(t: Table, example: boolean, now: Date): Row[] {
       if (st !== 'unknown') {
         status = st;
         statusText = cell || statusText;
+        bySecurity = !!c.security;
         break;
       }
     }
-    if (status === 'yes' && untilPast) status = 'no';
+    // A past end date in another column overrides a stale "yes", but not a security column's own answer: in
+    // "| 8.3 | Active support until 2025 | Security support until 2027 |" the security column decides.
+    if (status === 'yes' && untilPast && !bySecurity) status = 'no';
     out.push({
       version,
       spec: cellSpec(version),
@@ -468,8 +522,21 @@ export function readSupport(p: Policy, now: Date = new Date()): Support {
   );
   const tables: { t: Table; example: boolean }[] = [];
   const seen = new Set<number>();
-  const exampleBefore = (t: Table, from: number) =>
-    !!search(EXAMPLE, p.lines.slice(Math.max(from, t.line - 3), t.line).join(' '));
+  // The lines that say what follows is an example ("For example, ..."), anywhere in the section before a table.
+  const examples: number[] = [];
+  p.lines.forEach((l, i) => {
+    if (search(EXAMPLE, l) || (i + 1 < p.lines.length && search(EXAMPLE, `${l} ${p.lines[i + 1]}`))) examples.push(i);
+  });
+  const exampleBefore = (t: Table, from: number) => {
+    let lo = 0;
+    let hi = examples.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (examples[mid] < from) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < examples.length && examples[lo] < t.line;
+  };
   for (const s of secs) {
     for (const t of s.tables) {
       if (seen.has(t.line)) continue;
@@ -480,7 +547,15 @@ export function readSupport(p: Policy, now: Date = new Date()): Support {
   for (const t of p.tables) {
     if (seen.has(t.line) || !versionsTable(t)) continue;
     seen.add(t.line);
-    tables.push({ t, example: exampleBefore(t, 0) });
+    // A table outside a supported-versions section: the section it's in starts at the heading above it.
+    let lo = 0;
+    let hi = p.headings.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (p.headings[mid].line < t.line) lo = mid + 1;
+      else hi = mid;
+    }
+    tables.push({ t, example: exampleBefore(t, lo > 0 ? p.headings[lo - 1].line + 1 : 0) });
   }
   const rows = tables.flatMap(({ t, example }) => rowsOf(t, example, now));
   const readable = rows.filter((r) => r.spec.kind !== 'unknown');
