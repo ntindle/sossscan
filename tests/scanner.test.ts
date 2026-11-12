@@ -3375,6 +3375,97 @@ describe('security policies in any format', () => {
     ]);
   });
 
+  it('warns about a policy in a sub-folder, where GitHub does not look, and names it', async () => {
+    const policy = '# Security Policy\n\n## Reporting a Vulnerability\n\nEmail security@octo-project.org.\n';
+    const nested = await both({ 'docs/security/SECURITY.md': policy });
+    expect(nested.disc).toEqual([
+      'warn',
+      'No SECURITY.md in the root, .github/ or docs/, so GitHub shows none; docs/security/SECURITY.md reads like the policy: move it to one of those folders so GitHub shows it',
+    ]);
+    // A page about the project's security features in a sub-folder isn't a policy.
+    const page = await both({
+      'doc/manual/security.md': '# Security\n\nThe tool keeps its keys in the system keychain.\n',
+    });
+    expect(page.disc).toEqual(['fail', 'No SECURITY.md in the root, .github/ or docs/']);
+  });
+
+  it("says when the file a policy points to can't be read, with its status, instead of warning", async () => {
+    const pointer = 'See [our security policy](docs/SECURITY.md).';
+    const missing = await both({ 'SECURITY.md': pointer });
+    expect(missing.disc).toEqual([
+      'info',
+      "SECURITY.md found; it points to docs/SECURITY.md, which isn't in the repository (HTTP 404): check the link, and that the policy says how to report privately",
+    ]);
+    const down = await both(
+      { 'SECURITY.md': pointer, 'docs/SECURITY.md': 'x' },
+      { ...REL, [TINY_RAW + 'docs/SECURITY.md']: { status: 500 } },
+    );
+    expect(down.disc).toEqual([
+      'unknown',
+      "SECURITY.md found; it points to docs/SECURITY.md, which the scan couldn't read (HTTP 500)",
+    ]);
+    // A policy that says how to report itself warns about that, whatever the file it links to.
+    const own = await both({ 'SECURITY.md': `${pointer} Contact us by email for anything urgent.` });
+    expect(own.disc?.[0]).toBe('warn');
+  });
+
+  it('follows a symlink to a file without an extension, and gives info on a link to a link', async () => {
+    const email = 'Email security@octo-project.org.';
+    expect((await both({ 'SECURITY.md': 'docs/SECURITY', 'docs/SECURITY': email })).disc).toEqual([
+      'pass',
+      'SECURITY.md found; it points to docs/SECURITY, which says to report by email (security@octo-project.org)',
+    ]);
+    expect(
+      (await both({ 'SECURITY.md': 'docs/SECURITY.md', 'docs/SECURITY.md': '../policies/SECURITY.md' })).disc,
+    ).toEqual([
+      'info',
+      "SECURITY.md found; it's a link to docs/SECURITY.md, which is itself a link (to ../policies/SECURITY.md), and the scan follows only one: check that file says how to report privately",
+    ]);
+  });
+
+  it("gives info, not a warning, on the versions table of the account's default", async () => {
+    const account = {
+      'https://api.github.com/repos/octo/.github': { json: { private: false, default_branch: 'main' } },
+      'https://api.github.com/repos/octo/.github/git/trees/main?recursive=1': {
+        json: { tree: [{ path: 'SECURITY.md', type: 'blob' }] },
+      },
+      'https://raw.githubusercontent.com/octo/.github/main/SECURITY.md': {
+        text: '## Supported Versions\n\n| Version | Supported |\n| --- | --- |\n| v0.2.0 | ✅ |\n\nEmail security@octo-project.org.',
+      },
+    };
+    const { rel } = await both({ 'README.md': 'x' }, { '/releases?per_page=10': releases('v7.5.0'), ...account });
+    expect(rel).toEqual([
+      'info',
+      "SECURITY.md in octo/.github, the account's default for repos without their own, lists v0.2.0 as supported, which may be about other repositories: check it covers v7.5.0",
+    ]);
+  });
+
+  it('reads the tags when the releases are all pre-releases', async () => {
+    const table =
+      '## Supported Versions\n\n| Version | Supported |\n| --- | --- |\n| 5.2.x | ✅ |\n\nEmail security@octo-project.org.';
+    const { rel } = await both(
+      { 'SECURITY.md': table },
+      {
+        '/releases?per_page=10': releases(['2.0.0.beta2', true]),
+        '/tags?per_page=100': { json: [{ name: '5.3.0.M4' }, { name: '5.2.4' }, { name: '5.2.3' }] },
+      },
+    );
+    expect(rel).toEqual(['pass', 'SECURITY.md lists 5.2.x as supported, which covers the newest release, 5.2.4']);
+  });
+
+  it('reads a policy saved as UTF-16, and says when it read only the first 256 KB', async () => {
+    const utf16 = await both(
+      { 'SECURITY.md': 'x' },
+      { ...REL, [TINY_RAW + 'SECURITY.md']: { file: 'policies/utf16le.md' } },
+    );
+    expect(utf16.disc).toEqual(['pass', 'SECURITY.md found; it says to report by email (security@octo-project.org)']);
+    const huge = await both({ 'SECURITY.md': '# Security\n\n' + 'We take security seriously. '.repeat(12000) });
+    expect(huge.disc).toEqual([
+      'warn',
+      'SECURITY.md found but it does not say how to report privately (the scan read only the first 256 KB of it)',
+    ]);
+  });
+
   it('reads headings, links, addresses and tables in every format', () => {
     const md = readPolicy(
       [
@@ -3412,7 +3503,9 @@ describe('security policies in any format', () => {
       'https://octo-project.org/security',
     ]);
     expect(md.emails).toEqual(['team@octo-project.org']);
-    expect(md.tables).toEqual([{ header: ['Version', 'Supported'], rows: [['2.x', 'Yes']], line: 8, kind: 'pipe' }]);
+    expect(md.tables).toEqual([
+      { header: ['Version', 'Supported'], rows: [['2.x', 'Yes']], line: 8, end: 11, kind: 'pipe' },
+    ]);
     const rst = readPolicy(
       [
         'Policy',
@@ -3459,16 +3552,17 @@ describe('security policies in any format', () => {
       ].join('\n\n'),
       'SECURITY.md',
     );
+    // In the order they're written, the first being the main one.
     expect(spelled.emails).toEqual([
       'a@octo-project.org',
       'b@octo-project.org',
-      'h@octo-project.org',
-      'security@octo-project.org',
       'c@octo-project.org',
-      'f@gmail.com',
+      'security@octo-project.org',
       'd@octo-project.org',
       'e@octo-project.org',
+      'f@gmail.com',
       'g@octo-project.org',
+      'h@octo-project.org',
     ]);
     // A URL's user, a Kerberos principal, placeholders and remotes aren't inboxes; a mailto: in the text is.
     expect(

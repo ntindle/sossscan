@@ -20,6 +20,33 @@ export function decodeReplace(body: Uint8Array): string {
   return new TextDecoder('utf-8', { ignoreBOM: true }).decode(body);
 }
 
+/**
+ * A text file's bytes as text: UTF-16 when it starts with a UTF-16 byte-order mark, or when every other byte is zero
+ * (ASCII saved as UTF-16 by a Windows editor); otherwise UTF-8 as decodeReplace reads it. For security policies, which
+ * people save in all sorts of ways.
+ */
+export function decodeText(body: Uint8Array): string {
+  if (body.length >= 2 && body[0] === 0xff && body[1] === 0xfe)
+    return new TextDecoder('utf-16le').decode(body.subarray(2));
+  if (body.length >= 2 && body[0] === 0xfe && body[1] === 0xff)
+    return new TextDecoder('utf-16be').decode(body.subarray(2));
+  const n = Math.min(body.length, 4000) & ~1;
+  if (n >= 8) {
+    let even = 0;
+    let odd = 0;
+    for (let k = 0; k < n; k += 2) {
+      if (body[k] === 0) even++;
+      if (body[k + 1] === 0) odd++;
+    }
+    const pairs = n / 2;
+    if (odd > pairs * 0.6 && even < pairs * 0.1)
+      return new TextDecoder('utf-16le').decode(body.subarray(0, body.length & ~1));
+    if (even > pairs * 0.6 && odd < pairs * 0.1)
+      return new TextDecoder('utf-16be').decode(body.subarray(0, body.length & ~1));
+  }
+  return decodeReplace(body);
+}
+
 /** json.loads(body) on the bytes of a response: invalid UTF-8 or JSON gives null, and a UTF-8 BOM is skipped. */
 function parseJson(body: Uint8Array): any {
   if (!body.length) return null;
@@ -153,10 +180,13 @@ export class Http {
     return [status, parseJson(body), headers];
   }
 
-  /** GET text; null unless the status is 200. */
-  async text(url: string, opts: { auth?: boolean } = {}): Promise<[number, string | null]> {
+  /** GET text; null unless the status is 200. decode reads the bytes (as UTF-8, unless it says otherwise). */
+  async text(
+    url: string,
+    opts: { auth?: boolean; decode?: (body: Uint8Array) => string } = {},
+  ): Promise<[number, string | null]> {
     const [status, body] = await this.req(url, '*/*', opts.auth);
-    return [status, status === 200 ? decodeReplace(body) : null];
+    return [status, status === 200 ? (opts.decode ?? decodeReplace)(body) : null];
   }
 }
 

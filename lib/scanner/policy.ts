@@ -26,8 +26,9 @@ export interface Table {
   /** The header row, or null when the table has none the reader could tell. */
   header: string[] | null;
   rows: string[][];
-  /** The line the table starts on (an index into Policy.lines). */
+  /** The line the table starts on (an index into Policy.lines), and the line after its last. */
   line: number;
+  end: number;
   kind: 'pipe' | 'html' | 'grid' | 'simple' | 'list' | 'csv' | 'asciidoc';
 }
 
@@ -50,19 +51,30 @@ export interface Policy {
   links: Link[];
   emails: string[];
   tables: Table[];
-  /** Words outside links and code. */
+  /** Words outside links. */
   words: number;
   /** Whether it reads as English (or has English in it), so a missing phrase means something. */
   english: boolean;
   /** The lines that start a list item, which end the sentence before them. */
   items: number[];
+  /** What each line is. */
+  kinds?: LineKind[];
+  /** XMPP addresses it gives for a private message. */
+  xmpp?: string[];
+  /** Of the email addresses, those to escalate to or for something else (permission to test, a PGP key's). */
+  backup?: string[];
   /** The file was longer than MAX_POLICY, and the reader looked only at its start. */
-  truncated: boolean;
+  truncated?: boolean;
+  /** It's mostly characters the scan can't read: a binary file, or an encoding it can't tell. */
+  garbled?: boolean;
+  /** The policy is only a path to another file (a symlink, which raw.githubusercontent.com serves as its target). */
+  symlink?: string | null;
 }
+
+export type LineKind = 'text' | 'heading' | 'table' | 'code' | 'blank';
 
 // ------------------------------------------------------------------------------------------- markup
 const FRONT_MATTER = re(String.raw`(?s)\A---[ \t]*\n.*?\n---[ \t]*\n`);
-const HTML_COMMENT = re(String.raw`(?s)<!--.*?(?:-->|\Z)`);
 const ADOC_BLOCK_COMMENT = re(String.raw`(?ms)^////+[ \t]*\n.*?(?:^////+[ \t]*$|\Z)`);
 const ADOC_LINE_COMMENT = re(String.raw`(?m)^//(?!/)[^\n]*$`);
 /** An AsciiDoc attribute (:repo-url: https://...) and a reference to one ({repo-url}). */
@@ -170,9 +182,12 @@ const HTML_THEAD = re(String.raw`(?is)<thead\b`);
 const HTML_THEAD_END = re(String.raw`(?i)</thead`);
 
 // ------------------------------------------------------------------------------------- addresses
-/** An email address. One right after : or / is a URL's user (postgres://user:password@host), not an address. */
+/**
+ * An email address. One right after / is part of a URL; one right after a URL's user (postgres://user:password@host)
+ * is too, which the code checks (URL_USER), so "Email:security@example.org" still counts.
+ */
 const EMAIL = re(
-  String.raw`(?<![\w.%+:/-])([A-Za-z0-9][\w.%+-]*@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,24})(?![\w@-])`,
+  String.raw`(?<![\w.%+/-])([A-Za-z0-9][\w.%+-]*@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,24})(?![\w@-])`,
 );
 /** An address after mailto: written out in the text, without a link. */
 const MAILTO_TEXT = re(String.raw`(?i)\bmailto:([\w.%+-]+@[\w-]+(?:\.[\w-]+)+)`);
@@ -208,11 +223,46 @@ const QUOTED_AT = re(
 const SHORT_EMAIL = re(String.raw`(?<![\w.%+-])([A-Za-z0-9][\w.%+-]*@[A-Za-z][A-Za-z0-9-]{2,})(?![\w@-])(?!\.\w)`);
 /** Addresses that can't receive mail (RFC 2606) or aren't an inbox: a template's placeholder, a git remote. */
 const NOT_AN_INBOX = re(
-  String.raw`(?i)@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|[\w-]+\.(?:example|test|invalid|localhost)|localhost|(?:your|my)-?(?:domain|company|email|project)[\w.-]*|domain\.(?:com|tld)|email\.com)$|^git@(?:github|gitlab|bitbucket)\.(?:com|org)$|^(?:noreply|no-reply|donotreply)@|@users\.noreply\.github\.com$|\.(?:png|jpe?g|gif|svg|webp)$`,
+  String.raw`(?i)@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|[\w-]+\.(?:example|test|invalid|localhost)|localhost|(?:your|my)-?(?:domain|company|email|project)[\w.-]*|(?:our|your|my|the)[-_]?(?:company|org|organi[sz]ation|project|domain|team|site|product|app)(?:[-_]?name)?\.[a-z]+|(?:company|org|project|domain|product)[-_]?name\.[a-z]+|domain\.(?:com|tld)|email\.com)$|^git@(?:github|gitlab|bitbucket)\.(?:com|org)$|^(?:noreply|no-reply|donotreply)@|@users\.noreply\.github\.com$|\.(?:png|jpe?g|gif|svg|webp)$`,
 );
 
+/** Just before an address, a URL's user and password (https://user:token@github.com): not an address. */
+const URL_USER = re(String.raw`://[^\s/@]*:$`);
+/** Words that make a sentence one about writing to someone, which a spelled-out address ("team at github.com") needs. */
+const CONTACT_VERB = re(
+  String.raw`(?i)\b(?:e-?mail(?:ing|ed)?|mail|contact(?:ing)?|write|writing|send|sending|reach(?:ing)?|message|notify|ping|address)\b|\breport\w*\b[^.\n]{0,40}?\bto\b`,
+);
+/** Mail providers, whose names in "name at gmail com" make it an address. */
+const MAIL_PROVIDER = re(
+  String.raw`(?i)^(?:gmail|googlemail|yahoo|outlook|hotmail|live|protonmail|proton|pm|icloud|me|gmx|mail|yandex|qq|163|126|fastmail|zoho|posteo|tutanota|tuta|aol|web|mailbox)$`,
+);
+/** A public list or forum, or an address for questions: not a private way to report. */
+const PUBLIC_LIST = re(
+  String.raw`(?i)\b(?:public|open|announce(?:ments?)?|users?|discussion|general|community)[ \t]+(?:mailing[ \t]+)?(?:list|forum|group)\b|\bjoin[ \t]+(?:our|the)[ \t]+(?:[\w-]+[ \t]+){0,2}?(?:mailing[ \t]+)?list\b|\bfor[ \t]+(?:general[ \t]+|any[ \t]+)?questions\b|\bsubscribe\b|\bwhere[ \t]+(?:everyone|anyone)[ \t]+can[ \t]+(?:see|read)\b|\bpublicly[ \t]+archived\b`,
+);
+const PRIVATE_WORD = re(String.raw`(?i)\bprivate(?:ly)?\b|\bconfidential(?:ly)?\b|\bencrypt`);
+/** An address to go to only when the first gets no answer, or for something other than a report (permission to test). */
+const ESCALATION = re(
+  String.raw`(?i)\bescalat|\bpermission\b|\bauthori[sz]ation\b|\bif[ \t]+you[ \t]+(?:do[ \t]+not|don't|cannot|can't|haven't|have[ \t]+not)[ \t]+(?:receive|hear|get)\b|\bno[ \t]+(?:response|reply|answer)\b|\bbackup\b|\bas[ \t]+a[ \t]+last[ \t]+resort\b|\bcc\b|\bcopy[ \t]+(?:in|to)\b`,
+);
+/** XMPP (Jabber): its addresses look like email addresses. */
+const XMPP_WORD = re(String.raw`(?i)\b(?:xmpp|jabber)\b`);
+/** A chat room, which anyone can join, rather than a person. */
+const CHAT_ROOM = re(String.raw`(?i)\bchat[ \t]?rooms?\b|\bmuc\b|\bgroup[ \t]+chat\b|\brooms?\b|\bchannels?\b`);
+const ROOM_DOMAIN = re(String.raw`(?i)@(?:conference|muc|chat|rooms?|chatrooms?)\.`);
+/** Just before an address: a PGP key's ID or user ID, which isn't where reports go. */
+const KEY_ID = re(
+  String.raw`(?i)\b(?:key[ \t]+id|uid|user[ \t]+id|fingerprint|pgp[ \t]+key|gpg[ \t]+key|public[ \t]+key)\b[^.\n]{0,25}$`,
+);
+/** user@EXAMPLE.COM is a Kerberos principal in a policy that's about Kerberos. */
+const KERBEROS = re(String.raw`(?i)\bkerberos\b|\bkinit\b|\bkeytab|\bkrb5?\b|\bprincipals?\b|\brealms?\b`);
+
+/**
+ * Common English words that aren't names of anything (a policy in another language keeps "Report a vulnerability",
+ * "Security" or "issue" in English, so those don't count), and that other languages don't use ("in", "is", "a").
+ */
 const ENGLISH = re(
-  String.raw`(?i)\b(?:the|and|please|report|reports|reporting|security|vulnerabilit(?:y|ies)|we|you|your|issue|issues|version|versions|supported|email|contact|with|this|that|will|not|for)\b`,
+  String.raw`(?i)\b(?:the|and|please|you|your|we|us|our|with|this|that|these|those|which|should|would|could|have|has|been|from|they|their|there|about|into|than|then|them|also|only|will|not|for|are|if|any|when|what|who|how|its)\b`,
 );
 
 const ENTITIES: Record<string, string> = {
@@ -260,7 +310,7 @@ function trimEndOf(s: string, chars: string): string {
  * exactly as many backticks, as in CommonMark; found by a scan instead of a pattern, which would take time squared on
  * a long run of backticks.
  */
-function codeSpans(t: string, fn: (code: string) => string): string {
+function codeSpans(t: string, fn: (code: string) => string, range?: (start: number, end: number) => void): string {
   if (!t.includes('`')) return t;
   const runs: { at: number; len: number }[] = [];
   for (let i = 0; i < t.length;) {
@@ -289,6 +339,7 @@ function codeSpans(t: string, fn: (code: string) => string): string {
       continue;
     }
     const open = runs[k];
+    range?.(open.at, runs[close].at + runs[close].len);
     out += t.slice(pos, open.at) + fn(t.slice(open.at + open.len, runs[close].at));
     pos = runs[close].at + runs[close].len;
     k = close + 1;
@@ -342,11 +393,139 @@ export function formatOf(path: string, text: string): Format {
   return 'markdown';
 }
 
-/** Comments and front matter removed (as blank lines), line endings normalized. */
+/** Zero-width characters, which can sit unseen inside an address (secu\u200brity@example.org). */
+const ZERO_WIDTH = /[\u200b\u200c\u200d\u2060\ufeff]/g;
+
+/**
+ * Text that was UTF-16 but was read as UTF-8, so every other character is a NUL: the NULs and the byte-order mark are
+ * dropped, which keeps its ASCII. (scan.ts decodes a policy's bytes properly; this is for callers that have text.)
+ */
+function fromUtf16(s: string): string {
+  const head = s.slice(0, 2000);
+  let nul = 0;
+  for (let k = 0; k < head.length; k++) if (head.charCodeAt(k) === 0) nul++;
+  if (head.length < 8 || nul < head.length * 0.2) return s;
+  return s.replace(/^\uFFFD{1,2}/, '').replace(/\u0000/g, '');
+}
+
+/** Whether text is mostly characters that can't be read (a binary file, or text in an encoding the scan can't tell). */
+function garbled(s: string): boolean {
+  const head = s.slice(0, 4000);
+  if (!head.trim()) return false;
+  let bad = 0;
+  for (let k = 0; k < head.length; k++) {
+    const c = head.charCodeAt(k);
+    if (c === 0xfffd || (c < 0x20 && c !== 9 && c !== 10 && c !== 13 && c !== 12)) bad++;
+  }
+  return bad > head.length * 0.1;
+}
+
+/** The [start, end) offsets of the code spans on a line, found as codeSpans() finds them. */
+function codeRanges(line: string): [number, number][] {
+  const out: [number, number][] = [];
+  if (!line.includes('`')) return out;
+  codeSpans(
+    line,
+    () => '',
+    (start, end) => out.push([start, end]),
+  );
+  return out;
+}
+
+const HIDDEN_OPEN = re(String.raw`(?i)<!--|<script\b|<style\b|\{%|\{\{`);
+const SCRIPT_CLOSE = re(String.raw`(?i)</script[ \t]*>`);
+const STYLE_CLOSE = re(String.raw`(?i)</style[ \t]*>`);
+
+/**
+ * What a reader doesn't see, blanked out (keeping line breaks): HTML comments, scripts and styles, and Liquid template
+ * tags ({% ... %}, {{ ... }}). Only outside code: a `<!--` in a code span or a fenced block is text. A comment runs to
+ * its -->, across lines; one that never closes hides the rest of the file only when it starts a line.
+ */
+function stripHidden(s: string): string {
+  if (!search(HIDDEN_OPEN, s)) return s;
+  const opens = new RegExp(HIDDEN_OPEN.source, HIDDEN_OPEN.flags + 'g');
+  const lines = s.split('\n');
+  const lastClose = s.lastIndexOf('-->');
+  let offset = 0;
+  let fence: string | null = null;
+  /** What closes the hidden part we're in, if we're in one. */
+  let until: RegExp | 'comment' | null = null;
+  for (let i = 0; i < lines.length; offset += lines[i].length + 1, i++) {
+    const line = lines[i];
+    if (!until) {
+      const f = match(FENCE, line);
+      if (fence) {
+        if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+        continue;
+      }
+      if (f) {
+        fence = f[1];
+        continue;
+      }
+    }
+    const code = until ? [] : codeRanges(line);
+    let c = 0;
+    let out = '';
+    let from = 0;
+    for (;;) {
+      if (until) {
+        // Inside something hidden: look for its end.
+        let end = -1;
+        if (until === 'comment') {
+          const k = line.indexOf('-->', from);
+          if (k >= 0) end = k + 3;
+        } else {
+          const close = new RegExp(until.source, until.flags + 'g');
+          close.lastIndex = from;
+          const m = close.exec(line);
+          if (m) end = m.index + m[0].length;
+        }
+        if (end < 0) break;
+        from = end;
+        until = null;
+        continue;
+      }
+      opens.lastIndex = from;
+      const m = opens.exec(line);
+      if (!m) {
+        out += line.slice(from);
+        break;
+      }
+      const at = m.index;
+      while (c < code.length && code[c][1] <= at) c++;
+      const opener = m[0].toLowerCase();
+      const inCode = c < code.length && code[c][0] <= at;
+      const unclosed =
+        opener === '{%' || opener === '{{'
+          ? line.indexOf(opener === '{%' ? '%}' : '}}', at + 2) < 0
+          : opener === '<!--' && lastClose < offset + at + 4 && !!line.slice(0, at).trim();
+      if (inCode || unclosed) {
+        // Text: a code span, a template opener without its end, or a comment opener that never closes after text.
+        out += line.slice(from, at + m[0].length);
+        from = at + m[0].length;
+        continue;
+      }
+      out += line.slice(from, at);
+      if (opener === '{%' || opener === '{{') {
+        from = line.indexOf(opener === '{%' ? '%}' : '}}', at + 2) + 2;
+        continue;
+      }
+      until = opener === '<!--' ? 'comment' : opener === '<script' ? SCRIPT_CLOSE : STYLE_CLOSE;
+      from = at + m[0].length;
+    }
+    lines[i] = out;
+  }
+  return lines.join('\n');
+}
+
+/** Comments, scripts, template tags and front matter removed (as blank lines), line endings normalized. */
 function prepare(raw: string, format: Format): string {
-  let s = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  let s = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(ZERO_WIDTH, '');
   s = blank(FRONT_MATTER, s);
-  s = blank(HTML_COMMENT, s);
+  s = stripHidden(s);
   if (format === 'asciidoc') {
     s = blank(ADOC_BLOCK_COMMENT, s);
     s = blank(ADOC_LINE_COMMENT, s);
@@ -406,10 +585,17 @@ export function inline(s: string, format: Format = 'markdown'): string {
   if (t.includes('~~')) t = replaceAll(STRIKE, t, (m) => m[1]);
   if (t.includes('*') || t.includes('_')) for (let k = 0; k < 2; k++) t = replaceAll(EMPHASIS, t, (m) => m[2]);
   t = t.replace(/[\ue000-\ue07f]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xe000));
-  return t.replace(/[ \t\u00a0]+/g, ' ').trim();
+  // Curly apostrophes become straight ones, so "don’t" reads as "don't" everywhere.
+  return t
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .trim();
 }
 
 // ------------------------------------------------------------------------------------------ headings
+/** The characters an RST title's line (or a Markdown setext underline) is made of. */
+const BORDER_CHARS = '=-~^"\'`#*+.:_<>!';
+
 function headingsOf(src: string[], format: Format, code: boolean[]): { headings: Heading[]; underline: Set<number> } {
   const headings: Heading[] = [];
   const underline = new Set<number>();
@@ -425,16 +611,25 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
     if (!t) continue;
     const next = i + 1 < src.length && !code[i + 1] ? src[i + 1] : '';
     let m: RegExpExecArray | null;
-    if (format === 'asciidoc' && (m = match(ADOC_TITLE, line))) {
+    // Each pattern runs only when the line starts with what it needs.
+    if (format === 'asciidoc' && t[0] === '=' && (m = match(ADOC_TITLE, line))) {
       headings.push({ text: inline(m[2].trimEnd(), format), level: m[1].length, line: i });
       continue;
     }
-    if ((m = match(ATX, line)) && format !== 'rst') {
+    if (format !== 'rst' && t[0] === '#' && (m = match(ATX, line))) {
       const text = inline(atxText(m[2] ?? ''), format);
       if (text) headings.push({ text, level: m[1].length, line: i });
       continue;
     }
-    if (format === 'rst' && match(RST_LINE, line) && next.trim() && i + 2 < src.length && match(RST_LINE, src[i + 2])) {
+    const border = BORDER_CHARS.includes(line[0] ?? '\n');
+    if (
+      format === 'rst' &&
+      border &&
+      match(RST_LINE, line) &&
+      next.trim() &&
+      i + 2 < src.length &&
+      match(RST_LINE, src[i + 2])
+    ) {
       // A title with an overline and an underline.
       headings.push({ text: inline(next, format), level: rstLevel('o' + line.trim()[0]), line: i + 1 });
       underline.add(i);
@@ -442,8 +637,9 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
       i += 2;
       continue;
     }
-    const isBorder = match(RST_LINE, line) || match(SETEXT, line);
-    if (!isBorder && !t.startsWith('|') && !match(LIST_ITEM, line) && !search(GRID_BORDER, line)) {
+    const isBorder = (border && match(RST_LINE, line)) || ((t[0] === '=' || t[0] === '-') && match(SETEXT, line));
+    const underlined = format === 'rst' ? BORDER_CHARS.includes(next[0] ?? '\n') : /^ {0,3}[=-]/.test(next);
+    if (underlined && !isBorder && !t.startsWith('|') && !match(LIST_ITEM, line) && !search(GRID_BORDER, line)) {
       const um = format === 'rst' ? match(RST_LINE, next) : match(SETEXT, next);
       if (um && next.trim().length >= Math.min(3, t.length)) {
         const level = format === 'rst' ? rstLevel('u' + next.trim()[0]) : next.trim()[0] === '=' ? 1 : 2;
@@ -452,13 +648,13 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
         continue;
       }
     }
-    const h = htmlHeading(line);
+    const h = line.includes('<') ? htmlHeading(line) : null;
     if (h) {
       const text = inline(h.inner, format);
       if (text) headings.push({ text, level: h.level, line: i });
       continue;
     }
-    if ((m = match(BOLD_LINE, line))) {
+    if ((t.startsWith('**') || t.startsWith('__')) && (m = match(BOLD_LINE, line))) {
       headings.push({ text: inline(m[1], format), level: 7, line: i });
       continue;
     }
@@ -517,7 +713,7 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
           if (separator(src[j])) continue;
           rows.push(splitPipes(src[j]).map(cell));
         }
-        tables.push({ header, rows, line: i, kind: 'pipe' });
+        tables.push({ header, rows, line: i, end: j, kind: 'pipe' });
         for (let k = i; k < j; k++) used.add(k);
         i = j - 1;
         continue;
@@ -525,13 +721,15 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
     }
     // Lines that start with a pipe but have no separator row: read as rows without a header.
     if (format !== 'asciidoc' && line.trim().startsWith('|') && line.trim().length > 1 && !search(GRID_BORDER, line)) {
-      const rows: string[][] = [];
+      const split: string[][] = [];
       let j = i;
       for (; j < src.length && src[j].trim().startsWith('|') && !code[j] && !search(GRID_BORDER, src[j]); j++) {
-        rows.push(splitPipes(src[j]).map(cell));
+        split.push(splitPipes(src[j]));
       }
-      if (rows.length && rows.some((r) => r.length > 1)) {
-        tables.push({ header: null, rows, line: i, kind: 'pipe' });
+      if (split.some((r) => r.length > 1)) {
+        // Only a table's cells are read as text (a run of "|a" lines isn't one).
+        const rows = split.map((r) => r.map(cell));
+        tables.push({ header: null, rows, line: i, end: j, kind: 'pipe' });
         for (let k = i; k < j; k++) used.add(k);
         i = j - 1;
         continue;
@@ -564,7 +762,7 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
         cur = cur ? cur.map((c, k) => (c + ' ' + (parts[k] ?? '')).trim()) : parts;
       }
       if (cur) rows.push(cur.map(cell));
-      tables.push({ header, rows, line: i, kind: 'grid' });
+      tables.push({ header, rows, line: i, end: j, kind: 'grid' });
       for (let k = i; k < j; k++) used.add(k);
       i = j - 1;
       continue;
@@ -594,7 +792,7 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
       if (borders >= 2) {
         const header = blocks.length > 1 && blocks[0].length === 1 ? blocks[0][0] : null;
         const rows = (header ? blocks.slice(1) : blocks).flat();
-        tables.push({ header, rows, line: i, kind: 'simple' });
+        tables.push({ header, rows, line: i, end: j, kind: 'simple' });
         for (let k = i; k < j; k++) used.add(k);
         i = j - 1;
       }
@@ -622,7 +820,7 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
         }
       }
       const header = csvHeader ?? (headerRows > 0 && rows.length ? rows.shift()! : null);
-      tables.push({ header, rows, line: i, kind: isList ? 'list' : 'csv' });
+      tables.push({ header, rows, line: i, end: j, kind: isList ? 'list' : 'csv' });
       for (let k = i; k < j; k++) used.add(k);
       i = j - 1;
       continue;
@@ -658,7 +856,7 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
       const rows: string[][] = [];
       for (let k = 0; k < cells.length; k += width) rows.push(cells.slice(k, k + width).map(cell));
       const header = implicitHeader && rows.length ? rows.shift()! : null;
-      tables.push({ header, rows, line: i, kind: 'asciidoc' });
+      tables.push({ header, rows, line: i, end: j + 1, kind: 'asciidoc' });
       for (let k = i - (attrs ? 1 : 0); k <= j; k++) used.add(k);
       i = j;
       continue;
@@ -754,7 +952,7 @@ function htmlTables(
         headerRow = texts;
       } else rows.push(texts);
     }
-    out.push({ header: headerRow, rows, line: startLine(start), kind: 'html' });
+    out.push({ header: headerRow, rows, line: startLine(start), end: startLine(end - 1) + 1, kind: 'html' });
   }
   return out;
 }
@@ -836,36 +1034,155 @@ function linksOf(src: string, format: Format): Link[] {
   return out;
 }
 
-/** Email addresses in the text, written plainly, in a mailto: link, or spelled out (name [at] example [dot] org). */
-function emailsOf(text: string, links: Link[]): string[] {
-  const found: string[] = [];
+/** A mailto: link's target or a found address, as an address: decoded, without a name around it or a ?subject. */
+function addressOf(e: string): string | null {
+  let a = e.replace(/^mailto:/i, '');
+  if (a.includes('%')) {
+    try {
+      a = decodeURIComponent(a);
+    } catch {
+      // Not valid percent-encoding: kept as it is.
+    }
+  }
+  const angle = /<([^<>]*)>/.exec(a);
+  if (angle) a = angle[1];
+  a = trimEndOf(a.split(/[?\\]/)[0].trim(), '.,;:');
+  const at = a.indexOf('@');
+  if (at < 1 || /[\s<>"]/.test(a) || !a.slice(at + 1).includes('.')) return null;
+  return a;
+}
+
+/**
+ * The email addresses in a policy, written plainly, in a mailto: link, or spelled out (name [at] example [dot] org),
+ * the main ones first; and the XMPP addresses it gives for private messages. Read paragraph by paragraph, so an
+ * address split across lines counts. An address in a supported-versions table, on a public list or for questions,
+ * in a URL, for a chat room, or spelled out with ordinary words and no word about writing to it, isn't one.
+ */
+function addressesOf(
+  paras: Block[],
+  links: Link[],
+  text: string,
+): { emails: string[]; xmpp: string[]; backup: string[] } {
+  const kerberos = !!search(KERBEROS, text);
+  const found: { addr: string; rank: number; order: number }[] = [];
+  const xmpp: string[] = [];
   const seen = new Set<string>();
-  const add = (e: string) => {
-    const addr = trimEndOf(e.replace(/^mailto:/i, '').split('?')[0], '.,;:');
-    const [local, domain = ''] = addr.split('@');
-    // user@EXAMPLE.COM, a lower-case name at a domain in capitals, is a Kerberos principal, not an inbox.
-    if (/[a-z]/.test(local) && /[A-Z]/.test(domain) && !/[a-z]/.test(domain)) return;
-    if (search(NOT_AN_INBOX, addr) || seen.has(addr.toLowerCase())) return;
-    seen.add(addr.toLowerCase());
-    found.push(addr);
+  /** Where an address is (its paragraph, then its place in it), so the first one given comes first. */
+  let order = 0;
+  /** What a sentence says about the addresses in it, read once for all of them. */
+  type Context = { xmpp: boolean; room: boolean; public: boolean; escalation: boolean };
+  const contextOf = (sentence: string, heading: string): Context => {
+    const list = search(PUBLIC_LIST, sentence);
+    return {
+      xmpp: !!search(XMPP_WORD, sentence),
+      room: !!search(CHAT_ROOM, sentence),
+      // A public list, unless the sentence says not to use it ("you don't want to report on a public mailing list").
+      public: !!list && !search(PRIVATE_WORD, sentence) && !search(NEGATION, sentence.slice(0, list.index)),
+      escalation: !!search(ESCALATION, `${heading} ${sentence}`),
+    };
   };
-  for (const l of links) if (/^mailto:/i.test(l.url)) add(l.url);
-  for (const m of finditer(EMAIL, text)) add(m[1]);
-  for (const m of finditer(MAILTO_TEXT, text)) add(m[1]);
+  /** Where the sentence (or link) being read starts, as an order: an address's place in it is added to this. */
+  let base = 0;
+  const add = (raw: string, ctx: Context, at = 0, before = '') => {
+    const addr = addressOf(raw);
+    if (!addr) return;
+    order = base + at;
+    const [local, domain = ''] = addr.split('@');
+    // user@EXAMPLE.COM, a lower-case name at a domain in capitals, is a Kerberos principal in a policy about Kerberos.
+    if (kerberos && /[a-z]/.test(local) && /[A-Z]/.test(domain) && !/[a-z]/.test(domain)) return;
+    if (search(NOT_AN_INBOX, addr) || seen.has(addr.toLowerCase())) return;
+    // A chat room's address, or an announcement list's, which anyone can join.
+    if (search(ROOM_DOMAIN, addr) || /announce/i.test(local)) return;
+    if (ctx.xmpp) {
+      // An XMPP address: a person's is a private message, a room's isn't.
+      seen.add(addr.toLowerCase());
+      if (!ctx.room) xmpp.push(addr);
+      return;
+    }
+    if (ctx.public) return;
+    seen.add(addr.toLowerCase());
+    // An address to escalate to, or a PGP key's ("Key ID: name@example.org"), comes after the main one.
+    found.push({ addr, rank: ctx.escalation || search(KEY_ID, before.slice(-40)) ? 1 : 0, order });
+  };
+  // The paragraph each line is in, for the links.
+  const paraAt = new Map<number, Block>();
+  for (const b of paras) for (let n = b.start; n < b.end; n++) paraAt.set(n, b);
+  const versionsRow = (b: Block | undefined) => !!b && b.kind === 'table' && !!b.table && versionsTable(b.table);
   // The spelled-out dots of a domain ([dot], (.), " dot ") become dots.
   const dots = (d: string) =>
     d
       .replace(/[ \t]+/g, ' ')
       .replace(/ - /g, '-')
       .replace(/ ?(?:[[({<] ?(?:dot|\.) ?[\])}>]|\bdot\b|\.) ?/gi, '.');
-  for (const m of finditer(OBFUSCATED_EMAIL, text)) add(`${m[1]}@${dots(m[2])}`);
-  for (const m of finditer(SPELLED_EMAIL, text)) add(`${m[1]}@${dots(m[2])}`);
-  for (const m of finditer(SPELLED_AT, text)) add(m[1] ? `${m[1]}@${m[2]}` : `${m[3]}@${m[4]}`);
-  for (const m of finditer(SPELLED_SPACED, text)) add(`${m[1]}@${m[2]}.${m[3]}`);
-  for (const m of finditer(SPELLED_TO, text)) add(`${m[1]}@${m[2]}`);
-  for (const m of finditer(SPACED_AT, text)) add(`${m[1]}@${m[2]}`);
-  for (const m of finditer(QUOTED_AT, text)) add(`${m[1]}@${m[2]}`);
-  return found;
+  const index = new Map(paras.map((b, k) => [b, k]));
+  for (const l of links) {
+    if (!/^mailto:/i.test(l.url)) continue;
+    const b = paraAt.get(l.lines?.[0] ?? -1);
+    if (versionsRow(b)) continue;
+    const name = l.text.trim();
+    const sentence = b ? (sentencesOf(b.text).find((x) => name && x.includes(name)) ?? b.text) : '';
+    const at = b ? Math.max(0, b.text.indexOf(name)) : 0;
+    base = b ? index.get(b)! * 1e6 : 0;
+    add(l.url, contextOf(sentence, b?.heading ?? ''), at, b ? b.text.slice(0, at) : '');
+  }
+  paras.forEach((b, k) => {
+    // Headings too: a bold line with only an address in it reads as one.
+    if (versionsRow(b)) return;
+    const heading = b.heading ?? '';
+    let at = 0;
+    for (const raw of sentencesOf(b.text)) {
+      at = b.text.indexOf(raw, at);
+      base = k * 1e6 + at;
+      // Emphasis that opens on one line and closes on the next (__name [at] example\n[dot] org__) is still there.
+      // The marks become spaces (same length), which keep an address apart from what follows ("com**으로").
+      const s = raw
+        .replace(/(^|[^\w*])([*_]{1,3})(?=[A-Za-z0-9])/g, (_, a: string, m: string) => a + ' '.repeat(m.length))
+        .replace(/([A-Za-z0-9])([*_]{1,3})(?=$|[^\w*])/g, (_, a: string, m: string) => a + ' '.repeat(m.length));
+      // Each pattern runs only when the sentence has an @, an "at" or a ＠: most sentences have none.
+      const atSign = s.includes('@');
+      const atWord = /\bat\b/i.test(s);
+      if (!atSign && !atWord && !s.includes('\uff20')) continue;
+      const ctx = contextOf(s, heading);
+      if (atSign) {
+        for (const m of finditer(EMAIL, s)) {
+          if (!search(URL_USER, s.slice(Math.max(0, m.index - 200), m.index)))
+            add(m[1], ctx, m.index, s.slice(0, m.index));
+        }
+        for (const m of finditer(MAILTO_TEXT, s)) add(m[1], ctx, m.index, s.slice(0, m.index));
+        for (const m of finditer(SPACED_AT, s)) add(`${m[1]}@${m[2]}`, ctx, m.index, s.slice(0, m.index));
+      }
+      for (const m of finditer(OBFUSCATED_EMAIL, s)) add(`${m[1]}@${dots(m[2])}`, ctx, m.index, s.slice(0, m.index));
+      if (!atWord) continue;
+      // An "at" in plain words needs a word about writing to someone in the sentence (or its heading).
+      const verb = !!search(CONTACT_VERB, `${heading} ${s}`);
+      // "name at example dot org": the spelled-out dot is enough.
+      for (const m of finditer(SPELLED_EMAIL, s)) add(`${m[1]}@${dots(m[2])}`, ctx, m.index);
+      for (const m of finditer(SPELLED_AT, s)) {
+        if (m[1]) add(`${m[1]}@${m[2]}`, ctx, m.index);
+        else if (verb) add(`${m[3]}@${m[4]}`, ctx, m.index);
+      }
+      for (const m of finditer(SPELLED_SPACED, s)) {
+        if (verb || /[ \t]AT[ \t]/.test(m[0]) || search(MAIL_PROVIDER, m[2])) {
+          add(`${m[1]}@${m[2]}.${m[3]}`, ctx, m.index);
+        }
+      }
+      for (const m of finditer(SPELLED_TO, s)) add(`${m[1]}@${m[2]}`, ctx, m.index);
+      for (const m of finditer(QUOTED_AT, s)) add(`${m[1]}@${m[2]}`, ctx, m.index);
+    }
+  });
+  found.sort((a, b) => a.rank - b.rank || a.order - b.order);
+  return { emails: found.map((f) => f.addr), xmpp, backup: found.filter((f) => f.rank).map((f) => f.addr) };
+}
+
+/** A paragraph's sentences. */
+function sentencesOf(para: string): string[] {
+  return para.split(/(?<=[.!?。！？])\s+/);
+}
+
+/** Whether a table is a supported-versions table: a column for versions or releases. */
+function versionsTable(t: Table): boolean {
+  const head = t.header ?? t.rows[0] ?? [];
+  return head.some((h) => /\b(?:versions?|releases?|branch(?:es)?|series)\b|版本|バージョン|버전/i.test(h));
 }
 
 // ---------------------------------------------------------------------------------------------- read
@@ -878,7 +1195,7 @@ export const MAX_POLICY = 256 * 1024;
 /** Read a policy file: its path names the format (SECURITY.md, SECURITY.rst, SECURITY.adoc, SECURITY.txt, SECURITY). */
 export function readPolicy(raw: string, path: string): Policy {
   const truncated = raw.length > MAX_POLICY;
-  const body = truncated ? raw.slice(0, MAX_POLICY) : raw;
+  const body = fromUtf16(truncated ? raw.slice(0, MAX_POLICY) : raw);
   const format = formatOf(path, body);
   const src = prepare(body, format);
   const srcLines = src.split('\n');
@@ -913,31 +1230,118 @@ export function readPolicy(raw: string, path: string): Policy {
     if (match(GRID_BORDER, l) || (format === 'rst' && match(SIMPLE_BORDER, l))) return '';
     if (format === 'asciidoc' && (match(ADOC_FENCE, l) || match(ADOC_ATTR_LINE, l.trim()))) return '';
     let t = l;
-    if (format === 'rst') t = t.replace(RST_DIRECTIVE, '').replace(RST_FIELD, '');
-    if (format === 'asciidoc' && t.trim().startsWith('|')) t = t.replace(/(?:^|\s)[a-z]?\|/g, ' ');
+    const first = l.trimStart()[0] ?? '';
+    if (format === 'rst' && (first === '.' || first === ':')) t = t.replace(RST_DIRECTIVE, '').replace(RST_FIELD, '');
+    if (format === 'asciidoc' && first === '|') t = t.replace(/(?:^|\s)[a-z]?\|/g, ' ');
     if (t.trim().startsWith('|') || (used.has(i) && t.includes('|'))) t = splitPipes(t).join(' ');
-    t = t.replace(ADMONITION, '').replace(LIST_MARK, '');
+    if (first === '>') t = t.replace(ADMONITION, '');
+    if (first === '-' || first === '*' || first === '+' || (first >= '0' && first <= '9')) t = t.replace(LIST_MARK, '');
     return inline(t, format);
   });
-  const text = lines.join('\n');
-  const emails = emailsOf(text, links);
-  // Words outside links: a word that is a URL, or one of the links' targets, isn't one.
-  const urls = new Set(links.map((l) => l.url));
-  const prose = text.replace(/\S+/g, (w) =>
-    w.includes('://') || urls.has(w) || urls.has(trimEndOf(w, ').,;:!?\'">]')) ? ' ' : w,
+  // What each line is: headings, table rows and code are left out when telling the language.
+  const tableAt = new Map<number, Table>();
+  for (const t of tables) for (let k = t.line; k < t.end; k++) if (!tableAt.has(k)) tableAt.set(k, t);
+  const kinds: LineKind[] = lines.map((l, i) =>
+    headingAt.has(i) || underline.has(i)
+      ? 'heading'
+      : code[i]
+        ? 'code'
+        : tableAt.has(i) || used.has(i)
+          ? 'table'
+          : l.trim()
+            ? 'text'
+            : 'blank',
   );
-  const latin = (prose.match(/[A-Za-z]{2,}/g) ?? []).length;
+  // Words, without URLs; and the words of each line of prose, without code spans either.
+  const urls = new Set(links.map((l) => l.url));
+  const noUrls = (t: string) =>
+    /[:/.@]/.test(t)
+      ? t.replace(/\S+/g, (w) => (w.includes('://') || urls.has(w) || urls.has(trimEndOf(w, ').,;:!?\'">]')) ? ' ' : w))
+      : t;
+  const prose = lines.map((l, i) => {
+    if (kinds[i] !== 'text') return '';
+    return noUrls(
+      srcLines[i].includes('`')
+        ? inline(
+            codeSpans(srcLines[i], () => ' '),
+            format,
+          )
+        : l,
+    );
+  });
+  const text = lines.join('\n');
+  const paras = blocksOf(lines, headings, items, kinds, tableAt, prose);
+  const { emails, xmpp, backup } = addressesOf(paras, links, text);
+  const all = prose.join('\n');
+  const lang = languageOf(all, true);
+  const sym = body.length < 1024 ? match(SYMLINK_TEXT, body) : null;
+  const p: Policy = {
+    path,
+    format,
+    lines,
+    text,
+    headings,
+    links,
+    emails,
+    xmpp,
+    backup,
+    tables,
+    words: wordCount(noUrls(text)),
+    // A policy of a few words (a link and "see") is too short to tell its language: it's read as English.
+    english: lang !== 'other',
+    items,
+    kinds,
+    truncated,
+    garbled: garbled(body),
+    symlink: sym ? sym[1] : null,
+  };
+  blockCache.set(p, paras);
+  return p;
+}
+
+/** How many words a text has: Latin ones, and Chinese, Japanese, Korean or other scripts' counted by length. */
+function wordCount(t: string): number {
+  const { latin, other } = scripts(t);
+  return Math.round(latin + other);
+}
+
+function scripts(t: string): { latin: number; other: number } {
+  const latin = (t.match(/[A-Za-z]{2,}/g) ?? []).length;
+  if (!/[\u0370-\uffff]/.test(t)) return { latin, other: 0 };
   // Chinese, Japanese and Korean words are about two characters long; Cyrillic, Greek, Hebrew, Arabic, Hindi or Thai
   // ones about six.
-  const cjk = (prose.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g) ?? []).length;
-  const other =
-    cjk / 2 + (prose.match(/[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0900-\u097f\u0e00-\u0e7f]/g) ?? []).length / 6;
-  const words = Math.round(latin + other);
-  const hits = finditer(ENGLISH, prose).length;
-  // A policy of a few words (a link and "see") is too short to tell its language: it's read as English.
-  const english = (latin < 6 && other < 3) || (hits >= 2 && hits >= 0.08 * latin && latin >= 0.3 * other);
-  return { path, format, lines, text, headings, links, emails, tables, words, english, items, truncated };
+  const cjk = (t.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g) ?? []).length;
+  const rest = (t.match(/[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0900-\u097f\u0e00-\u0e7f]/g) ?? []).length;
+  return { latin, other: cjk / 2 + rest / 6 };
 }
+
+export type Language = 'english' | 'other' | 'unknown';
+
+/**
+ * Whether prose reads as English: enough common English words among its words. Another language needs evidence:
+ * mostly another script, or common words of another language. A paragraph of Latin words that are neither (a list of
+ * advisory IDs, code) is unknown; so is one too short to tell. A whole policy of many words with no English ones isn't
+ * English (whole).
+ */
+function languageOf(t: string, whole = false): Language {
+  const { latin, other } = scripts(t);
+  if (other >= 3 && latin < 0.3 * other) return 'other';
+  const hits = finditer(ENGLISH, t).length;
+  if (hits >= 2 && hits >= 0.08 * latin) return 'english';
+  if (other >= 3) return 'other';
+  const foreign = (t.match(FOREIGN_WORDS) ?? []).length;
+  if (latin >= 4 && foreign >= 2 && foreign > hits) return 'other';
+  if (latin < 12) return 'unknown';
+  return whole && hits < 0.03 * latin ? 'other' : 'unknown';
+}
+
+/**
+ * Common words of other languages written in Latin letters (German, Dutch, French, Spanish, Portuguese, Italian,
+ * Scandinavian, Polish, Czech, Hungarian, Romanian, Turkish, Indonesian, Vietnamese): evidence that a paragraph isn't
+ * English. Plain JavaScript (it decides nothing on its own), with Unicode letters as word boundaries.
+ */
+const FOREIGN_WORDS =
+  /(?<!\p{L})(?:de|la|le|les|des|du|une|et|est|pour|que|qui|pas|avec|sur|dans|nous|vous|votre|merci|mais|el|los|las|del|en|para|por|una|es|lo|se|su|sus|al|como|pero|favor|usted|und|der|die|das|den|dem|ein|eine|einen|nicht|mit|für|ist|sie|auf|bei|zu|über|bitte|wir|ihr|sich|oder|auch|wenn|nur|vom|zum|zur|im|aus|durch|ohne|het|een|van|niet|voor|dat|il|di|che|della|delle|dei|gli|em|um|uma|não|na|ao|à|é|você|seu|sua|och|att|är|inte|för|på|og|ikke|til|jest|nie|się|je|že|nebo|és|az|egy|hogy|nem|și|în|pentru|este|ve|bir|bu|için|ile|yang|untuk|dengan|tidak|ini|itu|atau|dari|pada|và|của|các|là|có|không|được|cho|này|một|những|với|bạn)(?!\p{L})/giu;
 
 const endsCache = new WeakMap<Policy, number[]>();
 /** Where each heading's section ends: the line of the next heading at its level or above (one pass, with a stack). */
@@ -998,6 +1402,8 @@ export interface Channel {
   kind: ChannelKind;
   /** What to show: the address, the link, or the name of the way to report. */
   label: string;
+  /** For GitHub's form: the other repository it's in, when it isn't this one's. */
+  repo?: string;
 }
 
 export interface Reporting {
@@ -1013,6 +1419,12 @@ export interface Reporting {
   pointer: Link | null;
   /** It says the contact is on a website it doesn't link to. */
   elsewhere: boolean;
+  /** It says how to report is in the README, which the scan doesn't read. */
+  readme?: boolean;
+  /** The part of it about reporting (or all of it) isn't in English, so a missing phrase means nothing. */
+  foreign?: boolean;
+  /** The file in the same repository it points to for how to report (or is a link to), when it says nothing itself. */
+  local?: string | null;
 }
 
 /** GitHub's private vulnerability reporting: the Security tab, its advisories page or the "Report a vulnerability" form. */
@@ -1031,9 +1443,44 @@ const MATRIX_ID = re(String.raw`(?<![\w.])@[\w.=-]+:[\w-]+(?:\.[\w-]+)+\b`);
 const CONFIDENTIAL_ISSUE = re(
   String.raw`(?i)\bconfidential\b[^.\n]{0,60}\bissues?\b|\bissues?\b[^.\n]{0,60}\bconfidential\b`,
 );
+/**
+ * GitHub's private vulnerability reporting, in an English sentence: its names, the button and the steps to it, an
+ * advisory the reporter opens, or reporting privately through GitHub. (MAINTAINER_STEP and the like rule out the
+ * maintainers' own steps: "we will open a security advisory".)
+ */
 const GITHUB_REPORTING_TEXT = re(
-  String.raw`(?i)\bprivate(?:ly)?[ \t]+(?:vulnerability[ \t]+)?report(?:ing)?\b|\b(?:click(?:ing)?|use|using|choose|select|press|via|through|under|the)[ \t]+(?:on[ \t]+)?["'\u201c\u2018]?report[ \t]+a[ \t]+vulnerability\b|\bsecurity["'\u201d\u2019]?[ \t]*(?:tab[ \t]*)?(?:\u2192|->|>|\u203a|\u00bb|/)[ \t]*(?:advisories[ \t]*(?:\u2192|->|>|\u203a|\u00bb|/)[ \t]*)?["'\u201c\u2018]?report[ \t]+a[ \t]+vulnerability\b|\breport[ \t]+a[ \t]+vulnerability["'\u201d\u2019]?[ \t]+(?:button|tab|form|link|feature|option|menu|page)\b|\bsecurity["'\u201d\u2019*_ \t]+(?:tab|page)\b|\b(?:report|draft|new|private|open|opening|create|submit|file|raise|start|use)[ \t]+(?:a[ \t]+|an[ \t]+)?(?:new[ \t]+|private[ \t]+|draft[ \t]+)?(?:github[ \t]+)?security[ \t]+advisor(?:y|ies)\b|\b(?:via|through|using|with)[ \t]+(?:the[ \t]+|a[ \t]+)?(?:github(?:'s)?[ \t]+)?(?:private[ \t]+)?security[ \t]+advisor(?:y|ies)\b(?![ \t]+(?:will|are|is|were|was|published|database)\b)|\bgithub(?:'s)?[ \t]+(?:private[ \t]+)?advisor(?:y|ies)\b|\b(?:open|create|draft|submit|file|start)[ \t]+(?:a|an)[ \t]+(?:new[ \t]+|private[ \t]+|draft[ \t]+)?advisory\b`,
+  String.raw`(?i)` +
+    [
+      String.raw`\bprivate(?:ly)?[ \t]+(?:vulnerability[ \t]+report(?:s|ing)?|security[ \t]+reporting)\b`,
+      String.raw`\bgithub\b[^.\n]{0,60}?\bprivate[ \t]+reporting\b|\bprivate[ \t]+reporting\b[^.\n]{0,60}?\bgithub\b`,
+      String.raw`\breport[ \t]+a[ \t]+vulnerability["'\u201d*_]*[ \t]+(?:button|tab|form|link|feature|option|menu|page)\b`,
+      String.raw`\b(?:click(?:ing)?|use|using|choose|choosing|select|selecting|press|pressing|hit|via|through|under|the)[ \t]+(?:on[ \t]+)?["'\u201c*_]*report[ \t]+a[ \t]+vulnerability\b`,
+      String.raw`\bsecurity["'\u201d*_]*[ \t]*(?:tab[ \t]*)?(?:\u2192|->|>|\u203a|\u00bb|/)[ \t]*(?:advisories[ \t]*(?:\u2192|->|>|\u203a|\u00bb|/)[ \t]*)?["'\u201c*_]*report[ \t]+a[ \t]+vulnerability\b`,
+      String.raw`\bsecurity["'\u201d*_]*(?:[ \t]+tab)?[,;]?[ \t]+(?:and[ \t]+)?then[ \t]+(?:(?:click|select|choose|press)[ \t]+(?:on[ \t]+)?)?["'\u201c*_]*report[ \t]+a[ \t]+vulnerability\b`,
+      String.raw`\b(?:the|github(?:'s)?|repository(?:'s)?|repo(?:'s)?|project(?:'s)?|its|our|to|open|under|in|on|via|through|from|click(?:[ \t]+on)?|select)[ \t]+["'*_]*security["'\u201d*_ \t]+tab\b`,
+      String.raw`\b(?:github|repository|repo)(?:'s)?[ \t]+["'*_]*security["'\u201d*_ \t]+(?:page|section)\b`,
+      String.raw`\bsecurity[ \t]+(?:page|section)[ \t]+(?:of|on|in|for)[ \t]+(?:the[ \t]+|this[ \t]+|our[ \t]+)?(?:github[ \t]+)?(?:repository|repo)\b`,
+      String.raw`\b(?:open|opening|create|creating|draft|drafting|submit|submitting|file|filing|raise|raising|start|starting|use|using|report|new|private)[ \t]+(?:a[ \t]+|an[ \t]+|the[ \t]+)?(?:(?:new|private|draft)[ \t]+)*(?:github[ \t]+)?(?:repository[ \t]+)?security[ \t]+advisor(?:y|ies)\b`,
+      String.raw`\b(?:via|through|using|with)[ \t]+(?:the[ \t]+|a[ \t]+)?(?:github(?:'s)?[ \t]+)?(?:private[ \t]+)?security[ \t]+advisor(?:y|ies)\b(?![ \t]+(?:will|are|is|were|was|published|database)\b)`,
+      String.raw`\bgithub(?:'s)?[ \t]+(?:private[ \t]+)?advisor(?:y|ies)\b`,
+      String.raw`\b(?:open|opening|create|creating|draft|drafting|submit|submitting|file|filing|start|starting)[ \t]+(?:a|an)[ \t]+(?:(?:new|private|draft)[ \t]+)*advisory\b`,
+      String.raw`\bprivate(?:ly)?\b(?:(?!\bnot\b|n't\b|\bnever\b)[^.\n]){0,40}?\b(?:via|through|using|on|with|in)[ \t]+(?:the[ \t]+)?github\b(?![ \t]+(?:issues?|discussions?|pull)\b)`,
+    ].join('|'),
 );
+/** Before a mention of GitHub's advisories: the maintainers as the ones who act ("we will", "the team will"). */
+const MAINTAINER_STEP = re(
+  String.raw`(?i)\b(?:we|i|they|maintainers?|the[ \t]+(?:[\w-]+[ \t]+){0,3}?(?:team|maintainers?|developers?|project|owners?|staff)|our[ \t]+(?:[\w-]+[ \t]+){0,2}?(?:team|maintainers?|developers?))\b[^.\n]{0,40}?(?:\b(?:will|would|shall|may|might|can|could|then)\b|'ll\b)`,
+);
+/** After the maintainers as subject, words that make it the reporter's step after all ("we ask that you open..."). */
+const REPORTER_WORD = re(
+  String.raw`(?i)\b(?:you|your|please)\b|\b(?:accept|receiv|welcome|prefer|recommend|ask|encourag|review|handl|triag)\w*`,
+);
+/** After a mention of an advisory: it's done to it ("a draft advisory will be created"), so it's the maintainers' step. */
+const ADVISORY_PASSIVE = re(
+  String.raw`(?i)^[^.\n]{0,20}?\b(?:will|would|shall|is|are|gets?|was|were|may|can)[ \t]+(?:then[ \t]+|also[ \t]+)?(?:be[ \t]+|been[ \t]+|get[ \t]+)?(?:created|drafted|opened|published|issued|filed|released|used|made)\b`,
+);
+/** Before a mention of GitHub's advisories: where advisories are published or listed, not where reports go. */
+const PUBLISHED = re(String.raw`(?i)\b(?:publish\w*|appears?|listed|subscribe|watch\w*)\b`);
 /** Bug bounty and disclosure platforms, Tidelift's security contact, and the big vendors' report pages. */
 const PLATFORM_URL = re(
   String.raw`(?i)^https?://(?:[\w-]+\.)*(?:hackerone\.com|bugcrowd\.com|intigriti\.com|yeswehack\.(?:com|ninja)|huntr\.(?:dev|com)|openbugbounty\.org|immunefi\.com|hackenproof\.com|zerocopter\.com|federacy\.com|bughunters\.google\.com|msrc\.microsoft\.com|cantina\.xyz)(?:[/?#]\S*)?$|^https?://(?:www\.)?tidelift\.com/(?:security|docs/security)|^https?://g\.co/vulnz|^https?://aka\.ms/(?:security|opensource/security)|^https?://(?:www\.)?facebook\.com/whitehat`,
@@ -1072,7 +1519,7 @@ const README_CONTACT = re(
 );
 /** A contact the policy says is on a website, which the scan doesn't read. */
 const CONTACT_ELSEWHERE = re(
-  String.raw`(?i)\b(?:contact|e-?mail|reach|write|report)\w*\b[^.\n]{0,80}\b(?:on|at|in|via|through)[ \t]+(?:the[ \t]+|our[ \t]+|its[ \t]+)?(?:project(?:'s)?[ \t]+)?(?:web[ \t]?(?:site|page)|homepage|site)\b`,
+  String.raw`(?i)\b(?:contact|e-?mail|reach|write|report|see|visit|check|read|consult|find)\w*\b[^.\n]{0,80}\b(?:on|at|in|via|through)[ \t]+(?:the[ \t]+|our[ \t]+|its[ \t]+)?(?:project(?:'s)?[ \t]+)?(?:web[ \t]?(?:site|page)|homepage|site)\b`,
 );
 /** A link to where reports go, or to a security policy elsewhere: how to report is there. */
 const REPORTING_LINK = re(
@@ -1118,7 +1565,7 @@ const PUBLIC_ISSUE_TEXT = re(
 );
 /** A phrase right after a name that says it isn't there: "... is not currently enabled". */
 const NOT_AFTER = re(
-  String.raw`(?i)^[^.\n]{0,25}?\b(?:(?:is|are)[ \t]+(?:not|n't)|isn't|aren't)[ \t]+(?:currently[ \t]+|yet[ \t]+)?(?:enabled|available|active|supported|set[ \t]+up|turned[ \t]+on|configured)\b|^[^.\n]{0,25}?\b(?:is|are)[ \t]+(?:currently[ \t]+)?(?:disabled|unavailable|off)\b`,
+  String.raw`(?i)^[^.\n]{0,25}?\b(?:(?:is|are)[ \t]+(?:not|n't)|isn't|aren't)[ \t]+(?:currently[ \t]+|yet[ \t]+)?(?:enabled|available|active|supported|set[ \t]+up|turned[ \t]+on|configured)\b|^[^.\n]{0,25}?\b(?:is|are|was|were|has[ \t]+been|have[ \t]+been)[ \t]+(?:now[ \t]+|currently[ \t]+|temporarily[ \t]+)?(?:disabled|unavailable|off|closed|paused|suspended|discontinued|ended|retired|inactive|shut[ \t]+down)\b`,
 );
 const NEGATION = re(
   String.raw`(?i)\b(?:not|never|don't|do[ \t]+not|avoid|instead[ \t]+of|rather[ \t]+than|n't|no[ \t]+public|refrain|non-?security|non-?sensitive|non-?critical|feature[ \t]+requests?|regular[ \t]+bugs?|general[ \t]+bugs?|other[ \t]+bugs?|ordinary[ \t]+bugs?|low[- ]severity)\b`,
@@ -1128,7 +1575,36 @@ const ASKS_FOR_MAIL = re(
 );
 /** Words that make a sentence about reporting a problem. */
 const REPORT_WORD = re(String.raw`(?i)\b(?:report|vulnerab|secur|issue|bug|disclos|problem|flaw|exploit)`);
-const TEMPLATE_REPORTING = re(String.raw`(?i)use this section to tell people how to report a vulnerability`);
+/** The reporting paragraph of GitHub's template, in English or as GitHub's template is often translated. */
+const TEMPLATE_REPORTING = re(
+  String.raw`(?i)use[ \t]+this[ \t]+section[ \t]+to[ \t]+tell[ \t]+people[ \t]+how[ \t]+to[ \t]+report[ \t]+a[ \t]+vulnerability|gunakan[ \t]+bagian[ \t]+ini[ \t]+untuk[ \t]+memberi[ \t]+tahu[ \t]+orang(?:-orang)?[ \t]+(?:tentang[ \t]+)?cara[ \t]+melaporkan`,
+);
+/** The heading of a part about reporting: where a missing way to report matters, and where links on their own count. */
+const REPORT_HEADING = re(
+  String.raw`(?i)\breport|disclos|\bcontact|\bsubmit|security[ \t]+(?:issues?|bugs?|problems?|concerns?|reports?|team)`,
+);
+/** A chat handle given for a platform: Discord @name, Telegram: @name, Discord name#1234. */
+const CHAT_HANDLE = re(
+  String.raw`(?i)\b(discord|telegram|slack|matrix|signal|wechat|qq|keybase|element|session|threema|zulip|gitter)\b[^.\n]{0,30}?(?:(?<![\w.])@[\w.-]{2,}|\b[\w.]{2,32}#\d{4}\b)`,
+);
+/** A request to write on a chat platform: "tell me on Discord", "message us via Telegram". */
+const CHAT_REQUEST = re(
+  String.raw`(?i)\b(?:tell|message|ping|contact|reach|dm|pm|write|notify|let[ \t]+(?:me|us)[ \t]+know)\b[^.\n]{0,30}?\b(?:on|via|through|in|over|using)[ \t]+(discord|telegram|slack|matrix|signal|wechat|qq|keybase|element|session|threema|zulip|gitter)\b`,
+);
+const CHAT_PLATFORM = re(
+  String.raw`(?i)\b(?:discord|slack|zulip|telegram|matrix|gitter|mastodon|irc|wechat|qq|keybase|signal|element)\b`,
+);
+/** A direct message to someone ("DM a maintainer", "message one of us"). */
+const CHAT_DM = re(
+  String.raw`(?i)\b(?:dm|direct[ \t]+message|private[ \t]+message|privately[ \t]+message|message[ \t]+(?:me|us|them|any|one|a)\b)`,
+);
+/** A chat channel, group or room, which anyone can read. */
+const CHAT_PUBLIC = re(
+  String.raw`(?i)\b(?:channels?|groups?|community|communities|chat[ \t]?rooms?|rooms?|forums?|servers?|news|announcements?)\b`,
+);
+const CHAT_PRIVATE = re(
+  String.raw`(?i)\b(?:dm|pm|direct[ \t]+message|private(?:ly)?|message[ \t]+(?:me|us)|contact[ \t]+me|write[ \t]+(?:to[ \t]+)?me)\b`,
+);
 
 const ORDER: ChannelKind[] = ['github', 'email', 'platform', 'form', 'chat', 'maintainer', 'page'];
 
@@ -1143,38 +1619,87 @@ interface Block {
   /** Its lines: [start, end). */
   start: number;
   end: number;
+  /** A heading, a paragraph, a table row or a block of code. */
+  kind: 'heading' | 'text' | 'table' | 'code';
+  /** The table a row is in. */
+  table: Table | null;
+  /** The words of its prose, for telling its language (langOf). */
+  prose: string;
+  lang?: Language;
+}
+
+/** A paragraph's language, worked out when first asked for. */
+function langOf(b: Block): Language {
+  if (b.lang === undefined) b.lang = b.kind === 'text' ? languageOf(b.prose) : 'unknown';
+  return b.lang;
 }
 
 const blockCache = new WeakMap<Policy, Block[]>();
-/** The policy's paragraphs with the heading each sits under and the lines they span. */
+/** The policy's paragraphs (blocks): headings, paragraphs, table rows and code blocks, each with its heading. */
 function blocks(p: Policy): Block[] {
-  const cached = blockCache.get(p);
-  if (cached) return cached;
-  const heads = new Map(p.headings.map((h) => [h.line, h.text]));
-  const items = new Set(p.items);
+  let b = blockCache.get(p);
+  if (!b) {
+    // A Policy built by hand rather than by readPolicy.
+    const kinds = p.kinds ?? p.lines.map((l): LineKind => (l.trim() ? 'text' : 'blank'));
+    b = blocksOf(p.lines, p.headings, p.items, kinds, new Map(), p.lines);
+    blockCache.set(p, b);
+  }
+  return b;
+}
+
+function blocksOf(
+  lines: string[],
+  headings: Heading[],
+  items: number[],
+  kinds: LineKind[],
+  tableAt: Map<number, Table>,
+  prose: string[],
+): Block[] {
+  const heads = new Map(headings.map((h) => [h.line, h.text]));
+  const itemSet = new Set(items);
   const out: Block[] = [];
   let heading: string | null = null;
   let cur: string[] = [];
+  let curKind: Block['kind'] = 'text';
   let start = 0;
   const flush = (end: number) => {
-    if (cur.length) out.push({ text: cur.join(' '), heading, start, end });
+    if (cur.length) {
+      const words = curKind === 'text' ? prose.slice(start, end).join(' ') : '';
+      out.push({ text: cur.join(' '), heading, start, end, kind: curKind, table: null, prose: words });
+    }
     cur = [];
   };
-  p.lines.forEach((l, i) => {
+  lines.forEach((l, i) => {
+    const kind = kinds[i];
     if (heads.has(i)) {
       flush(i);
       heading = heads.get(i)!;
-      out.push({ text: l, heading, start: i, end: i + 1 });
+      out.push({ text: l, heading, start: i, end: i + 1, kind: 'heading', table: null, prose: '' });
     } else if (!l.trim()) flush(i);
-    else {
+    else if (kind === 'table') {
+      // Each row of a table is a block of its own: its cells aren't sentences of a paragraph.
+      flush(i);
+      out.push({
+        text: l.trim(),
+        heading,
+        start: i,
+        end: i + 1,
+        kind: 'table',
+        table: tableAt.get(i) ?? null,
+        prose: '',
+      });
+    } else {
+      const k = kind === 'code' ? 'code' : 'text';
       // A list item starts a paragraph of its own: "1. Don't open an issue 2. Email us" is two instructions.
-      if (items.has(i)) flush(i);
-      if (!cur.length) start = i;
+      if ((cur.length && k !== curKind) || itemSet.has(i)) flush(i);
+      if (!cur.length) {
+        start = i;
+        curKind = k;
+      }
       cur.push(l.trim());
     }
   });
-  flush(p.lines.length);
-  blockCache.set(p, out);
+  flush(lines.length);
   return out;
 }
 
@@ -1196,30 +1721,47 @@ function sameRepoUrl(url: string, repo: string): boolean {
   return !!m && `${m[1]}/${m[2]}`.toLowerCase() === repo.toLowerCase();
 }
 
-/** How the policy says to report a vulnerability. repo (owner/name) tells its own links from others'. */
-export function howToReport(p: Policy, repo: string): Reporting {
+/**
+ * How the policy says to report a vulnerability. repo (owner/name) tells its own links from others'; scanned is the
+ * repository being scanned, when the policy is its account's default (owner/.github): a link to its form is its own.
+ */
+export function howToReport(p: Policy, repo: string, scanned = repo): Reporting {
   const found: Channel[] = [];
   const have = new Set<string>();
-  const add = (kind: ChannelKind, label: string) => {
+  const add = (kind: ChannelKind, label: string, other?: string) => {
     const key = kind + '\u0000' + label;
     if (have.has(key)) return;
     have.add(key);
-    found.push({ kind, label });
+    found.push(other ? { kind, label, repo: other } : { kind, label });
   };
   for (const e of p.emails) add('email', e);
+  for (const x of p.xmpp ?? []) add('chat', x);
   let issues = false;
   const others: Link[] = [];
   const weak: Link[] = [];
+  /** Links to a repository's Security tab or its list of advisories: a way to report when a sentence says so. */
+  const githubPages: Link[] = [];
+  /** Telegram links: a person is a private message; a channel or a group isn't. */
+  const telegram: Link[] = [];
   const own = (u: string) => (!!sameRepoUrl(u, repo) && !/\/wiki\b/i.test(u)) || !!repoPath(u, repo, p.path);
+  const elsewhereRepo = (u: string) => {
+    const m = match(REPO_URL, u);
+    const other = m ? `${m[1]}/${m[2]}` : '';
+    return other && ![repo, scanned].some((r) => r.toLowerCase() === other.toLowerCase()) ? other : undefined;
+  };
   for (const l of p.links) {
     const u = l.url;
     if (/^mailto:/i.test(u)) continue;
-    if (search(GITHUB_REPORTING_URL, u) && !/\/security\/policy\b/i.test(u)) add('github', u);
-    else if (search(GITHUB_REPORTING_DOCS, u)) add('github', "GitHub's private vulnerability reporting");
+    if (search(GITHUB_REPORTING_URL, u) && !/\/security\/policy\b/i.test(u)) {
+      if (/\/advisories\/new\/?(?:[?#]|$)/i.test(u)) add('github', u, elsewhereRepo(u));
+      else githubPages.push(l);
+    } else if (search(GITHUB_REPORTING_DOCS, u)) add('github', "GitHub's private vulnerability reporting");
     else if (search(PLATFORM_URL, u)) add('platform', u);
     else if (search(FORM_URL, u)) add('form', u);
-    else if (search(CHAT_URL, u)) add('chat', u);
-    else if (search(ISSUES_URL, u)) issues = true;
+    else if (search(CHAT_URL, u)) {
+      if (/^https?:\/\/t\.me\//i.test(u)) telegram.push(l);
+      else add('chat', u);
+    } else if (search(ISSUES_URL, u)) issues = true;
     else if (search(PROFILE_URL, u) && profileContact(l, p.english)) add('maintainer', l.text.trim() || u);
     else if (search(NOT_A_CHANNEL, u) || !/^https?:/i.test(u) || search(INVITE, u)) continue;
     else if (/security\.txt$/i.test(u)) add('page', u);
@@ -1231,60 +1773,125 @@ export function howToReport(p: Policy, repo: string): Reporting {
   }
   // A security link is where reports go in a short policy that is little more than the link.
   if (p.words <= 40 && !issues) for (const l of weak) add('page', l.url);
-  const paras = paragraphs(p);
-  const sentences = paras.flatMap((para) => para.split(/(?<=[.!?。！？])\s+/));
-  let publicIssues = issues;
-  let noAddress = false;
-  let elsewhere = false;
-  for (const s of sentences) {
-    if (search(GITHUB_REPORTING_TEXT, s) && !negated(s, GITHUB_REPORTING_TEXT, true))
-      add('github', "GitHub's private vulnerability reporting");
-    // In another language the verbs around it can't be read, so the feature's name is enough.
-    if (!p.english && search(GITHUB_REPORTING_NAME, s) && !negated(s, GITHUB_REPORTING_NAME, true))
-      add('github', "GitHub's private vulnerability reporting");
-    if (!p.english && search(GITHUB_HANDLE, s)) add('maintainer', 'a maintainer named in it');
-    if (search(MATRIX_ID, s)) add('chat', search(MATRIX_ID, s)![0]);
-    if (search(CONFIDENTIAL_ISSUE, s) && !negated(s, CONFIDENTIAL_ISSUE)) add('platform', 'confidential issue');
-    const pm = search(PLATFORM_TEXT, s);
-    if (pm) add('platform', pm[0].replace(/\s+/g, ' '));
-    if (search(MAINTAINER_TEXT, s)) add('maintainer', 'a maintainer named in it');
-    if (search(README_CONTACT, s) && search(REPORT_SENTENCE, s) && search(REPORT_WORD, s)) add('page', 'its README');
-    if (search(REPORT_WORD, s)) for (const m of finditer(SHORT_EMAIL, s)) add('email', m[1]);
-    if (search(PUBLIC_ISSUE_TEXT, s) && !negated(s, PUBLIC_ISSUE_TEXT)) publicIssues = true;
-    if (search(CONTACT_ELSEWHERE, s) && search(REPORT_WORD, s)) elsewhere = true;
-  }
-  // The links each line holds, so a paragraph looks only at its own.
+  // The links on each line, so a paragraph looks only at its own; and the lines with any link.
   const byLine = new Map<number, Link[]>();
-  for (const l of [...weak, ...others]) {
+  const linkLines = new Set<number>();
+  for (const l of p.links) for (const n of l.lines ?? []) linkLines.add(n);
+  for (const l of [...weak, ...others, ...githubPages, ...telegram]) {
     for (const n of l.lines ?? []) {
       const at = byLine.get(n);
       if (at) at.push(l);
       else byLine.set(n, [l]);
     }
   }
+  // The chat platforms it gives a handle on, anywhere: "Discord @name" here and "tell me on Discord" there.
+  const handles = new Set(finditer(CHAT_HANDLE, p.text).map((m) => m[1].toLowerCase()));
+  /** Public issues, from a sentence that says so (in English, so a "don't" before it can be read). */
+  let publicIssues = false;
+  let noAddress = false;
+  let elsewhere = false;
+  let readme = false;
+  /** A request to write on a chat platform it gives a handle on. */
+  let chatRequest = false;
   for (const b of blocks(p)) {
     const para = b.text;
     // The heading a paragraph sits under says what it's about ("Reporting a vulnerability").
     const heading = b.heading ?? '';
     const context = `${heading} ${para}`;
-    if (search(CHAT_TEXT, para) && search(REPORT_WORD, context)) add('chat', 'a private message');
-    if (search(ASKS_FOR_MAIL, para) && search(REPORT_WORD, context)) noAddress = true;
+    // Whether the paragraph is in English (or too short to tell, in an English policy), worked out when needed.
+    const english = () => langOf(b) === 'english' || (langOf(b) === 'unknown' && p.english);
+    let linked = /@/.test(para);
+    for (let n = b.start; n < b.end && !linked; n++) linked = linkLines.has(n);
+    if (b.kind !== 'code') {
+      for (const s of sentencesOf(para)) {
+        // Each pattern runs only when the sentence has a word it needs: most sentences have none.
+        const at = s.includes('@');
+        if (TRIGGER.github.test(s) && githubText(s, english()))
+          add('github', "GitHub's private vulnerability reporting");
+        if (at && search(GITHUB_HANDLE, s) && !english()) add('maintainer', 'a maintainer named in it');
+        if (at && s.includes(':') && search(MATRIX_ID, s)) add('chat', search(MATRIX_ID, s)![0]);
+        if (TRIGGER.confidential.test(s) && search(CONFIDENTIAL_ISSUE, s) && !negated(s, CONFIDENTIAL_ISSUE)) {
+          add('platform', 'confidential issue');
+        }
+        // A platform the sentence doesn't say it isn't on ("we do not have a bug bounty program"); a generic "bug
+        // bounty program" counts only with a link or an address with it.
+        for (const pm of TRIGGER.platform.test(s) ? finditer(PLATFORM_TEXT, s) : []) {
+          if (negatedNear(s, pm.index, pm[0].length) || (GENERIC_PROGRAM.test(pm[0]) && !linked)) continue;
+          add('platform', pm[0].replace(/\s+/g, ' '));
+          break;
+        }
+        if ((at || TRIGGER.maintainer.test(s)) && search(MAINTAINER_TEXT, s))
+          add('maintainer', 'a maintainer named in it');
+        const word = !!search(REPORT_WORD, s);
+        if (word && TRIGGER.readme.test(s) && search(README_CONTACT, s) && search(REPORT_SENTENCE, s)) readme = true;
+        if (word && at) for (const m of finditer(SHORT_EMAIL, s)) add('email', m[1]);
+        const pi = TRIGGER.issues.test(s) ? search(PUBLIC_ISSUE_TEXT, s) : null;
+        // Public issues count unless the sentence is about something else: "please submit a pull request" with
+        // suggestions for the policy, or an issue for questions.
+        if (pi && !negated(s, PUBLIC_ISSUE_TEXT)) {
+          const rest = s.slice(0, pi.index) + ' ' + s.slice(pi.index + pi[0].length);
+          const other = search(NOT_ABOUT_REPORTS, rest) || search(NOT_ABOUT_REPORTS, heading);
+          if (!other || search(REPORT_WORD, rest)) publicIssues = true;
+        }
+        if (word && TRIGGER.site.test(s) && search(CONTACT_ELSEWHERE, s)) elsewhere = true;
+        // Asking for an email or a message without an address; not in a table, and not when it names GitHub.
+        if (b.kind !== 'table' && TRIGGER.mail.test(s) && search(ASKS_FOR_MAIL, s) && search(REPORT_WORD, context)) {
+          if (!/\bgithub\b/i.test(s)) noAddress = true;
+        }
+        const cr = handles.size && TRIGGER.chat.test(s) ? search(CHAT_REQUEST, s) : null;
+        if (cr && handles.has(cr[1].toLowerCase())) chatRequest = true;
+      }
+    }
+    // A private message on a chat platform; not a channel, group or community, which anyone can read. The platform
+    // and the direct message can be in different sentences ("... our Discord server. Just direct message a member").
+    if (TRIGGER.chat.test(para) && search(REPORT_WORD, context)) {
+      const dm = search(CHAT_TEXT, para) || (search(CHAT_PLATFORM, para) && search(CHAT_DM, para));
+      if (dm && (!search(CHAT_PUBLIC, para) || search(CHAT_PRIVATE, para))) add('chat', 'a private message');
+    }
     // At most 50 links per paragraph: no real one has more, and each is looked for in the whole paragraph.
     const near = new Set<Link>();
     for (let n = b.start; n < b.end && near.size < 50; n++) {
       for (const l of byLine.get(n) ?? []) if (near.size < 50) near.add(l);
     }
     if (!near.size) continue;
+    const reportingHeading = !!search(REPORT_HEADING, heading);
+    for (const l of near) {
+      const name = l.text.trim();
+      const at = name ? para.indexOf(name) : -1;
+      const sentence = at < 0 ? para : (sentencesOf(para).find((x) => x.includes(name)) ?? para);
+      if (telegram.includes(l)) {
+        // A Telegram link is a person to message unless the paragraph calls it a channel, group or community.
+        if (!search(CHAT_PUBLIC, para) && (name.startsWith('@') || search(CHAT_PRIVATE, para))) add('chat', l.url);
+        continue;
+      }
+      if (githubPages.includes(l)) {
+        // The Security tab or the advisories list: a way to report when the sentence is about reporting there, not
+        // about advisories already published.
+        const linkOnly = !/[\p{L}\p{N}]/u.test(para.split(name).join(' '));
+        // In another language the words around it can't be read, so the link is enough (unless it's to the list of
+        // published advisories).
+        const published = !!search(PUBLISHED, sentence) || /[?&]state=published/i.test(l.url);
+        const reporting =
+          (search(REPORT_SENTENCE, sentence) && !published) ||
+          search(REPORTING_TEXT, name) ||
+          (linkOnly && reportingHeading) ||
+          (search(VULN_CONTEXT, heading) && !published) ||
+          (!english() && !published);
+        if (reporting) add('github', l.url, elsewhereRepo(l.url));
+        continue;
+      }
+    }
+    const plain = [...near].filter((l) => !telegram.includes(l) && !githubPages.includes(l));
     // Links on lines of their own in a section about reporting are that section's ways to report.
-    if (search(VULN_CONTEXT, heading)) {
-      const inPara = [...near].filter((l) => l.text.trim() && para.includes(l.text.trim()));
+    if (reportingHeading) {
+      const inPara = plain.filter((l) => l.text.trim() && para.includes(l.text.trim()));
       let rest = para;
       for (const l of inPara) rest = rest.split(l.text.trim()).join(' ');
       if (inPara.length && !/[\p{L}\p{N}]/u.test(rest)) for (const l of inPara) add('page', l.url);
     }
     // A link in a sentence about sending reports is where they go: "report it to [our maintainer](...)",
     // "use [this link](...) to submit your report". A link that's only mentioned there isn't.
-    for (const l of near) {
+    for (const l of plain) {
       const name = l.text.trim();
       const at = name.length >= 3 ? para.indexOf(name) : -1;
       if (at < 0) continue;
@@ -1295,22 +1902,144 @@ export function howToReport(p: Policy, repo: string): Reporting {
       if (search(LINK_NAMES_PLACE, name) || search(LINK_LEAD, para.slice(Math.max(0, at - 40), at))) {
         if (search(PROFILE_URL, l.url)) add('maintainer', name);
         else add('page', l.url);
+      } else if (search(REPORT_SENTENCE, around) && search(FORM_TEXT, around)) {
+        // "... via the submission form at the end of the [page](...)": the link is where the form is.
+        add('form', l.url);
       }
     }
   }
-  const strength = (c: Channel) => (c.kind === 'page' && !search(REPORTING_LINK, c.label) ? 1 : 0);
-  found.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || strength(a) - strength(b));
+  if (chatRequest && !found.some((c) => c.kind === 'chat')) add('chat', 'a private message');
+  // A link to GitHub's form says which repository it's in, so it comes before the feature named in words; a page
+  // whose link doesn't say it's about reports comes after those that do.
+  // A labeled chat (a link or an address) comes before "a private message".
+  const strength = (c: Channel) =>
+    c.kind === 'github'
+      ? c.label.includes('/')
+        ? 0
+        : 1
+      : c.kind === 'chat'
+        ? c.label === 'a private message'
+          ? 1
+          : 0
+        : c.kind === 'page' && !search(REPORTING_LINK, c.label)
+          ? 1
+          : 0;
+  // An address only to escalate to comes after the other ways to report (HackerOne first, its escalation after).
+  const backups = new Set(p.backup ?? []);
+  const kindRank = (c: Channel) =>
+    c.kind === 'email' && backups.has(c.label) ? ORDER.indexOf('form') + 0.5 : ORDER.indexOf(c.kind);
+  found.sort((a, b) => kindRank(a) - kindRank(b) || strength(a) - strength(b));
   const labels = new Set(found.map((c) => c.label));
   const rest = [...weak, ...others].filter((l) => !labels.has(l.url));
   const pointer = !found.length && rest.length && p.words <= 60 ? rest[0] : null;
+  const other = !found.length && foreign(p);
   return {
     channels: found,
-    publicIssues: !found.length && publicIssues,
+    // A link to the issues counts too, unless the policy is in a language whose "don't" the scan can't read.
+    publicIssues: !found.length && (publicIssues || (issues && !other)),
     noAddress: !found.length && noAddress,
     template: !!search(TEMPLATE_REPORTING, p.text),
     pointer,
     elsewhere: !found.length && elsewhere,
+    readme: !found.length && readme,
+    foreign: other,
+    local: found.length ? null : localPolicy(p, repo),
   };
+}
+
+/**
+ * Quick tests for the words a pattern needs (plain JavaScript, not Python patterns: they only decide whether to run
+ * one), so the patterns run only on sentences that could match.
+ */
+const TRIGGER = {
+  github: /securi|advisor|vulnerab|privat|github/i,
+  confidential: /confidential/i,
+  platform: /hacker|bugcrowd|intigriti|yeswehack|huntr|bount|immunefi|hackenproof|tidelift|node[ \t]+security|program/i,
+  maintainer: /address|profile|readme|commit|history|authors|maintainers/i,
+  readme: /readme/i,
+  issues: /issue|ticket|pull|discussion|bug[ \t]+report/i,
+  site: /site|page/i,
+  mail: /mail|message|contact|reach|privately/i,
+  chat: /signal|threema|session|wire|keybase|element|discord|zulip|slack|matrix|gitter|telegram|mastodon|twitter|irc|libera|wechat|qq|@/i,
+};
+
+/** What a sentence or heading is about when it isn't reports: comments on the policy, questions, contributions. */
+const NOT_ABOUT_REPORTS = re(
+  String.raw`(?i)\b(?:comments?|feedback|suggestions?|improve\w*|questions?|feature[ \t]+requests?|contribut\w*|this[ \t]+(?:policy|document|process))\b`,
+);
+
+/** "Publish" in a few other languages, for a feature's name in a sentence the scan can't otherwise read. */
+const LOOSE_PUBLISHED =
+  /veröffentlich|publica|publié|publie|publiceer|gepubliceerd|pubblica|发布|發佈|公布|опубликов|публику|yayınla|diterbitkan|publikowa/i;
+
+/** A generic bug bounty or disclosure program, rather than a platform by name. */
+const GENERIC_PROGRAM = /^(?:bug[ \t]+bounty|vulnerability[ \t]+(?:reward|disclosure))[ \t]+program/i;
+
+/**
+ * Whether a sentence (in English, or in another language when english is false) says to report through GitHub's
+ * private vulnerability reporting: a mention that isn't negated and isn't the maintainers' own step.
+ */
+function githubText(s: string, english: boolean): boolean {
+  // Not in a sentence about something else: "for questions, @ me privately on GitHub".
+  if (search(NOT_ABOUT_REPORTS, s) && !search(REPORT_WORD, s)) return false;
+  for (const m of finditer(GITHUB_REPORTING_TEXT, s)) {
+    if (negatedAt(s, m.index, m[0].length, true)) continue;
+    const before = s.slice(0, m.index);
+    if (search(ADVISORY_PASSIVE, s.slice(m.index + m[0].length)) || search(PUBLISHED, before)) continue;
+    // The maintainers as the subject ("we will create a draft advisory") make it their step, unless the reporter
+    // comes after them ("we ask that you open one").
+    const steps = finditer(MAINTAINER_STEP, before);
+    const last = steps[steps.length - 1];
+    if (last && !search(REPORTER_WORD, before.slice(last.index + last[0].length))) continue;
+    return true;
+  }
+  if (english) return false;
+  // In another language the verbs around it can't be read, so the feature's name is enough, unless it's only a
+  // gloss in brackets ("... (Security Advisory)").
+  // Nor where it says advisories are published ("veröffentlicht ein Security Advisory").
+  if (LOOSE_PUBLISHED.test(s)) return false;
+  for (const m of finditer(GITHUB_REPORTING_NAME, s)) {
+    if (negatedAt(s, m.index, m[0].length, true)) continue;
+    const glossed =
+      /[(（][ \t]*(?:github[ \t]+)?$/i.test(s.slice(0, m.index)) && /^[ \t]*[)）]/.test(s.slice(m.index + m[0].length));
+    if (!glossed) return true;
+  }
+  return false;
+}
+
+/** Whether the part of a policy about reporting (or all of it, when no heading says) isn't in English. */
+function foreign(p: Policy): boolean {
+  const langs = blocks(p)
+    .filter((b) => b.kind === 'text' && b.heading && search(REPORT_SECTION, b.heading))
+    .map(langOf);
+  if (langs.includes('english')) return false;
+  if (langs.includes('other')) return true;
+  return !p.english;
+}
+const REPORT_SECTION = re(
+  String.raw`(?i)\breport|disclos|vulnerab|\bcontact|security[ \t]+(?:issues?|bugs?|problems?)`,
+);
+
+/**
+ * The file in the same repository that a policy which says nothing itself points to: the target of a symlink, or a
+ * linked document that looks like the full policy. Null when there's none.
+ */
+function localPolicy(p: Policy, repo: string): string | null {
+  if (p.symlink) return repoPath(p.symlink, repo, p.path);
+  for (const l of p.links) {
+    const path = repoPath(l.url, repo, p.path);
+    if (!path || path.toLowerCase() === p.path.toLowerCase() || !search(DOC_FILE, path)) continue;
+    if (reportingLink(p, `${l.text} ${path}`)) return path;
+  }
+  return null;
+}
+
+/**
+ * Whether a link (its text and path) is to where a policy says how to report: about security, vulnerabilities,
+ * disclosure or reports, or, from a short policy that is little more than the link, about a policy.
+ */
+function reportingLink(p: Policy, words: string): boolean {
+  return !!search(POLICY_WORDS, words) || (p.words <= 60 && /polic/i.test(words));
 }
 
 const PLATFORM_NAMES: [RegExp, string][] = [
@@ -1332,7 +2061,9 @@ const PLATFORM_NAMES: [RegExp, string][] = [
 export function describeChannel(c: Channel): string {
   switch (c.kind) {
     case 'github':
-      return "through GitHub's private vulnerability reporting";
+      return c.repo
+        ? `through GitHub's private vulnerability reporting for ${c.repo}`
+        : "through GitHub's private vulnerability reporting";
     case 'email':
       return `by email (${c.label})`;
     case 'platform': {
@@ -1342,7 +2073,9 @@ export function describeChannel(c: Channel): string {
     case 'form':
       return `through a form (${c.label})`;
     case 'chat':
-      return c.label.startsWith('http') ? `by private message (${c.label})` : 'by private message';
+      return c.label.startsWith('http') || /^[^\s@]+@[^\s@]+$/.test(c.label)
+        ? `by private message (${c.label})`
+        : 'by private message';
     case 'maintainer':
       return 'privately to a maintainer it names';
     case 'page':
@@ -1351,37 +2084,60 @@ export function describeChannel(c: Channel): string {
 }
 
 export interface ReportVerdict {
-  status: 'pass' | 'warn' | 'info';
+  status: 'pass' | 'warn' | 'info' | 'unknown';
   /** What follows the file's name in the summary. */
   says: string;
   channels: ChannelKind[];
 }
 
+/** The file a policy led to: read, or not (with the HTTP status). */
+export type Followed = { path: string; policy: Policy; reporting: Reporting } | { path: string; status: number };
+
 /**
  * disc-security-md's verdict on a policy (and on the one file it led to, if the scan read it). A policy passes when
  * it gives a private way to report, or points to a security page or policy elsewhere. It warns only when the scan
- * could read it and found no such way; a policy in a language the scan doesn't read, or one that only links somewhere
- * the scan won't follow, gives info.
+ * could read it and found no such way; a policy in a language the scan doesn't read, one that only links somewhere
+ * the scan won't follow or couldn't read, or one that isn't text, gives info (or unknown, when a read failed).
  */
-export function reportVerdict(
-  p: Policy,
-  r: Reporting,
-  followed: { path: string; policy: Policy; reporting: Reporting } | null,
-): ReportVerdict {
+export function reportVerdict(p: Policy, r: Reporting, followed: Followed | null): ReportVerdict {
+  const v = verdictOf(p, r, followed);
+  // Past MAX_POLICY the reader looked only at the start, which matters only when it found nothing.
+  if (p.truncated && v.status !== 'pass') v.says += ' (the scan read only the first 256 KB of it)';
+  return v;
+}
+
+function verdictOf(p: Policy, r: Reporting, followed: Followed | null): ReportVerdict {
   const kinds = (x: Reporting) => [...new Set(x.channels.map((c) => c.kind))];
+  if (p.garbled && !r.channels.length) {
+    return {
+      status: 'info',
+      says: ", but it isn't text the scan can read (a binary file, or an encoding it can't tell): check that it's a text file",
+      channels: [],
+    };
+  }
   if (r.channels.length) {
     const c = r.channels[0];
     const says =
       c.kind === 'page' ? `; it points to ${c.label} for how to report` : `; it says to report ${describeChannel(c)}`;
     return { status: 'pass', says, channels: kinds(r) };
   }
-  if (followed && followed.reporting.channels.length) {
-    const c = followed.reporting.channels[0];
+  const read = followed && 'policy' in followed ? followed : null;
+  // The file it led to counts when it gives a way to report, or when it's about reporting and points somewhere: a
+  // list of other pages in a file about something else doesn't.
+  const direct = read && read.reporting.channels.some((c) => c.kind !== 'page');
+  if (read && read.reporting.channels.length && (direct || aboutReporting(read.policy))) {
+    const c = read.reporting.channels[0];
     const how = c.kind === 'page' ? `which points to ${c.label}` : `which says to report ${describeChannel(c)}`;
-    return { status: 'pass', says: `; it points to ${followed.path}, ${how}`, channels: kinds(followed.reporting) };
+    return { status: 'pass', says: `; it points to ${read.path}, ${how}`, channels: kinds(read.reporting) };
   }
-  const own = followed ? followed.reporting : r;
-  const doc = followed ? followed.policy : p;
+  if (read && read.policy.symlink) {
+    return {
+      status: 'info',
+      says: `; it's a link to ${read.path}, which is itself a link (to ${read.policy.symlink}), and the scan follows only one: check that file says how to report privately`,
+      channels: [],
+    };
+  }
+  const own = read ? read.reporting : r;
   if (own.template || r.template) {
     return {
       status: 'warn',
@@ -1389,10 +2145,11 @@ export function reportVerdict(
       channels: [],
     };
   }
-  if (!doc.english && !p.english) {
+  // It says how to report is in the README (the maintainers it lists): the scan can't tell, even beside public issues.
+  if (own.readme || r.readme) {
     return {
       status: 'info',
-      says: ", but it isn't in English and the scan found no email address or link in it to report to",
+      says: "; it says how to report is in the README, which the scan doesn't read: check the README says how to report privately",
       channels: [],
     };
   }
@@ -1406,11 +2163,28 @@ export function reportVerdict(
   if (own.publicIssues || r.publicIssues) {
     return { status: 'warn', says: ' but it only says to report in public issues, not privately', channels: [] };
   }
+  if (r.foreign && (!read || own.foreign)) {
+    return {
+      status: 'info',
+      says: ", but it isn't in English and the scan found no email address or link in it to report to",
+      channels: [],
+    };
+  }
   if (r.pointer || own.pointer) {
     const l = (r.pointer ?? own.pointer)!;
     return {
       status: 'info',
       says: `; it points to ${l.url}, which the scan doesn't follow: check that page says how to report privately`,
+      channels: [],
+    };
+  }
+  // It points to a file the scan didn't try to read (a caller that doesn't follow links).
+  if (!followed && r.local) {
+    return {
+      status: 'info',
+      says: p.symlink
+        ? `; it's a link to ${r.local}, which the scan didn't read: check that file says how to report privately`
+        : `; it points to ${r.local}, which the scan didn't read: check that file says how to report privately`,
       channels: [],
     };
   }
@@ -1428,26 +2202,75 @@ export function reportVerdict(
       channels: [],
     };
   }
+  // The file it points to couldn't be read, and the policy says nothing else.
+  if (followed && !read) {
+    const { path, status } = followed as { path: string; status: number };
+    if (status === 404) {
+      return {
+        status: 'info',
+        says: `; it points to ${path}, which isn't in the repository (HTTP 404): check the link, and that the policy says how to report privately`,
+        channels: [],
+      };
+    }
+    return {
+      status: 'unknown',
+      says: `; it points to ${path}, which the scan couldn't read (HTTP ${status})`,
+      channels: [],
+    };
+  }
   return { status: 'warn', says: ' but it does not say how to report privately', channels: [] };
+}
+
+/**
+ * Whether a file reads like a security policy rather than a page about security features: it gives a way to report
+ * (other than a link), or a heading is about reporting vulnerabilities or a security policy.
+ */
+export function looksLikePolicy(p: Policy, r: Reporting): boolean {
+  return r.channels.some((c) => c.kind !== 'page') || p.headings.some((h) => !!search(POLICY_HEADING, h.text));
+}
+const POLICY_HEADING = re(
+  String.raw`(?i)\breport(?:ing)?[ \t]+(?:a[ \t]+|an[ \t]+)?(?:security|vulnerab)|\bvulnerabilit(?:y|ies)[ \t]+(?:report|disclos)|\bsecurity[ \t]+(?:policy|contacts?|issues?|reports?)\b|\bresponsible[ \t]+disclosure\b|\bdisclosure[ \t]+policy\b`,
+);
+
+/** Whether a policy is about reporting: a heading or a sentence about reporting vulnerabilities. */
+function aboutReporting(p: Policy): boolean {
+  return p.headings.some((h) => search(REPORT_SECTION, h.text)) || !!search(VULN_CONTEXT, p.text);
 }
 
 /** Whether the phrase rx finds in a sentence is negated there ("do not open an issue"). */
 function negated(sentence: string, rx: RegExp, after = false): boolean {
   const m = search(rx, sentence);
-  if (!m) return false;
-  if (search(NEGATION, sentence.slice(0, m.index))) return true;
-  return after && !!search(NOT_AFTER, sentence.slice(m.index + m[0].length));
+  return !!m && negatedAt(sentence, m.index, m[0].length, after);
+}
+
+/** Whether the phrase at [at, at + len) in a sentence is negated: a "not" before it, or (after) "is not enabled". */
+function negatedAt(sentence: string, at: number, len: number, after = false): boolean {
+  if (search(NEGATION, sentence.slice(0, at))) return true;
+  return after && !!search(NOT_AFTER, sentence.slice(at + len));
+}
+
+/**
+ * The same, with only the clause before the phrase counting: "if you don't hear back, use HackerOne" isn't negated,
+ * "we do not have a bug bounty program" is.
+ */
+function negatedNear(sentence: string, at: number, len: number): boolean {
+  const before = sentence.slice(0, at);
+  const clause = before.slice(Math.max(before.lastIndexOf(','), before.lastIndexOf(';'), before.lastIndexOf(':')) + 1);
+  return !!search(NEGATION, clause) || !!search(NOT_AFTER, sentence.slice(at + len));
 }
 
 // --------------------------------------------------------------------------------------- following
 /** A policy that's only a path to another file: raw.githubusercontent.com serves a symlink as its target's path. */
-const SYMLINK_TEXT = re(String.raw`^[ \t]*(\.{0,2}/?(?:[\w.-]+/)*[\w.-]+\.(?:md|markdown|rst|adoc|txt))[ \t]*\n?\Z`);
+const SYMLINK_TEXT = re(
+  String.raw`^[ \t]*(\.{0,2}/?(?:[\w.-]+/)*[\w.-]+\.(?:md|markdown|rst|adoc|asciidoc|txt)|\.{0,2}/?(?:[\w.-]+/)+[\w.-]+)[ \t]*\n?\Z`,
+);
 const GITHUB_FILE = re(
   String.raw`(?i)^https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+)/(?:blob|raw)/[^/\s]+/([^\s?#]+)|^https?://raw\.githubusercontent\.com/([\w.-]+)/([\w.-]+)/[^/\s]+/([^\s?#]+)`,
 );
 const REPO_URL = re(String.raw`(?i)^https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:[/?#]|$)`);
 const DOC_FILE = re(String.raw`(?i)\.(?:md|markdown|rst|adoc|asciidoc|txt)$|(?:^|/)security$`);
-const POLICY_WORDS = re(String.raw`(?i)secur|vulnerab|disclos|polic|report|advisor|cve|incident|bounty`);
+/** Words in a link (its text or path) that make it about security reports: the only links worth following. */
+const POLICY_WORDS = re(String.raw`(?i)secur|vulnerab|disclos|report|advisor|bounty`);
 const VERSION_WORDS = re(
   String.raw`(?i)support(?:ed)?[ \t_-]*(?:versions?|tiers?|polic(?:y|ies)|matrix|life.?cycle|releases?)|\bversions?\b|\blts\b|life.?cycle|end.of.life|\beol\b`,
 );
@@ -1498,7 +2321,7 @@ export function sameRepoLink(
     const path = repoPath(l.url, repo, p.path);
     if (!path || path.toLowerCase() === p.path.toLowerCase() || !search(DOC_FILE, path)) continue;
     const words = `${l.text} ${path}`;
-    if ((needs.report && search(POLICY_WORDS, words)) || (needs.versions && search(VERSION_WORDS, words))) return path;
+    if ((needs.report && reportingLink(p, words)) || (needs.versions && search(VERSION_WORDS, words))) return path;
   }
   return null;
 }
