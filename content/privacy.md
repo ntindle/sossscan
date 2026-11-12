@@ -8,7 +8,7 @@ The site has no user accounts and no database. There are no analytics, ads or tr
 
 When you scan a repository on the home page, your browser sends the repository's name to this site. The server then reads the repository on GitHub, using a token of the site's own, never yours. Its requests go to:
 
-- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, languages, releases, open pull requests, public settings and dependents;
+- GitHub (api.github.com, raw.githubusercontent.com and github.com), for the repository's files, workflows, languages, releases, open pull requests, closed issues labeled settings-review, public settings and dependents;
 - the OpenSSF Scorecard API (api.securityscorecards.dev) and the OpenSSF Best Practices badge site (www.bestpractices.dev), which receive the repository's name;
 - Anthropic's OSS Scanner project list on GitHub, only for repositories with more than 1,000 stars or 200 dependents.
 
@@ -55,7 +55,7 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 
 The page saves a few things in your browser's storage, on your device:
 
-- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done, with any pull request the app opened for them;
+- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done and when, with any pull request the app opened for them. The page counts from that date to say when a check that repeats, such as a yearly drill, is due again;
 - in sessionStorage: reports from deep scans, and reports from the CLI when its token had admin access, which your browser deletes when you close the tab.
 
 While you sign in with GitHub or install the app, sessionStorage also holds what you asked for: the repository to deep scan, or the check whose fix you had open, with its repository and the time. The page deletes it the next time it loads, and after 15 minutes it isn't used.

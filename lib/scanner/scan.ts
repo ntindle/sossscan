@@ -52,11 +52,14 @@ import {
 } from './py.ts';
 import { releaseCacheCheck } from './release-caches.ts';
 import {
+  REVIEW_LABEL,
   copilotReview,
   customQueries,
   licenseGate,
   memorySafety,
   refreshBacklog,
+  reviewWorkflows,
+  settingsReview,
   tracedSecrets,
 } from './self-checks.ts';
 import type { Outcome } from './self-checks.ts';
@@ -956,6 +959,39 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     );
   } else {
     res('repo-tag-release-protection', 'info', 'No GitHub releases; protect tags if you publish from tags');
+  }
+
+  // ---- settings reviews (new in 0.5.3): the issues the guide's settings review workflow opens, once they're closed,
+  // and the workflows that open them, with the state GitHub's workflow list gives each (it turns off a scheduled
+  // workflow in a public repository after 60 days without activity). A refused lookup is unknown, never a failure.
+  const reviewAnswer = await http.json(`/repos/${repo}/issues?labels=${REVIEW_LABEL}&state=closed&per_page=5`);
+  if (reviewAnswer[0] === 403 && assumeAdmin && grants && !['read', 'write'].includes(grants.issues ?? '')) {
+    // The GitHub App reads no issues: it doesn't ask for that permission, so a private repository's are closed to it.
+    res(
+      'repo-settings-review',
+      'unknown',
+      "Couldn't read the repository's issues: the GitHub App doesn't have access to them. The CLI with an admin's " +
+        'token can check for a closed settings review issue',
+      null,
+      null,
+      'private',
+    );
+  } else {
+    const wfState = new Map<string, unknown>(
+      pyIter(got.workflows[0] === 200 ? get(pyOr(got.workflows[1], {}), 'workflows', []) : []).map(
+        (w): [string, unknown] => [String(get(w, 'path')), get(w, 'state')],
+      ),
+    );
+    const flows = (await attempt('the check of settings reviews', () => reviewWorkflows(readable))) ?? [];
+    const review = settingsReview(
+      reviewAnswer,
+      flows.map((p) => {
+        const state = wfState.get(p);
+        return { path: p, state: typeof state === 'string' ? state : null };
+      }),
+      { repo, issuesOff: get(meta, 'has_issues') === false },
+    );
+    if (review) outcome('repo-settings-review', review);
   }
 
   // ---- GitHub Actions

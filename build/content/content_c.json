@@ -81,7 +81,10 @@
         "label": "Creating and working with CodeQL packs",
         "url": "https://docs.github.com/en/code-security/tutorials/customize-code-scanning/create-and-work-with-codeql-packs"
       }
-    ]
+    ],
+    "check": "On the Security and quality tab, open Code scanning, then Tool status, pick your CodeQL configuration and choose \"Download list of rules used\": your own queries should be in it.",
+    "no_result": "The scan found no query pack of your own that CI runs.",
+    "habit": "Keep your queries in a pack in this repository and name it under `queries` or `packs` in your CodeQL config or workflow: the scan passes this check when CI runs it."
   },
   "sast-autofix": {
     "short": "Use Copilot Autofix to draft fixes for CodeQL alerts, and review each one.",
@@ -107,7 +110,8 @@
         "label": "Resolving code scanning alerts",
         "url": "https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-code-scanning-alerts/resolve-alerts"
       }
-    ]
+    ],
+    "check": "Search your [pull requests](https://github.com/{owner}/{repo}/pulls?q=is%3Apr+head%3Aalert-autofix) for `head:alert-autofix`, the branches Copilot Autofix opens: each one you merged should have had a review and a passing test run."
   },
   "sast-fix-backlog": {
     "short": "Work through open code scanning alerts: fix real bugs, dismiss noise with a reason.",
@@ -248,7 +252,8 @@
         "label": "OpenSSF free secure development courses",
         "url": "https://openssf.org/training/courses/"
       }
-    ]
+    ],
+    "check": "List each place your code takes outside input, such as uploads, network data, CLI arguments and config files: each should check type and length, and cap size before it buffers or decompresses."
   },
   "code-secure-defaults": {
     "short": "Ship safe defaults, and make users opt in to anything risky.",
@@ -271,7 +276,8 @@
         "label": "OpenSSF free secure development courses",
         "url": "https://openssf.org/training/courses/"
       }
-    ]
+    ],
+    "check": "Install or start the project with no configuration: it should listen only on localhost, verify TLS certificates, require authentication, and keep debug mode and code execution off."
   },
   "code-secret-handling": {
     "short": "Keep tokens and passwords out of logs, error messages, crash reports and AI prompts.",
@@ -301,7 +307,9 @@
         "label": "Masking a value in a GitHub Actions log",
         "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#masking-a-value-in-a-log"
       }
-    ]
+    ],
+    "check": "Run your tool in its most verbose mode with a fake token set, then search the output and logs for the token: it shouldn't appear.",
+    "no_result": "The scan found no workflow step that runs set -x while it uses a secret."
   },
   "code-memory-safety": {
     "short": "Write new parsers and risky parts in a memory-safe language, and harden the C you keep.",
@@ -335,7 +343,9 @@
         "label": "OpenSSF Compiler Options Hardening Guide for C and C++",
         "url": "https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html"
       }
-    ]
+    ],
+    "check": "If you ship C or C++, CI should run your tests under AddressSanitizer (`-fsanitize=address`), and new parsers should be written in a memory-safe language such as Rust or Go.",
+    "no_result": "The scan couldn't rule out C, C++ or other code without memory safety, so this applies."
   },
   "fuzz-harnesses": {
     "short": "Write fuzz targets for every parser of untrusted input, and run them in CI.",
@@ -463,7 +473,8 @@
         "label": "OpenSSF Concise Guide (negative tests)",
         "url": "https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software"
       }
-    ]
+    ],
+    "check": "For each recent security advisory, find the test that came with the fix: it should fail without the fix and pass with it."
   },
   "ai-threat-model": {
     "short": "Threat-model AI features: trace where untrusted text reaches a model that can act.",
@@ -491,7 +502,8 @@
         "label": "MCP Security Best Practices",
         "url": "https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices"
       }
-    ]
+    ],
+    "check": "Your threat model should list each input your AI features read, such as issues, documents and tool output, and the control between that text and any tool that can act."
   },
   "ai-mcp-security": {
     "short": "Inventory every agent tool, default to read-only, and gate every write behind review.",
@@ -525,7 +537,8 @@
         "label": "GitHub MCP server (read-only mode, toolsets, lockdown)",
         "url": "https://github.com/github/github-mcp-server"
       }
-    ]
+    ],
+    "check": "List each MCP server and tool your agents can call, with the token it uses: each token should allow only what the tool needs, and every write should need a person's approval."
   },
   "ai-sandboxing": {
     "short": "Run model-written code and agents in a sandbox with no secrets and limited network.",
@@ -568,7 +581,8 @@
         "label": "gVisor documentation",
         "url": "https://gvisor.dev/docs/"
       }
-    ]
+    ],
+    "check": "From inside the sandbox, try to read environment variables, reach 169.254.169.254 and write outside the work directory: each attempt should fail."
   },
   "ai-assisted-security": {
     "short": "Use AI to review code and triage alerts, but keep deterministic scanners as the gate.",
@@ -596,7 +610,10 @@
         "label": "GitHub Security Lab taskflow agent",
         "url": "https://github.com/GitHubSecurityLab/seclab-taskflow-agent"
       }
-    ]
+    ],
+    "check": "In [Settings → Rulesets](https://github.com/{owner}/{repo}/settings/rules), a ruleset for your default branch should have \"Automatically request Copilot code review\" on, or another AI reviewer should comment on your pull requests.",
+    "no_result": "The scan found no ruleset that asks Copilot to review pull requests.",
+    "habit": "Turn on \"Automatically request Copilot code review\" in a ruleset for your default branch: the scan passes this check when it finds it."
   },
   "ai-agent-instructions": {
     "short": "Tell AI coding agents your security rules in AGENTS.md, and keep CI as the backstop.",
@@ -854,7 +871,8 @@
         "label": "deptry",
         "url": "https://deptry.com/"
       }
-    ]
+    ],
+    "check": "Run your ecosystem's unused-dependency check, such as `npx knip --dependencies`, `uvx deptry .` or `cargo machete`: it should report nothing. Each direct dependency left should be one you'd still choose today."
   },
   "deps-audit-tools": {
     "short": "Audit your lockfile for known vulnerabilities in CI with your ecosystem's tool.",
@@ -933,7 +951,10 @@
         "label": "cargo-deny",
         "url": "https://embarkstudios.github.io/cargo-deny/"
       }
-    ]
+    ],
+    "check": "Export the SBOM under Insights → Dependency graph → Export SBOM and read its licenses: each should be on your allow list, and any unknown one checked by hand.",
+    "no_result": "The scan found no license check with an allow list in CI.",
+    "habit": "Give dependency review an `allow-licenses` list, or run `go-licenses check` or cargo deny with an allow list in CI: the scan passes this check when it finds one."
   },
   "deps-lockfiles": {
     "short": "Commit lockfiles, with hashes where you can, and install from them exactly in CI.",
@@ -1002,7 +1023,9 @@
         "label": "uv: locking and upgrading",
         "url": "https://docs.astral.sh/uv/concepts/projects/sync/"
       }
-    ]
+    ],
+    "check": "Run `npm outdated`, `uv tree --outdated` or your ecosystem's equivalent: the list should be short, and no dependency on it should have an open Dependabot alert.",
+    "no_result": "The scan found no Dependabot or Renovate pull request left open over 90 days."
   },
   "deps-upstream-relationships": {
     "short": "Know who maintains your key dependencies, and support them before you need them.",
@@ -1032,6 +1055,7 @@
         "label": "OpenSSF Concise Guide for Evaluating Open Source Software",
         "url": "https://best.openssf.org/Concise-Guide-for-Evaluating-Open-Source-Software"
       }
-    ]
+    ],
+    "check": "For each dependency that parses untrusted input, handles auth or crypto, or runs at install time, you should know who maintains it and how it takes security reports."
   }
 }

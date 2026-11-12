@@ -1,8 +1,9 @@
 /** The guide data (public/data/guide.json, built by build/build_guide.py) through the page's own core.js. No network. */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import { OSS_SCANNER_DEPENDENTS, OSS_SCANNER_STARS } from '@/lib/scanner/index.ts';
+import { REVIEW_LABEL, reviewWorkflows } from '@/lib/scanner/self-checks.ts';
 // The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
 import * as sg from '../public/shared/core.js';
 
@@ -152,5 +153,108 @@ describe('the support programs item (people-support-programs, no scanner check)'
     const claude = item.steps.find((s: string) => s.startsWith('Claude for Open Source'));
     expect(claude).toContain("separate from Anthropic's OSS Scanner");
     expect(guide.items.some((i: { id: string }) => i.id === 'sast-oss-scanner')).toBe(true);
+  });
+});
+
+describe('the settings review workflow (repo-settings-review)', () => {
+  const item = guide.items.find((i: { id: string }) => i.id === 'repo-settings-review');
+  const file = { path: item.new_file.path, text: item.new_file.template };
+
+  it('is valid YAML that the scan recognizes as the workflow that opens settings review issues', () => {
+    expect(file.path).toBe('.github/workflows/settings-review.yml');
+    const wf = YAML.parse(file.text);
+    expect(Object.keys(wf.on)).toEqual(['schedule', 'workflow_dispatch']);
+    expect(reviewWorkflows([file])).toEqual([file.path]);
+    // The label the scan looks for is the one the workflow puts on its issue.
+    expect(wf.jobs['open-issue'].steps[0].run).toContain(`--label ${REVIEW_LABEL}`);
+    // No placeholder to fill: the script reads the repository from the runner.
+    const ctx = sg.ctxFromReport({ repo: 'octo/demo', meta: { default_branch: 'main' } });
+    expect(sg.fill(file.text, ctx)).toBe(file.text);
+  });
+
+  it('is offered as a prefilled file on GitHub', () => {
+    const ctx = sg.ctxFromReport({ repo: 'octo/demo', meta: { default_branch: 'main' } });
+    const url = new URL(sg.newFileUrl(item, ctx)!);
+    expect(url.origin + url.pathname).toBe('https://github.com/octo/demo/new/main');
+    expect(url.searchParams.get('filename')).toBe('.github/workflows/settings-review.yml');
+    expect(url.searchParams.get('value')).toBe(file.text);
+  });
+
+  it('warns that GitHub turns off scheduled workflows in a public repository after 60 days without activity', () => {
+    expect(item.pitfalls).toContain(
+      'GitHub turns off scheduled workflows in a public repository after 60 days with no activity in it. If the ' +
+        'settings review issue stops coming, turn the workflow back on in the Actions tab.',
+    );
+  });
+});
+
+describe('the self-check copy (check, no_result, habit, recurs_months)', () => {
+  const items: Record<string, any>[] = guide.items;
+  const selfChecks = items.filter((i) => i.layer === 'manual');
+  const scanner = readdirSync(new URL('../lib/scanner/', import.meta.url))
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => readFileSync(new URL(`../lib/scanner/${f}`, import.meta.url), 'utf8'))
+    .join('\n');
+  /** The sentences in a line of copy, with its links and code spans counted as words. */
+  const sentences = (text: string) =>
+    text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/`[^`]*`/g, 'code')
+      .split(/(?<=[.!?:]["”]?)\s+(?=[A-Z"“])/)
+      .filter((s) => /[.!?]["”]?$/.test(s.trim()));
+
+  it('tells how to check every self-check, in one or two sentences', () => {
+    expect(selfChecks.length).toBe(32);
+    for (const i of selfChecks) {
+      expect([i.id, typeof i.check, i.check.length > 40]).toEqual([i.id, 'string', true]);
+      expect([i.id, sentences(i.check).length <= 2]).toEqual([i.id, true]);
+    }
+    for (const i of items.filter((x) => x.layer !== 'manual')) {
+      expect([i.id, i.check, i.no_result, i.habit, i.recurs_months]).toEqual([i.id, '', '', '', null]);
+    }
+  });
+
+  it('promises only what the scanner reads: a habit or a no-result line only where it has a detection', () => {
+    const habits = selfChecks.filter((i) => i.habit).map((i) => i.id);
+    expect(habits.sort()).toEqual([
+      'ai-assisted-security',
+      'deps-licenses',
+      'disc-coordinated-disclosure',
+      'disc-triage-sla',
+      'plan-irp-exercise',
+      'repo-settings-review',
+      'sast-custom-queries',
+    ]);
+    for (const i of selfChecks.filter((x) => x.habit || x.no_result)) {
+      expect([i.id, scanner.includes(`'${i.id}'`)]).toEqual([i.id, true]);
+    }
+  });
+
+  it('repeats only where the item itself gives a cadence, at its longer end', () => {
+    const recurring = Object.fromEntries(
+      items.filter((i) => i.recurs_months !== null).map((i) => [i.id, i.recurs_months]),
+    );
+    expect(recurring).toEqual({
+      'repo-settings-review': 6,
+      'plan-irp-exercise': 12,
+      'people-security-owner': 6,
+      'people-security-training': 12,
+    });
+    const own = (id: string) => JSON.stringify(items.find((i) => i.id === id));
+    expect(own('repo-settings-review')).toContain('Every 3 to 6 months');
+    expect(own('plan-irp-exercise')).toContain('once a year');
+    expect(own('people-security-owner')).toContain('Test it twice a year');
+    expect(own('people-security-training')).toContain('a few hours a year');
+  });
+
+  it('links only to https pages, with nothing left to fill but the repository', () => {
+    for (const i of selfChecks) {
+      for (const text of [i.check, i.no_result, i.habit]) {
+        for (const [, url] of text.matchAll(/\]\(([^)]+)\)/g))
+          expect([i.id, url]).toEqual([i.id, expect.stringMatching(/^https:\/\//)]);
+        expect([i.id, text.replace(/\{(owner|repo)\}/g, '')]).toEqual([i.id, expect.not.stringMatching(/[{}]/)]);
+        expect([i.id, text]).toEqual([i.id, expect.not.stringMatching(/[—–]/)]);
+      }
+    }
   });
 });

@@ -59,7 +59,9 @@
     "label": "PyPI: two-factor authentication",
     "url": "https://docs.pypi.org/your-account/two-factor-authentication/"
    }
-  ]
+  ],
+  "check": "Open [Password and authentication](https://github.com/settings/security) in your GitHub settings: \"Passkeys\" should list at least one passkey, and \"Two-factor methods\" shouldn't include \"SMS/Text message\". Any npm or PyPI account you publish with should have a security key too.",
+  "no_result": "No scan can see which two-factor methods you use."
  },
  "acct-least-privilege": {
   "short": "Give each person the lowest role that fits their work and remove access nobody uses.",
@@ -133,7 +135,8 @@
     "label": "PyPI: two-factor authentication",
     "url": "https://docs.pypi.org/your-account/two-factor-authentication/"
    }
-  ]
+  ],
+  "check": "On npmjs.com, each package's Settings should have \"Require two-factor authentication and disallow tokens\" under \"Publishing access\" (trusted publishing still works with it), and `npm owner ls <package>` should list only people who still maintain it. On PyPI, check the same under Your projects → Manage → Collaborators."
  },
  "repo-branch-protection": {
   "short": "Block force pushes and direct pushes to your default branch with a ruleset.",
@@ -298,7 +301,8 @@
   ],
   "pitfalls": [
    "Some settings, such as security_and_analysis, are only visible to admins. Run the review with admin rights or everything will look switched off.",
-   "A setting that's wrong in one repo is usually wrong in all of them. Fix it everywhere, or with an org configuration."
+   "A setting that's wrong in one repo is usually wrong in all of them. Fix it everywhere, or with an org configuration.",
+   "GitHub turns off scheduled workflows in a public repository after 60 days with no activity in it. If the settings review issue stops coming, turn the workflow back on in the Actions tab."
   ],
   "docs": [
    {
@@ -313,7 +317,10 @@
     "label": "Reviewing your organization's audit log",
     "url": "https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-security-settings-for-your-organization/reviewing-the-audit-log-for-your-organization"
    }
-  ]
+  ],
+  "check": "In the repository's [Settings](https://github.com/{owner}/{repo}/settings), go through Collaborators (Collaborators & teams in an org), Deploy keys, Webhooks and GitHub Apps: each entry should be a person or service you still use. Under Advanced Security, secret scanning, push protection and private vulnerability reporting should still be on.",
+  "no_result": "The scan found no closed issue labeled settings-review, and no workflow that opens one.",
+  "habit": "Add .github/workflows/settings-review.yml: it opens an issue labeled settings-review in January and July. Close the issue when the review is done, and the scan counts it for 6 months."
  },
  "secrets-scanning": {
   "short": "Turn on secret scanning so leaked keys in your code and history raise an alert.",
@@ -590,7 +597,10 @@
     "label": "Best Practices badge criteria (passing)",
     "url": "https://www.bestpractices.dev/en/criteria/0"
    }
-  ]
+  ],
+  "check": "Open the [reports in triage](https://github.com/{owner}/{repo}/security/advisories?state=triage) on the Security and quality tab: each should have an answer within the time SECURITY.md gives, and none should wait over 14 days.",
+  "no_result": "The scan found no response time in SECURITY.md.",
+  "habit": "Put a response time in SECURITY.md, such as \"We acknowledge reports within 3 business days.\" The scan quotes it."
  },
  "disc-advisories-cves": {
   "short": "Publish a GitHub security advisory for every fixed vulnerability and request a CVE.",
@@ -665,7 +675,10 @@
     "label": "Adding collaborators to an advisory",
     "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/add-collaborators"
    }
-  ]
+  ],
+  "check": "Your incident plan should keep a private list of downstream contacts. For your last advisory, the release date should have been agreed with the reporter, and the contacts who needed time to patch told first.",
+  "no_result": "The scan found no embargo or downstream notice in SECURITY.md, and no advisory that credits a reporter.",
+  "habit": "Say in SECURITY.md how you handle an embargo or tell downstream users, for example \"We notify major downstream users under embargo before the release.\" The scan quotes it."
  },
  "ai-contribution-policy": {
   "short": "Write down how you handle AI-assisted PRs and reports, and ask for evidence: tests for a PR, a proof of concept for a report.",
@@ -707,7 +720,8 @@
     "label": "Setting guidelines for contributors",
     "url": "https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors"
    }
-  ]
+  ],
+  "check": "CONTRIBUTING.md should say how you handle AI-assisted pull requests, SECURITY.md how you handle AI-written reports, and your pull request template should ask how the change was tested."
  },
  "people-security-owner": {
   "short": "Name a security lead and a backup, and give them time and access to do the job.",
@@ -733,7 +747,8 @@
     "label": "Getting notified of private reports",
     "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository"
    }
-  ]
+  ],
+  "check": "SECURITY.md or your incident plan should name a lead and a backup, each an admin or security manager who watches the repository with Watch → Custom → \"Security alerts\". Send a test message to the address you publish: someone should answer."
  },
  "people-contributor-guidance": {
   "short": "Add a short security section to CONTRIBUTING.md and back each rule with a check.",
@@ -766,7 +781,8 @@
     "label": "OpenSSF Concise Guide for Developing More Secure Software",
     "url": "https://best.openssf.org/Concise-Guide-for-Developing-More-Secure-Software"
    }
-  ]
+  ],
+  "check": "CONTRIBUTING.md should have a short security section, and each rule in it should have a check behind it, such as push protection or CODEOWNERS for .github/."
  },
  "people-user-security-docs": {
   "short": "Tell users which APIs and settings are risky, and how to use your project safely.",
@@ -793,7 +809,8 @@
     "label": "Best Practices silver criteria (security expectations)",
     "url": "https://www.bestpractices.dev/en/criteria/1"
    }
-  ]
+  ],
+  "check": "Your docs should have a page that says what the project trusts, which APIs and options are risky, and what users must handle themselves, linked from the README and SECURITY.md."
  },
  "people-security-training": {
   "short": "Spend a few hours a year on structured security training, and apply to the Fund.",
@@ -822,7 +839,9 @@
     "label": "GitHub Secure Open Source Fund",
     "url": "https://github.com/open-source/github-secure-open-source-fund"
    }
-  ]
+  ],
+  "check": "Each maintainer should have done a few hours of structured security training in the last year, such as OpenSSF's free LFD121 course or GitHub's Secure Code Game.",
+  "no_result": "The scan counts only training through GitHub's Secure Open Source Fund, and found none from the last 2 years."
  },
  "people-share-learnings": {
   "short": "Write up what you changed and why, and publish templates others can copy.",
@@ -843,7 +862,9 @@
     "label": "Get involved with OpenSSF",
     "url": "https://openssf.org/getinvolved/"
    }
-  ]
+  ],
+  "check": "Look through your blog, GitHub Discussions and talks: at least one should explain a security change you made and include something others can copy.",
+  "no_result": "The scan counts only posts by Secure Open Source Fund teams, and found none for this repository."
  },
  "people-support-programs": {
   "short": "Free money, audits and AI tools exist for maintainers. Apply to the ones your project fits.",
@@ -878,7 +899,8 @@
     "label": "Sovereign Tech Resilience: FAQ",
     "url": "https://www.sovereign.tech/programs/resilience/faq"
    }
-  ]
+  ],
+  "check": "Read each program's current criteria on its page, linked below: you should have applied to each one your project fits, or know why it doesn't."
  },
  "plan-threat-model": {
   "short": "Write down what you protect, where untrusted input enters, and what could go wrong.",
@@ -977,7 +999,10 @@
     "label": "OpenSSF vulnerability response runbook",
     "url": "https://oss-vulnerability-guide.openssf.org/runbook"
    }
-  ]
+  ],
+  "check": "Your incident plan should give the date of your last drill, or a practice advisory titled DRILL should be among your [closed advisories](https://github.com/{owner}/{repo}/security/advisories?state=closed). Either should be less than a year old.",
+  "no_result": "The scan found no dated drill in your incident plan.",
+  "habit": "Practice in a draft advisory titled DRILL and close it when you're done: Deep scan counts it for 12 months. Write the drill's date in your incident plan too, and the public scan quotes it."
  },
  "plan-security-roadmap": {
   "short": "Keep a ranked list of security tasks and finish a few every release.",
@@ -1009,7 +1034,8 @@
     "label": "OSPS Baseline",
     "url": "https://baseline.openssf.org/"
    }
-  ]
+  ],
+  "check": "Open your security label or project board: it should list tasks in ranked order, and at least one should have closed since your last release."
  },
  "plan-external-audit": {
   "short": "Have outside experts review your riskiest code once the basics are in place.",
@@ -1036,7 +1062,8 @@
     "label": "NLnet NGI Zero support services",
     "url": "https://nlnet.nl/NGI0/services/"
    }
-  ]
+  ],
+  "check": "Find your latest audit or expert review: it should cover the code you ship today, and each finding should be fixed or tracked in a draft advisory."
  },
  "plan-postmortem": {
   "short": "After an incident, publish what happened, who was affected and what you changed.",
@@ -1068,6 +1095,7 @@
     "label": "OpenSSF guide to coordinated vulnerability disclosure",
     "url": "https://oss-vulnerability-guide.openssf.org/maintainer-guide"
    }
-  ]
+  ],
+  "check": "For each past incident, SECURITY.md or the advisory should link a write-up that names the affected versions and what users should do. With no incidents so far, there's nothing to publish."
  }
 }

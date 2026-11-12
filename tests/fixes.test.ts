@@ -9,6 +9,7 @@ import {
   FixError,
   friendly,
   guideItems,
+  neededPermissions,
   pinText,
   plan,
   type Plan,
@@ -227,6 +228,45 @@ describe('plan', () => {
         'nothing.',
       'Write one by hand for what the repository uses, such as Docker images.',
     ]);
+  });
+
+  it('adds the settings review workflow: scheduled, issues: write only, gh and no third-party action', async () => {
+    const p = await planFor(new FakeGitHub(repoRoutes({ tree: ['README.md'] })), 'repo-settings-review');
+    expect([p.files.map((f) => [f.path, f.before]), p.title, p.head]).toEqual([
+      [['.github/workflows/settings-review.yml', null]],
+      'Open a settings review issue twice a year',
+      'sosf/repo-settings-review',
+    ]);
+    const { content } = p.files[0];
+    expect(content).toBe(`${guideItems()['repo-settings-review'].new_file!.template.replace(/\n+$/, '')}\n`);
+    const wf = YAML.parse(content);
+    expect(wf.on).toEqual({ schedule: [{ cron: '23 9 2 1,7 *' }], workflow_dispatch: null });
+    expect(wf.permissions).toEqual({});
+    expect(Object.keys(wf.jobs)).toEqual(['open-issue']);
+    const job = wf.jobs['open-issue'];
+    expect(job.permissions).toEqual({ issues: 'write' });
+    expect(job.steps.map((s: Record<string, unknown>) => s.uses ?? null)).toEqual([null]);
+    expect(job.steps[0].env).toEqual({ GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}' });
+    // It makes the label if it's missing, and opens no second issue while one is open.
+    const run: string = job.steps[0].run;
+    expect(run).toContain('gh label create settings-review');
+    expect(run).toContain('gh issue list --label settings-review --state open');
+    expect(run).toContain('gh issue create --title "Settings review" --label settings-review');
+    // It says that GitHub turns off scheduled workflows in a public repository after 60 days without activity.
+    expect(content).toContain('# GitHub turns off scheduled workflows in a public repository after 60 days');
+    // Adding a workflow needs the app's Workflows permission.
+    expect(neededPermissions('repo-settings-review')).toEqual({
+      contents: 'write',
+      pull_requests: 'write',
+      workflows: 'write',
+    });
+    // A repository that has the workflow, under either extension, gets no second one.
+    for (const have of ['.github/workflows/settings-review.yml', '.github/workflows/Settings-Review.yaml']) {
+      const gh = new FakeGitHub(repoRoutes({ tree: [have] }));
+      expect((await refusal(plan(gh.call, 'octo/demo', 'repo-settings-review', 'octo'))).message).toBe(
+        `octo/demo already has ${have}.`,
+      );
+    }
   });
 
   it('handles public-only, archived, existing and unknown fixes', async () => {

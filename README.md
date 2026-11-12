@@ -9,7 +9,7 @@ Scan a GitHub repository to see where it has security gaps, from your accounts t
 Type `owner/repo`, or open a link like `https://sossscan.ntindle.com/?repo=owner/repo`. There are three layers, and each one sees more:
 
 1. **Public scan**, run by the site (`GET /api/scan/{owner}/{repo}`, or `POST /api/scan` to rescan; `/openapi.json` describes both). AI agents can run it through the [MCP server](#the-mcp-server).
-   - It reads what anyone can see: files, workflows, releases, open pull requests, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
+   - It reads what anyone can see: files, workflows, releases, open pull requests, closed issues labeled `settings-review`, public settings, and the OpenSSF Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner listings. It only reads.
    - It uses the first of these tokens (`lib/scan-token.ts`): `GITHUB_TOKEN` or `GH_TOKEN`; then a token of the site's GitHub App, once it's installed on its owner's account, limited to `metadata: read`; then none (60 requests an hour). It never borrows a `gh` CLI token.
    - It refuses private repos: a private repo gets exactly the answer a missing one gets (a 404 with the code `repo_not_found` and the message `repo lookup failed: HTTP 404 (private repo? pass a token)`), never cached, so a public scan doesn't even reveal that a private repo exists.
    - Results are cached for 6 hours.
@@ -21,7 +21,8 @@ Reports are sanitized on the way in: markup characters are neutralized and only 
 The page then shows:
 - a status for every check (pass, warn, fail, unknown, and so on) and specific findings with file and line;
 - the one check to fix first: a high-severity finding, then medium, then the most impact lost, then the quickest fix;
-- the repo's tier ("grows with you"; see [Tiers](#tiers)), and the gaps along the route from your keyboard to your users, worst first.
+- the repo's tier ("grows with you"; see [Tiers](#tiers)), and the gaps along the route from your keyboard to your users, worst first;
+- for each self-check the scan didn't settle, "Check it yourself": what the scan saw, how to check, how to make the scan see it where it can, and "Mark done". For a check that repeats, such as a yearly drill, it says when it's due again, and once that date passes the check is open again. The marks stay in your browser.
 
 ## Three ways to fix
 
@@ -98,7 +99,7 @@ The admin-settings check uses only read access, including the read side of the w
   - It won't add a file the repo already has, and it points to an already-open pull request instead of opening a second one.
 - **It changes a setting only when you click.** Each settings fix is one allow-listed API call, made after a confirm dialog says what will change. There are nine: turning on private vulnerability reporting, Dependabot alerts, Dependabot security updates, secret scanning, push protection, CodeQL default setup and immutable releases; making the default `GITHUB_TOKEN` read-only; and requiring approval before first-time contributors' workflows run.
 - **It acts only for a repo admin.** Every fix and admin check first confirms, with your own sign-in, that you're an admin of that repository.
-- **It never acts on a repository on its own.** There are no webhooks and nothing scheduled: every change happens inside a request from a signed-in admin.
+- **It never acts on a repository on its own.** There are no webhooks and nothing scheduled: every change happens inside a request from a signed-in admin. The settings review workflow it can add runs in your repository's own Actions, with that workflow's own token, and the app takes no part in it.
 - **It keeps its tokens narrow.** The tokens it mints to check or fix a repository cover only that repository, and the one that opens a pull request has only the permissions that fix needs. Public scans use a token limited to `metadata: read`. Your own sign-in token is used for two reads (who you are, and whether you're an admin of the repo). It lives encrypted in your browser's cookie for 7 hours; the server stores nothing.
 
 ## Local development
@@ -218,6 +219,7 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
   - `disc-triage-sla` gives info when the policy says how soon reports get an answer (a time such as 48 hours or 3 business days, within 90 characters of a word such as acknowledge, respond or reply), and quotes that sentence. With admin access it warns when private vulnerability reports have waited over 14 days with no comment, and says how many and how old the oldest is, never which. GitHub gives an empty list to a token that can't read the reports, so an empty list counts only when the token is known to read them: an app installation with Repository security advisories, or a classic token with the `repo` scope. A fine-grained token's empty list gives no result.
   - `plan-irp-exercise` passes on a closed advisory titled DRILL (in capitals) closed in the last 12 months, and gives its date. An older one, or a sentence in the incident response plan that dates a drill or tabletop, gives info. Otherwise it stays a self-check.
   - `disc-coordinated-disclosure` gives info for what shows coordination: the policy's sentence about an embargo, advance notice, telling downstream users or coordinated disclosure ("responsible disclosure" alone doesn't count); published advisories that credit a reporter or finder; the latest releases whose notes cite the repository's own GHSA or CVE IDs; and, with admin access, how many drafts, closed and published advisories brought in collaborators (GitHub adds a private report's reporter itself, so that one doesn't count) or have a temporary private fork.
+- `repo-settings-review` passes when an issue labeled `settings-review` was closed in the last 6 months, the longer end of the guide's "every 3 to 6 months", and gives its date. The guide's `.github/workflows/settings-review.yml` opens one in January and July. A scheduled workflow whose steps name the label gives info, saying when GitHub has turned it off or issues are off, and so does an older closed issue. Pull requests with the label don't count, and nor do issues closed as not planned or as duplicates. It reads the 5 newest closed issues with the label, one request. The GitHub App doesn't ask for the Issues permission, so in a Deep scan of a private repository the check says it couldn't read them; the CLI with an admin's token can.
 - The release cache check reads the workflows, the local actions they use, and one hop into package.json scripts or Makefile targets. A release made by a script or a remote reusable workflow shows as info, because the scan can't see inside it.
 - The OSS Scanner check (public repos with over 1,000 stars or 200 dependents) finds a project by matching folder names in anthropics/oss-scanner against the repo's name and owner, then confirms the `repo:` URL in its project.yaml. A project enrolled under an unrelated folder name shows as not enrolled.
 - Peer adoption covers the 193 fund repos only, bucketed by stars.

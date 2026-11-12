@@ -4,7 +4,7 @@ import { SCRIPT_RUN } from './hops.ts';
 import type { Hops } from './hops.ts';
 import { actionName, workflowOf } from './jobs.ts';
 import type { Step, Workflow } from './jobs.ts';
-import { finditer, re, search, splitLines } from './py.ts';
+import { finditer, isDict, re, search, splitLines } from './py.ts';
 import type { Evidence, Status } from './types.ts';
 import { at, list, parseYaml } from './yaml-lite.ts';
 import type { YNode } from './yaml-lite.ts';
@@ -385,5 +385,110 @@ export function refreshBacklog(pulls: unknown, now: Date = new Date()): Outcome 
     summary: `The oldest open ${who} pull request, #${oldest.number}, is ${days} days old`,
     evidence: typeof oldest.html_url === 'string' ? [{ label: `#${oldest.number}`, url: oldest.html_url }] : [],
     details: { oldest_days: days },
+  };
+}
+
+// --------------------------------------------------------------------------------------- settings reviews
+/** The label on the issues the guide's settings review workflow opens (.github/workflows/settings-review.yml). */
+export const REVIEW_LABEL = 'settings-review';
+/** How long a closed settings review counts, in months: the longer end of the guide's "every 3 to 6 months". */
+export const REVIEW_MONTHS = 6;
+
+/** Whether a character can be part of a label name next to the one looked for (settings-review-old isn't it). */
+const inName = (c: string | undefined) =>
+  c !== undefined &&
+  (c === '-' || c === '_' || (c >= '0' && c <= '9') || (c.toLowerCase() >= 'a' && c.toLowerCase() <= 'z'));
+
+/** Whether text names the label on its own, not as part of a longer name. */
+function namesLabel(text: string): boolean {
+  for (let i = text.indexOf(REVIEW_LABEL); i >= 0; i = text.indexOf(REVIEW_LABEL, i + 1)) {
+    if (!inName(text[i - 1]) && !inName(text[i + REVIEW_LABEL.length])) return true;
+  }
+  return false;
+}
+
+/** The workflows that open settings review issues: a schedule trigger, and a step that names the label. */
+export function reviewWorkflows(workflows: { path: string; text: string }[]): string[] {
+  return workflows
+    .filter((w) => {
+      const wf = workflowOf(w);
+      return wf.triggers.includes('schedule') && wf.jobs.some((j) => j.steps.some((s) => namesLabel(s.all)));
+    })
+    .map((w) => w.path);
+}
+
+/** How GitHub lists a workflow it turned off (the workflow list's state), in words. */
+const TURNED_OFF: Record<string, string> = {
+  disabled_inactivity: 'GitHub turned it off for inactivity',
+  disabled_manually: "it's turned off",
+  disabled_fork: "it's turned off in this fork",
+};
+
+/**
+ * repo-settings-review (new in 0.5.3), from the closed issues labeled settings-review (the newest 5) and the
+ * workflows that open them: pass for one closed in the last 6 months; info for such a workflow, or for an older
+ * closed issue; unknown when GitHub didn't answer; otherwise null. Pull requests with the label don't count, nor do
+ * issues closed as not planned or as duplicates: the review didn't happen. GitHub lists no issues, but answers, for a
+ * repository with issues turned off.
+ */
+export function settingsReview(
+  [status, body]: [number, unknown, Record<string, string>],
+  workflows: { path: string; state: string | null }[],
+  { repo, issuesOff = false, now = new Date() }: { repo: string; issuesOff?: boolean; now?: Date },
+): Outcome | null {
+  if (status !== 200 && status !== 404) {
+    return {
+      status: 'unknown',
+      summary: `Could not read the closed issues labeled ${REVIEW_LABEL} (HTTP ${status})`,
+      evidence: [],
+      details: {},
+    };
+  }
+  const closed = (Array.isArray(body) ? body : [])
+    .filter(
+      (i) => isDict(i) && !isDict(i.pull_request) && i.state_reason !== 'not_planned' && i.state_reason !== 'duplicate',
+    )
+    .map((i) => ({ at: Date.parse(String(i.closed_at ?? '')), number: i.number, url: i.html_url }))
+    .filter((c) => !Number.isNaN(c.at) && c.at <= now.getTime());
+  const last = closed.length ? closed.reduce((a, b) => (b.at > a.at ? b : a)) : null;
+  const day = last ? new Date(last.at).toISOString().slice(0, 10) : null;
+  const link: Evidence[] = last && typeof last.url === 'string' ? [{ label: `#${last.number}`, url: last.url }] : [];
+  const since = new Date(now.getTime());
+  since.setUTCMonth(since.getUTCMonth() - REVIEW_MONTHS);
+  if (last && last.at >= since.getTime()) {
+    return {
+      status: 'pass',
+      summary: `An issue labeled ${REVIEW_LABEL} was closed on ${day}, within the last ${REVIEW_MONTHS} months`,
+      evidence: link,
+      details: { closed: day },
+    };
+  }
+  const [flow] = workflows;
+  if (!flow && !last) return null;
+  const parts: string[] = [];
+  const evidence: Evidence[] = [];
+  if (flow) {
+    const off = flow.state && Object.hasOwn(TURNED_OFF, flow.state) ? TURNED_OFF[flow.state] : undefined;
+    parts.push(
+      `${flow.path} opens a settings review issue on a schedule` +
+        (off ? `, but ${off}` : issuesOff ? ', but issues are turned off in this repository' : ''),
+    );
+    evidence.push({ label: flow.path, url: flow.path });
+    if (off) {
+      const file = flow.path.slice(flow.path.lastIndexOf('/') + 1);
+      evidence.push({ label: 'Turn it on in Actions', url: `https://github.com/${repo}/actions/workflows/${file}` });
+    }
+  }
+  parts.push(
+    last
+      ? `the last issue labeled ${REVIEW_LABEL} was closed on ${day}, over ${REVIEW_MONTHS} months ago`
+      : `no issue labeled ${REVIEW_LABEL} was closed in the last ${REVIEW_MONTHS} months`,
+  );
+  const summary = parts.join('; ');
+  return {
+    status: 'info',
+    summary: summary.charAt(0).toUpperCase() + summary.slice(1),
+    evidence: [...evidence, ...link],
+    details: { ...(flow ? { workflow: flow.path } : {}), ...(day ? { closed: day } : {}) },
   };
 }

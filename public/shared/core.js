@@ -224,11 +224,52 @@ export function fill(template, ctx = {}) {
     .replaceAll('{ecosystem_blocks}', ecoBlocks);
 }
 
+// ------------------------------------------------------------------------- self-checks that repeat
+// A self-check with recurs_months (a drill, a settings review) comes due again that many months after it was marked
+// done: the store's `at`. The date moves by calendar months, and stays in a short month (31 January, plus a month, is
+// the last day of February).
+export function addMonths(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d;
+}
+
+// Where a check's own mark stands: done (and not due again yet), when it was marked (at), when it's due again (due,
+// for a check that repeats) and whether that's past (overdue). A mark without a readable date stays done.
+export function doneState(item, self = {}, now = Date.now()) {
+  if (!self || !self.done) return { done: false, at: null, due: null, overdue: false };
+  const at = new Date(self.at);
+  if (!self.at || Number.isNaN(at.getTime())) return { done: true, at: null, due: null, overdue: false };
+  const months = Number.isInteger(item.recurs_months) && item.recurs_months > 0 ? item.recurs_months : 0;
+  const due = months ? addMonths(at, months) : null;
+  const overdue = !!due && now >= due.getTime();
+  return { done: !overdue, at, due, overdue };
+}
+
+export const dateText = (d) => d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+const every = (m) => (m === 12 ? 'every year' : m % 12 === 0 ? `every ${m / 12} years` : `every ${m} months`);
+
+// The words next to "Mark done": when it was done and when it's due again, that it's due again now, or how often it
+// repeats before anyone has marked it.
+export function markText(item, mark) {
+  if (mark.overdue) return `Done on ${dateText(mark.at)}. It’s due again.`;
+  if (mark.done && mark.at) return mark.due ? `Done on ${dateText(mark.at)}, due again ${dateText(mark.due)}.` : `Done on ${dateText(mark.at)}.`;
+  if (!mark.done && Number.isInteger(item.recurs_months) && item.recurs_months > 0) return `Repeats ${every(item.recurs_months)}.`;
+  return '';
+}
+
 // ------------------------------------------------------------------------------ status of an item
-export function itemStatus(item, report, repo) {
+// now is for the due date of a self-check that repeats: once it's past, the check is open again, as before anyone
+// marked it, and its summary says when it was done.
+export function itemStatus(item, report, repo, now = Date.now()) {
   const self = store.get(repo || (report && report.repo), item.id);
   const r = report && report.results ? report.results[item.id] : null;
-  if (self.done && (!r || r.status !== 'pass')) return { status: 'done', summary: 'You marked this done', evidence: [], layer: 'self', source: 'self', self };
+  const mark = doneState(item, self, now);
+  if (mark.done && (!r || r.status !== 'pass')) return { status: 'done', summary: 'You marked this done', evidence: [], layer: 'self', source: 'self', self };
+  if (mark.overdue && (!r || r.status !== 'pass')) return { status: 'manual', summary: markText(item, mark), evidence: [], layer: 'manual', source: 'self', due: true, self };
   if (r) return { ...r, source: 'scan', self };
   if (item.layer === 'manual') return { status: 'manual', summary: "The scan can't settle this. Tick it off when it's done.", evidence: [], layer: 'manual', source: 'none', self };
   if (!report) return { status: 'todo', summary: 'Scan your repo to check this', evidence: [], layer: item.layer, source: 'none', self };
@@ -589,13 +630,15 @@ function fixItem(r, n, { ctx, guide, tier }) {
 }
 
 // ------------------------------------------------------------------------------- progress store
+// One record per check and repository, in localStorage only: {done, at, pr}. at is when it was last marked done or
+// not done, which a self-check that repeats counts from; recording a pull request leaves it as it was.
 export const store = {
   _key(repo) { return `sg:progress:${(repo || '_').toLowerCase()}`; },
   all(repo) { try { return JSON.parse(safeGet(localStorage, this._key(repo)) || '{}'); } catch { return {}; } },
   get(repo, id) { return this.all(repo)[id] || {}; },
   set(repo, id, patch) {
     const all = this.all(repo);
-    all[id] = { ...(all[id] || {}), ...patch, at: new Date().toISOString() };
+    all[id] = { ...(all[id] || {}), ...patch, ...('done' in patch ? { at: new Date().toISOString() } : {}) };
     safeSet(localStorage, this._key(repo), JSON.stringify(all));
     document.dispatchEvent(new CustomEvent('sg:progress', { detail: { repo, id, value: all[id] } }));
     return all[id];
@@ -768,6 +811,70 @@ export function codeBlock(code, lang = '') {
 
 const TIMING = { 'during-program': 'added during the program', 'after-program': 'added after the program', 'before-program': 'already had it' };
 
+// ---------------------------------------------------------------------------------- check it yourself
+// What a self-check's "Check it yourself" block holds, or null: for a check of layer manual that the scan didn't pass
+// (or find not applicable). saw is what the scan saw: its own result (kind scan, with its status, summary and
+// evidence); otherwise, for a check the scan can sometimes settle, what it didn't find (kind none, the guide's
+// no_result), or for one it never reads, that it doesn't check it (kind unseen). Before any scan, a check the scan can
+// settle has no saw. check and habit are the guide's lines for how to check and how to make it count, and mark is
+// doneState() of the check's own mark.
+export const UNSEEN = 'The scan doesn’t check this.';
+export function selfCheckView(item, report, repo, now = Date.now()) {
+  if (!item || item.layer !== 'manual') return null;
+  const r = report && report.results ? report.results[item.id] : null;
+  if (r && (r.status === 'pass' || r.status === 'na')) return null;
+  let saw = null;
+  if (r) saw = { kind: 'scan', status: r.status, text: r.summary || '', evidence: r.evidence || [] };
+  else if (!item.no_result) saw = { kind: 'unseen', text: UNSEEN, evidence: [] };
+  else if (report) saw = { kind: 'none', text: item.no_result, evidence: [] };
+  const mark = doneState(item, store.get(repo || (report && report.repo), item.id), now);
+  // An info result is the scan finding the habit's trace ("Looks done: …"), so the advice to start it would repeat it.
+  const habit = saw && saw.kind === 'scan' && saw.status === 'info' ? '' : item.habit || '';
+  return { saw, check: item.check || '', habit, mark, when: markText(item, mark) };
+}
+
+// A line of the guide's copy in parts: text, `code`, and [links](https://…). A link that needs the repository
+// ({owner}, {repo}) is filled in for it, and stays text until the page knows which repository it is.
+const RICH = /\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)|`([^`\n]+)`/g;
+const NEEDS_REPO = /\{(?:owner|repo|full|branch)\}/;
+export function richParts(text, ctx = {}) {
+  const s = String(text || '');
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(RICH)) {
+    if (m.index > last) out.push({ text: s.slice(last, m.index) });
+    if (m[3] !== undefined) out.push({ code: m[3] });
+    else if (NEEDS_REPO.test(m[2]) && !ctx.owner) out.push({ text: m[1] });
+    else out.push({ text: m[1], url: fill(m[2], ctx) });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ text: s.slice(last) });
+  return out;
+}
+const richText = (text, ctx) => richParts(text, ctx).map((p) => (p.code !== undefined ? el('code', { translate: 'no' }, p.code)
+  : p.url ? el('a', { href: p.url, target: '_blank', rel: 'noopener' }, p.text) : p.text));
+
+// The block itself: what the scan saw, how to check, how to make it count, then Mark done, with when it was done and
+// when it's due again. The checkbox is ticked only while the mark holds: once a check is due again, ticking it marks
+// it done today.
+function selfCheckBlock(item, view, { ctx, onChange }) {
+  const id = `sg-self-${Math.random().toString(36).slice(2, 9)}`;
+  const box = el('section', { class: 'sg-self', 'aria-labelledby': id }, el('h4', { class: 'sg-self__title', id }, 'Check it yourself'));
+  const { saw } = view;
+  if (saw) {
+    const tone = saw.kind === 'scan' ? `sg-tone--${(STATUS[saw.status] || STATUS.unknown).tone}` : 'sg-self__none';
+    box.append(el('p', { class: `sg-self__saw ${tone}` }, saw.text,
+      ...saw.evidence.map((e) => [' ', el('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.label)])));
+  }
+  if (view.check) box.append(el('p', {}, el('strong', {}, 'How to check:'), ' ', ...richText(view.check, ctx)));
+  if (view.habit) box.append(el('p', {}, el('strong', {}, 'Make it count:'), ' ', ...richText(view.habit, ctx)));
+  const input = el('input', { type: 'checkbox', checked: view.mark.done ? true : null, 'aria-describedby': view.when ? `${id}-when` : null,
+    onchange: (e) => { store.set(ctx.full, item.id, { done: e.target.checked }); onChange(item); } });
+  box.append(el('div', { class: 'sg-self__mark' }, el('label', { class: 'sg-check' }, input, ' Mark done'),
+    view.when ? el('span', { class: `sg-self__when${view.mark.overdue ? ' is-due' : ''}`, id: `${id}-when` }, view.when) : null));
+  return box;
+}
+
 // --------------------------------------------------------------------------- remediation panel
 // Full "how do I fix this" panel for one item. opts: {guide, report, ctx, onChange, compact}
 export function renderRemediation(item, opts = {}) {
@@ -785,7 +892,10 @@ export function renderRemediation(item, opts = {}) {
       el('span', { class: 'sg-chip' }, `Impact: ${IMPACT_LABEL[item.impact]}`),
       el('span', { class: 'sg-chip' }, `Checked by: ${CHECKED_BY[item.layer]}`))));
 
-  if (st.summary) root.append(el('p', { class: `sg-remedy__status sg-tone--${STATUS[st.status].tone}` }, st.summary,
+  // A self-check the scan hasn't passed gets "Check it yourself" in place of the status line, with its Mark done.
+  const own = selfCheckView(item, report, ctx.full);
+  if (own) root.append(selfCheckBlock(item, own, { ctx, onChange }));
+  else if (st.summary) root.append(el('p', { class: `sg-remedy__status sg-tone--${STATUS[st.status].tone}` }, st.summary,
     ...(st.evidence || []).map((e) => [' ', el('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.label)])));
   if (item.why) root.append(el('p', { class: 'sg-remedy__why' }, item.why));
 
@@ -806,9 +916,10 @@ export function renderRemediation(item, opts = {}) {
   const nf = newFileUrl(item, ctx);
   if (nf) actions.append(el('a', { class: 'sg-btn sg-btn--primary', href: nf, target: '_blank', rel: 'noopener', title: 'Opens GitHub with the file prefilled. Review it, then commit to a branch and open a PR.' }, `Create ${item.new_file.path} on GitHub ↗`));
   if (ctx.owner) actions.append(el('a', { class: 'sg-btn', href: issueForItem(item, ctx, report), target: '_blank', rel: 'noopener' }, 'Open a tracking issue ↗'));
-  const manualToggle = el('label', { class: 'sg-check' }, el('input', { type: 'checkbox', checked: st.self.done ? true : null,
-    onchange: (e) => { store.set(ctx.full, item.id, { done: e.target.checked }); onChange(item); } }), ' Mark done');
-  actions.append(manualToggle);
+  if (!own) {
+    actions.append(el('label', { class: 'sg-check' }, el('input', { type: 'checkbox', checked: st.self.done ? true : null,
+      onchange: (e) => { store.set(ctx.full, item.id, { done: e.target.checked }); onChange(item); } }), ' Mark done'));
+  }
   root.append(actions);
   const prompt = promptBlock(item, { report, ctx });
   if (prompt) root.append(prompt);

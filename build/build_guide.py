@@ -4,7 +4,8 @@
 
 Inputs:
   build/skeleton.json        (this repo) structure: tiers, layers, stages, attacks, items (links, cli, templates...)
-  build/content/*.json       (this repo) prose per item: short, why, steps, snippets, pitfalls, docs (optional)
+  build/content/*.json       (this repo) prose per item: short, why, steps, snippets, pitfalls, docs, and for a
+                             self-check check, no_result and habit (all optional)
   research data, which is private, in $SOSF_RESEARCH_DIR (default: ../sossscan-research, next to this repo):
     data/changes/{taxonomy,checklist,changes,team_profiles,repo_scan}.json
     data/changes/fix_commits.jsonl
@@ -403,6 +404,7 @@ for iid, s in skel["items"].items():
         "attacks": s.get("attacks", []),
         "week": s.get("week"),
         "tags": s.get("tags", []),
+        "recurs_months": s.get("recurs_months"),
         "short": c.get("short") or tx.get("label"),
         "why": c.get("why", ""),
         "steps": c.get("steps", []),
@@ -412,6 +414,9 @@ for iid, s in skel["items"].items():
         ],
         "pitfalls": c.get("pitfalls", []),
         "docs": c.get("docs", []),
+        "check": c.get("check", ""),
+        "no_result": c.get("no_result", ""),
+        "habit": c.get("habit", ""),
         "links": s.get("links", []),
         "cli": s.get("cli"),
         "app_fix": s.get("app_fix", []),

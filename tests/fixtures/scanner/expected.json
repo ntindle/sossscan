@@ -69267,7 +69267,7 @@
         },
         "tier": { "id": 5, "name": "Widely used" },
         "summary": { "pass": 25, "warn": 6, "fail": 3, "info": 6, "unknown": 8, "na": 0 },
-        "api_calls": 41
+        "api_calls": 42
       },
       "calls": [
         ["https://api.github.com/repos/Octo/Demo", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
@@ -69297,6 +69297,12 @@
         ],
         [
           "https://api.github.com/repos/octo/demo/git/trees/main?recursive=1",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/repos/octo/demo/issues?labels=settings-review&state=closed&per_page=5",
           "application/vnd.github+json",
           "Bearer test-token",
           "2022-11-28"
@@ -69449,7 +69455,7 @@
       ],
       "logs": [
         "scanning octo/demo (public layer)",
-        "done: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (41 requests)"
+        "done: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (42 requests)"
       ]
     },
     "no-token": {
@@ -69477,6 +69483,12 @@
         ["https://api.github.com/repos/octo/demo/branches/main", "application/vnd.github+json", null, "2022-11-28"],
         [
           "https://api.github.com/repos/octo/demo/git/trees/main?recursive=1",
+          "application/vnd.github+json",
+          null,
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/repos/octo/demo/issues?labels=settings-review&state=closed&per_page=5",
           "application/vnd.github+json",
           null,
           "2022-11-28"
@@ -69559,7 +69571,7 @@
       ],
       "logs": [
         "scanning octo/demo (public layer)",
-        "done: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (41 requests)"
+        "done: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (42 requests)"
       ]
     },
     "admin-org": {
@@ -70146,7 +70158,7 @@
         "scorecard": null,
         "tier": { "id": 0, "name": "Just you" },
         "summary": { "pass": 14, "warn": 6, "fail": 15, "info": 12, "unknown": 3, "na": 3 },
-        "api_calls": 42
+        "api_calls": 43
       },
       "calls": [
         ["https://api.github.com/orgs/acme", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
@@ -70308,6 +70320,12 @@
           "2022-11-28"
         ],
         [
+          "https://api.github.com/repos/acme/secret/issues?labels=settings-review&state=closed&per_page=5",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
           "https://api.github.com/repos/acme/secret/languages",
           "application/vnd.github+json",
           "Bearer test-token",
@@ -70389,7 +70407,7 @@
       ],
       "logs": [
         "scanning acme/secret (admin token: private layer)",
-        "done: {'pass': 14, 'warn': 6, 'fail': 15, 'info': 12, 'unknown': 3, 'na': 3} (42 requests)"
+        "done: {'pass': 14, 'warn': 6, 'fail': 15, 'info': 12, 'unknown': 3, 'na': 3} (43 requests)"
       ]
     },
     "admin-org-public-layer": {
@@ -70905,7 +70923,7 @@
         "scorecard": null,
         "tier": { "id": 0, "name": "Just you" },
         "summary": { "pass": 6, "warn": 4, "fail": 15, "info": 9, "unknown": 9, "na": 3 },
-        "api_calls": 20
+        "api_calls": 21
       },
       "calls": [
         ["https://api.github.com/repos/acme/secret", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
@@ -70970,6 +70988,12 @@
           "2022-11-28"
         ],
         [
+          "https://api.github.com/repos/acme/secret/issues?labels=settings-review&state=closed&per_page=5",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
           "https://api.github.com/repos/acme/secret/languages",
           "application/vnd.github+json",
           "Bearer test-token",
@@ -71021,7 +71045,7 @@
       ],
       "logs": [
         "scanning acme/secret (public layer)",
-        "done: {'pass': 6, 'warn': 4, 'fail': 15, 'info': 9, 'unknown': 9, 'na': 3} (20 requests)"
+        "done: {'pass': 6, 'warn': 4, 'fail': 15, 'info': 9, 'unknown': 9, 'na': 3} (21 requests)"
       ]
     },
     "assume-admin": {
@@ -71421,7 +71445,7 @@
         "scorecard": { "score": 10, "date": "", "checks": {}, "reasons": {} },
         "tier": { "id": 1, "name": "First fans" },
         "summary": { "pass": 8, "warn": 2, "fail": 12, "info": 7, "unknown": 5, "na": 16 },
-        "api_calls": 35
+        "api_calls": 36
       },
       "calls": [
         ["https://api.github.com/repos/solo/.github", "application/vnd.github+json", "Bearer app-token", "2022-11-28"],
@@ -71512,6 +71536,12 @@
         ],
         [
           "https://api.github.com/repos/solo/tool/immutable-releases",
+          "application/vnd.github+json",
+          "Bearer app-token",
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/repos/solo/tool/issues?labels=settings-review&state=closed&per_page=5",
           "application/vnd.github+json",
           "Bearer app-token",
           "2022-11-28"
@@ -71612,7 +71642,7 @@
       ],
       "logs": [
         "scanning solo/tool (admin token: private layer)",
-        "done: {'pass': 8, 'warn': 2, 'fail': 12, 'info': 7, 'unknown': 5, 'na': 16} (35 requests)"
+        "done: {'pass': 8, 'warn': 2, 'fail': 12, 'info': 7, 'unknown': 5, 'na': 16} (36 requests)"
       ]
     },
     "empty-repo": {
@@ -71971,7 +72001,7 @@
         "scorecard": null,
         "tier": { "id": 0, "name": "Just you" },
         "summary": { "pass": 0, "warn": 0, "fail": 10, "info": 9, "unknown": 9, "na": 18 },
-        "api_calls": 17
+        "api_calls": 18
       },
       "calls": [
         ["https://api.github.com/repos/octo/.github", "application/vnd.github+json", "Bearer test-token", "2022-11-28"],
@@ -71990,6 +72020,12 @@
         ],
         [
           "https://api.github.com/repos/octo/empty/git/trees/main?recursive=1",
+          "application/vnd.github+json",
+          "Bearer test-token",
+          "2022-11-28"
+        ],
+        [
+          "https://api.github.com/repos/octo/empty/issues?labels=settings-review&state=closed&per_page=5",
           "application/vnd.github+json",
           "Bearer test-token",
           "2022-11-28"
@@ -72054,7 +72090,7 @@
       ],
       "logs": [
         "scanning octo/empty (public layer)",
-        "done: {'pass': 0, 'warn': 0, 'fail': 10, 'info': 9, 'unknown': 9, 'na': 18} (17 requests)"
+        "done: {'pass': 0, 'warn': 0, 'fail': 10, 'info': 9, 'unknown': 9, 'na': 18} (18 requests)"
       ]
     },
     "refused": {
@@ -72132,8 +72168,8 @@
         "argv": ["Octo/Demo"],
         "code": 0,
         "stdout": "[FAIL] ci-pin-actions                   4/32 action references pinned to a full commit SHA\n[FAIL] ci-dangerous-triggers            2 privileged workflow(s) handle untrusted PR code or artifacts\n[FAIL] ci-script-injection              12 untrusted ${{ }} expression(s) inside run steps\n[WARN] repo-codeowners                  .github/CODEOWNERS found, but it does not cover .github/workflows\n[WARN] ci-token-permissions             3 of 8 workflows have no permissions block, so they get the repository's default token access\n[WARN] ci-persist-credentials           6/14 checkout steps set persist-credentials: false\n[WARN] deps-update-automation           Dependabot updates: npm, pip (github-actions missing)\n[WARN] deps-lockfiles                   Lockfiles: go no, npm yes, pypi yes\n[WARN] posture-best-practices-badge     OpenSSF Best Practices badge: in_progress\n[ ?? ] ci-untrusted-artifacts-caches    Could not read .github/workflows/missing.yml (HTTP 404)\n[ ?? ] secrets-push-protection          Push protection status needs the private scan\n[ ?? ] deps-alerts                      Dependabot alerts: needs the private scan (admin token) or the GitHub App\n[ ?? ] ci-fork-pr-approval              Fork PR approval policy: needs the private scan (admin token) or the GitHub App\n[ ?? ] acct-2fa-required                Org 2FA requirement: needs the private scan (admin token) or the GitHub App\n[ ?? ] sast-fix-backlog                 Open code scanning alerts: needs the private scan (admin token) or the GitHub App\n[ ?? ] secrets-rotate-leaked            Open secret scanning alerts: needs the private scan (admin token) or the GitHub App\n[ ?? ] rel-gated-release                Environment protection rules: needs the private scan (admin token) or the GitHub App\n[PASS] disc-security-md                 SECURITY.md found; it says to report through GitHub's private vulnerability reporting\n[PASS] disc-private-reporting           Private vulnerability reporting is on\n[PASS] plan-threat-model                docs/threat-model.md found\n[PASS] plan-irp                         docs/INCIDENT_RESPONSE.md found\n[PASS] repo-branch-protection           Default branch is protected; ruleset rules: non_fast_forward, pull_request, required_signatures\n[PASS] repo-signed-commits              Signed commits are required\n[PASS] repo-tag-release-protection      1 tag ruleset(s)\n[PASS] ci-workflow-audit                Workflows are linted in CI (zizmor)\n[PASS] ci-runner-hardening              harden-runner restricts runner egress\n[PASS] sast-codeql                      CodeQL workflow: .github/workflows/codeql.yml\n[PASS] sast-codeql-actions              CodeQL scans the 'actions' language (your workflows)\n[PASS] secrets-scanning                 gitleaks/trufflehog runs in CI\n[PASS] deps-cooldown                    A dependency cooldown is configured\n[PASS] deps-no-install-scripts          .npmrc sets ignore-scripts=true\n[PASS] deps-review                      Dependency review runs on PRs\n[PASS] deps-audit-tools                 Dependency audit in CI\n[PASS] rel-sbom                         SBOMs generated for releases\n[PASS] rel-provenance                   Build provenance attestations\n[PASS] rel-signing                      Releases are signed\n[PASS] rel-trusted-publishing           Registry publishing uses OIDC (trusted publishing)\n[PASS] fuzz-harnesses                   Fuzz targets in repo (e.g. fuzz)\n[PASS] fuzz-continuous                  OSS-Fuzz: demo; ClusterFuzzLite; fuzzing in CI\n[PASS] sast-oss-scanner                 Enrolled in Anthropic's OSS Scanner (projects/demo-core)\n[PASS] posture-scorecard                OpenSSF Scorecard runs in CI (score 7.3)\n[PASS] ai-agent-instructions            AGENTS.md includes security rules\n[info] disc-advisories-cves             2 published security advisories, newest 2026-10-01\n[info] disc-triage-sla                  Looks done: SECURITY.md says \"We aim to reply within three working days and to publish an advisory once a fix is released.\"\n[info] plan-irp-exercise                docs/INCIDENT_RESPONSE.md mentions a drill: \"We ran a tabletop drill of a leaked publish token on 2026-03-04 and updated the contact list the same day.\"\n[info] ci-oidc                          Workflows use OIDC (id-token: write)\n[info] sast-other-tools                 Other SAST in CI: Semgrep\n[info] rel-security-support             SECURITY.md doesn't say which versions get security fixes\n\n16 high-severity findings:\n  - permissions: write-all (.github/workflows/prt.yml:None)\n  - allow-unsafe-pr-checkout: true in a privileged workflow (.github/workflows/prt.yml:None)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:10)\n  - pull_request_target checks out the PR head (classic \"pwn request\") (.github/workflows/prt.yml:17)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:17)\n  - Script injection risk: ${{ github.event.issue.body }} in a run step (.github/workflows/injection.yml:21)\n  - Script injection risk: ${{github.event.comment.body}} in a run step (.github/workflows/injection.yml:23)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/injection.yml:33)\n  - Script injection risk: ${{ github.event.pull_request.head.ref }} in a run step (.github/workflows/injection.yml:34)\n  - Script injection risk: ${{ github.event.commits[0].message }} in a run step (.github/workflows/injection.yml:38)\n  - Script injection risk: ${{ github.event.head_commit.author.email }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.workflow_run.head_branch }} in a run step (.github/workflows/injection.yml:39)\n  - Script injection risk: ${{ github.event.discussion.title}} in a run step (.github/workflows/injection.yml:40)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:8)\n  - Script injection risk: ${{ github.event.issue.title }} in a run step (.github/workflows/unicode.yml:11)\n\nReport written to <OUT>. To see the fixes, open the guide site and use \"Load the report\" under Private scan; the report stays in your browser.\n",
-        "stderr": "scanning octo/demo (public layer)\ndone: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (41 requests)\nwarning: Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it\n",
-        "calls": 41,
+        "stderr": "scanning octo/demo (public layer)\ndone: {'pass': 25, 'warn': 6, 'fail': 3, 'info': 6, 'unknown': 8, 'na': 0} (42 requests)\nwarning: Could not read .github/workflows/missing.yml (HTTP 404), so the checks skipped it\n",
+        "calls": 42,
         "report_same_as": "public"
       },
       "public-quiet": {
@@ -72141,7 +72177,7 @@
         "code": 0,
         "stdout": "",
         "stderr": "",
-        "calls": 41,
+        "calls": 42,
         "report_same_as": "public"
       },
       "not-found": {
