@@ -3744,7 +3744,11 @@ describe('security policies in any format', () => {
     ]);
     expect(mentions(p, /embargo/i).map((m) => m.heading)).toEqual(['Embargo']);
     expect(p.links).toEqual([
-      { text: 'the 2025 incident review', url: 'https://github.com/octo/tiny/blob/main/docs/incident-2025.md' },
+      {
+        text: 'the 2025 incident review',
+        url: 'https://github.com/octo/tiny/blob/main/docs/incident-2025.md',
+        lines: [12],
+      },
     ]);
     // The one file in the same repository a check may read next.
     expect(

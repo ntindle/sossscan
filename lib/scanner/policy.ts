@@ -11,6 +11,8 @@ export type Format = 'markdown' | 'rst' | 'asciidoc';
 export interface Link {
   text: string;
   url: string;
+  /** The lines it's on (indexes into Policy.lines). */
+  lines?: number[];
 }
 
 export interface Heading {
@@ -54,6 +56,8 @@ export interface Policy {
   english: boolean;
   /** The lines that start a list item, which end the sentence before them. */
   items: number[];
+  /** The file was longer than MAX_POLICY, and the reader looked only at its start. */
+  truncated: boolean;
 }
 
 // ------------------------------------------------------------------------------------------- markup
@@ -62,7 +66,7 @@ const HTML_COMMENT = re(String.raw`(?s)<!--.*?(?:-->|\Z)`);
 const ADOC_BLOCK_COMMENT = re(String.raw`(?ms)^////+[ \t]*\n.*?(?:^////+[ \t]*$|\Z)`);
 const ADOC_LINE_COMMENT = re(String.raw`(?m)^//(?!/)[^\n]*$`);
 /** An AsciiDoc attribute (:repo-url: https://...) and a reference to one ({repo-url}). */
-const ADOC_ATTR_DEF = re(String.raw`(?m)^:([\w-]+):[ \t]+(\S[^\n]*?)[ \t]*$`);
+const ADOC_ATTR_DEF = re(String.raw`(?m)^:([\w-]+):[ \t]+(\S[^\n]*)$`);
 const ADOC_ATTR_REF = re(String.raw`\{([\w-]+)\}`);
 /** An RST comment: two dots that don't start a directive, a link target, a substitution or a footnote. */
 const RST_COMMENT = re(String.raw`^\.\.(?:[ \t]+(?![_|\[])(?!\S+::)[^\n]*)?$`);
@@ -71,18 +75,21 @@ const RST_SNIFF = re(
 );
 const ADOC_SNIFF = re(String.raw`(?m)^=[ \t]+\S|^\|===[ \t]*$|^\[(?:cols|options|source|NOTE|WARNING)\b`);
 const FENCE = re(String.raw`^ {0,3}(` + '```' + String.raw`+|~~~+)`);
-const ATX = re(String.raw`^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`);
+// The patterns here run on text anyone can write, so none may take more than linear time: no two quantifiers that can
+// match the same characters side by side, and no lazy match followed by optional spaces before the end of the line.
+// Trailing spaces and closing marks are trimmed in code instead.
+const ATX = re(String.raw`^ {0,3}(#{1,6})(?:[ \t]+(.*))?$`);
 const SETEXT = re(String.raw`^ {0,3}(=+|-+)[ \t]*$`);
 const RST_LINE = re(String.raw`^([=\-~^"'` + '`' + String.raw`#*+.:_<>!])\1{2,}[ \t]*$`);
-const ADOC_TITLE = re(String.raw`^(={1,6})[ \t]+(\S.*?)[ \t]*$`);
-const BOLD_LINE = re(String.raw`^[ \t]*(?:\*\*|__)(?!\s)([^*_\n]{2,90}?)(?:\*\*|__)[ \t]*:?[ \t]*$`);
-const HTML_HEADING = re(String.raw`(?is)<h([1-6])\b[^>]*>(.*?)</h[1-6][ \t]*>`);
+const ADOC_TITLE = re(String.raw`^(={1,6})[ \t]+(\S.*)$`);
+const BOLD_LINE = re(String.raw`^[ \t]*(?:\*\*|__)(?!\s)([^*_\n]{2,90}?)(?:\*\*|__)[ \t]*(?::[ \t]*)?$`);
+const HTML_HEADING_OPEN = re(String.raw`(?i)<h([1-6])\b[^<>]*>`);
+const HTML_HEADING_CLOSE = re(String.raw`(?i)</h[1-6][ \t]*>`);
 /** A short line that ends with a colon, or one in capitals, which plain-text policies use as headings. */
 const PLAIN_HEADING = re(String.raw`^[ \t]*(?:[A-Z][^\n.!?]{1,58}:|[A-Z][A-Z0-9 &/'-]{3,58})[ \t]*$`);
 const LIST_ITEM = re(String.raw`^[ \t]*(?:[-*+]|\d+[.)])[ \t]`);
-const HEADING_ATTRS = re(String.raw`[ \t]*\{#[\w-]+\}[ \t]*$`);
 
-const MD_IMAGE = re(String.raw`!\[[^\]\n]*\]\([^)\n]*\)`);
+const MD_IMAGE = re(String.raw`!\[[^\[\]\n]*\]\([^()\n]*\)`);
 const MD_LINK = re(
   String.raw`\[((?:[^\[\]\n]|\[[^\[\]\n]*\])*)\]\(\s*<?([^\s<>()]+(?:\([^\s()]*\)[^\s<>()]*)*)>?(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*\)`,
 );
@@ -95,33 +102,42 @@ const ANGLE_EMAIL = re(String.raw`<([\w.%+-]+@[\w-]+(?:\.[\w-]+)+)>`);
 const BARE_URL = re(
   String.raw`\bhttps?://[^\s<>"'` + '`' + String.raw`\]\[(){}|\\^]+(?:\([^\s<>"'()]*\)[^\s<>"'()\]\[]*)*`,
 );
-const HTML_A = re(String.raw`(?is)<a\b[^>]*?\bhref[ \t]*=[ \t]*["']([^"']+)["'][^>]*>((?:(?!<a\b).)*?)</a[ \t]*>`);
+/** An HTML link: the <a> tag's attributes (where HREF finds the target) and its content. */
+const HTML_A = re(String.raw`(?is)<a\b([^<>]*)>((?:(?!<a\b).)*?)</a[ \t]*>`);
+const HREF = re(String.raw`(?i)\bhref[ \t]*=[ \t]*["']([^"'<>]+)["']`);
 /** An HTML tag. <at> and <dot> aren't: they spell out an email address. */
-const HTML_TAG = re(String.raw`(?s)</?(?!(?:at|dot|AT|DOT)>)[A-Za-z][\w:-]*(?:\s+[^<>]*)?/?>`);
+const HTML_TAG = re(String.raw`(?s)</?(?!(?:at|dot|AT|DOT)>)[A-Za-z][\w:-]*(?:\s[^<>]*)?/?>`);
 const HTML_BREAK = re(
-  String.raw`(?i)<br\s*/?>|</?(?:p|div|li|tr|table|thead|tbody|ul|ol|h[1-6]|details|summary|blockquote)\b[^>]*>`,
+  String.raw`(?i)<br\s*/?>|</?(?:p|div|li|tr|table|thead|tbody|ul|ol|h[1-6]|details|summary|blockquote)\b[^<>]*>`,
 );
 const ENTITY = re(String.raw`&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z]{2,8});`);
+/** `text <url>`_ (group 1 keeps the spaces before the <, which the code trims). */
 const RST_LINK = re(
   String.raw`` +
     '`' +
     String.raw`([^` +
     '`' +
-    String.raw`<\n]*?)\s*<([^` +
+    String.raw`<\n]*)<([^` +
     '`' +
-    String.raw`>\n]+)>` +
+    String.raw`<>\n]+)>` +
     '`' +
     String.raw`__?`,
 );
 const RST_TARGET = re(String.raw`(?m)^\.\.[ \t]+_([^:\n]+):[ \t]*(\S+)[ \t]*$`);
 const RST_NAMED_REF = re('`' + String.raw`([^` + '`' + String.raw`\n]+)` + '`' + String.raw`_(?!_)`);
-const RST_ROLE = re(String.raw`:[\w:-]+:` + '`' + String.raw`([^` + '`' + String.raw`\n]*)` + '`');
-const ADOC_LINK = re(
-  String.raw`(?:\b(?:link|mailto|xref):)?((?:https?://|mailto:)[^\s\[\]]+|(?<=link:)[^\s\[\]]+|(?<=xref:)[^\s\[\]]+)\[([^\]\n]*)\]`,
+/** :role:`text`, which starts where a run of colons and names starts (so a long run of them is read once). */
+const RST_ROLE = re(
+  String.raw`(?<![\w:-]):[\w-]+(?::[\w-]+)*:` + '`' + String.raw`([^` + '`' + String.raw`\n]*)` + '`',
 );
-const ADOC_XREF = re(String.raw`<<([^,>\n]+)(?:,([^>\n]*))?>>`);
+/**
+ * link:url[text], url[text], mailto:addr[text] and xref:file[text]. It starts only after a space or one of the marks a
+ * target can't hold, so no match starts inside another's target and a long run of "link:link:link:" is read once.
+ */
+const ADOC_LINK = re(
+  String.raw`(?<![^\s(<>"'|*,;])(?:(?:link|mailto|xref):)?((?:https?://|mailto:)[^\s\[\](<>"'|*,;]+|(?<=link:)[^\s\[\](<>"'|*,;]+|(?<=xref:)[^\s\[\](<>"'|*,;]+)\[([^\[\]\n]*)\]`,
+);
+const ADOC_XREF = re(String.raw`<<([^,<>\n]+)(?:,([^<>\n]*))?>>`);
 const EMPHASIS = re(String.raw`(?<![\w*])(\*{1,3}|_{1,3})(?=\S)([^*_\n]*?\S)\1(?![\w*])`);
-const CODE_SPAN = re('(`+)' + String.raw`(.*?)\1`);
 const STRIKE = re(String.raw`~~(.*?)~~`);
 const ADMONITION = re(String.raw`^[ \t]*(?:>[ \t]*)+(?:\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*)?`);
 const LIST_MARK = re(String.raw`^[ \t]*(?:[-*+]|\d+[.)])[ \t]+`);
@@ -132,7 +148,7 @@ const RST_DIRECTIVE = re(String.raw`^[ \t]*\.\.[ \t]+[\w-]+::[ \t]*`);
 const RST_FIELD = re(String.raw`^[ \t]*:[\w -]+:[ \t]*`);
 
 // -------------------------------------------------------------------------------------------- tables
-const PIPE_SEPARATOR = re(String.raw`^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$`);
+const PIPE_SEPARATOR = re(String.raw`^[ \t]*(?:\|[ \t]*)?:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*(?:\|[ \t]*)?$`);
 const GRID_BORDER = re(String.raw`^[ \t]*\+(?:[-=]+\+)+[ \t]*$`);
 const SIMPLE_BORDER = re(String.raw`^[ \t]*=+(?:[ \t]+=+)+[ \t]*$`);
 const LIST_TABLE = re(String.raw`^[ \t]*\.\.[ \t]+list-table::`);
@@ -146,10 +162,12 @@ const ADOC_TABLE_ATTRS = re(String.raw`^\[(.*)\][ \t]*$`);
 const ADOC_COLS = re(String.raw`cols[ \t]*=[ \t]*"([^"]*)"`);
 const ADOC_HEADER_OPTION = re(String.raw`options[ \t]*=[ \t]*"[^"]*header|%header`);
 const ADOC_CELL = re(String.raw`(?:^|(?<=\s))(?:\d+(?:\.\d+)?\+|\d+\*)?[<^>]?(?:\.[<^>])?[ademhlsv]?\|`);
-const HTML_TABLE = re(String.raw`(?is)<table\b.*?</table\s*>`);
-const HTML_ROW = re(String.raw`(?is)<tr\b[^>]*>(.*?)(?=<tr\b|</tbody|</thead|</table|$)`);
-const HTML_CELL = re(String.raw`(?is)<t([hd])\b[^>]*>(.*?)(?=<t[hd]\b|</tr|$)`);
+const HTML_TABLE_OPEN = re(String.raw`(?i)<table\b`);
+const HTML_TABLE_CLOSE = re(String.raw`(?i)</table\s*>`);
+const HTML_ROW = re(String.raw`(?is)<tr\b[^<>]*>(.*?)(?=<tr\b|</tbody|</thead|</table|$)`);
+const HTML_CELL = re(String.raw`(?is)<t([hd])\b[^<>]*>(.*?)(?=<t[hd]\b|</tr|$)`);
 const HTML_THEAD = re(String.raw`(?is)<thead\b`);
+const HTML_THEAD_END = re(String.raw`(?i)</thead`);
 
 // ------------------------------------------------------------------------------------- addresses
 /** An email address. One right after : or / is a URL's user (postgres://user:password@host), not an address. */
@@ -168,7 +186,7 @@ const SPELLED_EMAIL = re(
 );
 /** name AT example.org, in capitals, or security at example.org when the name is an inbox's. */
 const SPELLED_AT = re(
-  String.raw`(?<![\w.+-])([A-Za-z0-9][\w.+-]*)[ \t]+AT[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])|(?<![\w.+-])([\w.+-]*(?:secur|vuln|abuse|psirt|cert|info|contact|support|report|disclos|admin|team|hello|maint|oss)[\w.+-]*)[ \t]+at[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])`,
+  String.raw`(?<![\w.+-])([A-Za-z0-9][\w.+-]*)[ \t]+AT[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])|(?<![\w.+-])(?=[\w.+-]*?(?:secur|vuln|abuse|psirt|cert|info|contact|support|report|disclos|admin|team|hello|maint|oss))([\w.+-]+)[ \t]+at[ \t]+([A-Za-z0-9][\w-]*(?:\.[A-Za-z0-9][\w-]*)+)(?![\w-])`,
 );
 /** reported to: name at example.org, or a line that is only name at example.org. */
 const SPELLED_TO = re(
@@ -230,6 +248,77 @@ function blank(rx: RegExp, s: string): string {
   return replaceAll(rx, s, (m) => m[0].replace(/[^\n]/g, ''));
 }
 
+/** s without the characters in chars at its end (a loop: /[.,]+$/ takes time squared on a long run of them). */
+function trimEndOf(s: string, chars: string): string {
+  let end = s.length;
+  while (end > 0 && chars.includes(s[end - 1])) end--;
+  return s.slice(0, end);
+}
+
+/**
+ * Each code span (`code`, ``code``) replaced with what fn returns for its content. A span closes at the next run of
+ * exactly as many backticks, as in CommonMark; found by a scan instead of a pattern, which would take time squared on
+ * a long run of backticks.
+ */
+function codeSpans(t: string, fn: (code: string) => string): string {
+  if (!t.includes('`')) return t;
+  const runs: { at: number; len: number }[] = [];
+  for (let i = 0; i < t.length;) {
+    if (t[i] !== '`') {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < t.length && t[j] === '`') j++;
+    runs.push({ at: i, len: j - i });
+    i = j;
+  }
+  // For each run, the next run of the same length.
+  const next = new Array<number>(runs.length).fill(-1);
+  const seen = new Map<number, number>();
+  for (let k = runs.length - 1; k >= 0; k--) {
+    next[k] = seen.get(runs[k].len) ?? -1;
+    seen.set(runs[k].len, k);
+  }
+  let out = '';
+  let pos = 0;
+  for (let k = 0; k < runs.length;) {
+    const close = next[k];
+    if (close < 0) {
+      k++;
+      continue;
+    }
+    const open = runs[k];
+    out += t.slice(pos, open.at) + fn(t.slice(open.at + open.len, runs[close].at));
+    pos = runs[close].at + runs[close].len;
+    k = close + 1;
+  }
+  return out + t.slice(pos);
+}
+
+/** An ATX heading's text without its closing #s (## Title ##) or a {#id} after it. */
+function atxText(s: string): string {
+  let t = s.trimEnd();
+  let k = t.length;
+  while (k > 0 && t[k - 1] === '#') k--;
+  if (k < t.length && (k === 0 || t[k - 1] === ' ' || t[k - 1] === '\t')) t = t.slice(0, k).trimEnd();
+  if (t.endsWith('}')) {
+    const open = t.lastIndexOf('{#');
+    if (open >= 0 && /^[\w-]+$/.test(t.slice(open + 2, -1))) t = t.slice(0, open).trimEnd();
+  }
+  return t;
+}
+
+/** The first HTML heading on a line (<h2>Supported versions</h2>): its level and its content. */
+function htmlHeading(line: string): { level: number; inner: string } | null {
+  const open = search(HTML_HEADING_OPEN, line);
+  if (!open) return null;
+  const from = open.index + open[0].length;
+  const close = search(HTML_HEADING_CLOSE, line.slice(from));
+  if (!close) return null;
+  return { level: Number(open[1]), inner: line.slice(from, from + close.index) };
+}
+
 function decodeEntities(s: string): string {
   return replaceAll(ENTITY, s, (m) => {
     const e = m[1];
@@ -261,7 +350,7 @@ function prepare(raw: string, format: Format): string {
   if (format === 'asciidoc') {
     s = blank(ADOC_BLOCK_COMMENT, s);
     s = blank(ADOC_LINE_COMMENT, s);
-    const attrs = new Map(finditer(ADOC_ATTR_DEF, s).map((m) => [m[1], m[2]]));
+    const attrs = new Map(finditer(ADOC_ATTR_DEF, s).map((m) => [m[1], m[2].trimEnd()]));
     if (attrs.size) s = replaceAll(ADOC_ATTR_REF, s, (m) => attrs.get(m[1]) ?? m[0]);
   }
   if (format === 'rst') {
@@ -283,28 +372,39 @@ function prepare(raw: string, format: Format): string {
 
 /** A line's text without markup: links keep their text, HTML tags and emphasis go. */
 export function inline(s: string, format: Format = 'markdown'): string {
+  // Each pattern runs only when the text has the character it starts with: most lines have no markup at all.
   // Backslash-escaped punctuation is literal: set it aside so no markup pattern reads it, and put it back after.
-  let t = s.replace(/\\([\\`*_{}[\]()#+\-.!|<>~])/g, (_, c: string) => String.fromCharCode(0xe000 + c.charCodeAt(0)));
-  if (format === 'rst') {
-    t = replaceAll(RST_LINK, t, (m) => m[1] || m[2]);
-    t = replaceAll(RST_ROLE, t, (m) => m[1].replace(/\s*<[^>]*>$/, ''));
+  let t = s.includes('\\')
+    ? s.replace(/\\([\\`*_{}[\]()#+\-.!|<>~])/g, (_, c: string) => String.fromCharCode(0xe000 + c.charCodeAt(0)))
+    : s;
+  const tick = t.includes('`');
+  const lt = t.includes('<');
+  if (format === 'rst' && tick) {
+    t = replaceAll(RST_LINK, t, (m) => m[1].trim() || m[2]);
+    t = replaceAll(RST_ROLE, t, (m) => m[1].replace(/<[^<>]*>$/, '').trimEnd());
     t = replaceAll(RST_NAMED_REF, t, (m) => m[1]);
   }
   if (format === 'asciidoc') {
-    t = replaceAll(ADOC_LINK, t, (m) => (m[2] ? m[2].replace(/\^$/, '').split(',')[0] : m[1].replace(/^mailto:/, '')));
-    t = replaceAll(ADOC_XREF, t, (m) => m[2] || m[1]);
+    if (t.includes('[')) {
+      t = replaceAll(ADOC_LINK, t, (m) =>
+        m[2] ? m[2].replace(/\^$/, '').split(',')[0] : m[1].replace(/^mailto:/, ''),
+      );
+    }
+    if (t.includes('<<')) t = replaceAll(ADOC_XREF, t, (m) => m[2] || m[1]);
   }
-  t = replaceAll(MD_IMAGE, t, () => '');
-  t = replaceAll(MD_LINK, t, (m) => (m[1].trim() ? m[1] : m[2].replace(/^mailto:/i, '')));
-  t = replaceAll(AUTOLINK, t, (m) => m[1].replace(/^mailto:/i, ''));
-  t = replaceAll(ANGLE_EMAIL, t, (m) => m[1]);
-  t = replaceAll(HTML_A, t, (m) => m[2]);
-  t = replaceAll(HTML_BREAK, t, () => ' ');
-  t = replaceAll(HTML_TAG, t, () => '');
-  t = decodeEntities(t);
-  t = replaceAll(CODE_SPAN, t, (m) => m[2]);
-  t = replaceAll(STRIKE, t, (m) => m[1]);
-  for (let k = 0; k < 2; k++) t = replaceAll(EMPHASIS, t, (m) => m[2]);
+  if (t.includes('![')) t = replaceAll(MD_IMAGE, t, () => '');
+  if (t.includes('](')) t = replaceAll(MD_LINK, t, (m) => (m[1].trim() ? m[1] : m[2].replace(/^mailto:/i, '')));
+  if (lt) {
+    t = replaceAll(AUTOLINK, t, (m) => m[1].replace(/^mailto:/i, ''));
+    t = replaceAll(ANGLE_EMAIL, t, (m) => m[1]);
+    t = replaceAll(HTML_A, t, (m) => (search(HREF, m[1]) ? m[2] : m[0]));
+    t = replaceAll(HTML_BREAK, t, () => ' ');
+    t = replaceAll(HTML_TAG, t, () => '');
+  }
+  if (t.includes('&')) t = decodeEntities(t);
+  t = codeSpans(t, (code) => code);
+  if (t.includes('~~')) t = replaceAll(STRIKE, t, (m) => m[1]);
+  if (t.includes('*') || t.includes('_')) for (let k = 0; k < 2; k++) t = replaceAll(EMPHASIS, t, (m) => m[2]);
   t = t.replace(/[\ue000-\ue07f]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xe000));
   return t.replace(/[ \t\u00a0]+/g, ' ').trim();
 }
@@ -326,11 +426,11 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
     const next = i + 1 < src.length && !code[i + 1] ? src[i + 1] : '';
     let m: RegExpExecArray | null;
     if (format === 'asciidoc' && (m = match(ADOC_TITLE, line))) {
-      headings.push({ text: inline(m[2], format), level: m[1].length, line: i });
+      headings.push({ text: inline(m[2].trimEnd(), format), level: m[1].length, line: i });
       continue;
     }
     if ((m = match(ATX, line)) && format !== 'rst') {
-      const text = inline((m[2] ?? '').replace(HEADING_ATTRS, ''), format);
+      const text = inline(atxText(m[2] ?? ''), format);
       if (text) headings.push({ text, level: m[1].length, line: i });
       continue;
     }
@@ -352,9 +452,10 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
         continue;
       }
     }
-    if ((m = search(HTML_HEADING, line))) {
-      const text = inline(m[2], format);
-      if (text) headings.push({ text, level: Number(m[1]), line: i });
+    const h = htmlHeading(line);
+    if (h) {
+      const text = inline(h.inner, format);
+      if (text) headings.push({ text, level: h.level, line: i });
       continue;
     }
     if ((m = match(BOLD_LINE, line))) {
@@ -370,6 +471,11 @@ function headingsOf(src: string[], format: Format, code: boolean[]): { headings:
 }
 
 // -------------------------------------------------------------------------------------------- tables
+/** Whether a line is a pipe table's separator row (| --- | :-: |). */
+function separator(line: string): boolean {
+  return line.includes('-') && !!match(PIPE_SEPARATOR, line);
+}
+
 function splitPipes(line: string): string[] {
   let t = line.trim();
   if (t.startsWith('|')) t = t.slice(1);
@@ -401,14 +507,14 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
     if (code[i] || used.has(i)) continue;
     const line = src[i];
     // Markdown pipe table: a row of cells, then a separator row.
-    if (line.includes('|') && i + 1 < src.length && match(PIPE_SEPARATOR, src[i + 1]) && src[i + 1].includes('-')) {
+    if (line.includes('|') && i + 1 < src.length && separator(src[i + 1])) {
       const sep = src[i + 1];
       if (sep.includes('|') || line.trim().startsWith('|')) {
         const header = splitPipes(line).map(cell);
         const rows: string[][] = [];
         let j = i + 2;
         for (; j < src.length && src[j].includes('|') && src[j].trim() && !code[j]; j++) {
-          if (match(PIPE_SEPARATOR, src[j])) continue;
+          if (separator(src[j])) continue;
           rows.push(splitPipes(src[j]).map(cell));
         }
         tables.push({ header, rows, line: i, kind: 'pipe' });
@@ -430,6 +536,12 @@ function tablesOf(src: string[], format: Format, code: boolean[], used: Set<numb
         i = j - 1;
         continue;
       }
+      // Not a table. Skip the rest of these lines (reading them again from each one takes time squared), but stop at
+      // one that heads a table with a separator row.
+      let k = i + 1;
+      while (k < j && !(k + 1 < src.length && separator(src[k + 1]))) k++;
+      i = k - 1;
+      continue;
     }
     // reStructuredText grid table.
     if (match(GRID_BORDER, line)) {
@@ -597,91 +709,155 @@ function adocCells(line: string): string[] | null {
   return out;
 }
 
-function htmlTables(src: string, startLine: (offset: number) => number, format: Format): Table[] {
+/**
+ * The HTML tables in the text, as [start, end) offsets: each <table> up to its </table>. Found by a scan, since a
+ * pattern for the whole table takes time squared when tables don't close.
+ */
+function htmlTableSpans(src: string): [number, number][] {
+  const out: [number, number][] = [];
+  const open = new RegExp(HTML_TABLE_OPEN.source, HTML_TABLE_OPEN.flags + 'g');
+  const close = new RegExp(HTML_TABLE_CLOSE.source, HTML_TABLE_CLOSE.flags + 'g');
+  let from = 0;
+  for (;;) {
+    open.lastIndex = from;
+    const o = open.exec(src);
+    if (!o) break;
+    close.lastIndex = o.index;
+    const c = close.exec(src);
+    // No </table> after this one means none after any later one either.
+    if (!c) break;
+    out.push([o.index, c.index + c[0].length]);
+    from = c.index + c[0].length;
+  }
+  return out;
+}
+
+function htmlTables(
+  src: string,
+  spans: [number, number][],
+  startLine: (offset: number) => number,
+  format: Format,
+): Table[] {
   const out: Table[] = [];
-  for (const t of finditer(HTML_TABLE, src)) {
-    const body = t[0];
+  for (const [start, end] of spans) {
+    const body = src.slice(start, end);
     const rows: string[][] = [];
     let headerRow: string[] | null = null;
     const thead = search(HTML_THEAD, body);
+    const theadEnd = thead ? (search(HTML_THEAD_END, body)?.index ?? 0) : 0;
     for (const r of finditer(HTML_ROW, body)) {
       const cells = finditer(HTML_CELL, r[1]);
       if (!cells.length) continue;
       const texts = cells.map((c) => inline(c[2], format));
       const allTh = cells.every((c) => c[1].toLowerCase() === 'h');
-      if (!headerRow && !rows.length && (allTh || (thead && r.index < (search(/<\/thead/i, body)?.index ?? 0)))) {
+      if (!headerRow && !rows.length && (allTh || (thead && r.index < theadEnd))) {
         headerRow = texts;
       } else rows.push(texts);
     }
-    out.push({ header: headerRow, rows, line: startLine(t.index), kind: 'html' });
+    out.push({ header: headerRow, rows, line: startLine(start), kind: 'html' });
   }
   return out;
 }
 
 // --------------------------------------------------------------------------------------------- links
+/** A function from an offset in s to its line number: s keeps the source's line breaks (see blank()). */
+function lineFinder(s: string): (offset: number) => number {
+  const starts = [0];
+  for (let k = s.indexOf('\n'); k >= 0; k = s.indexOf('\n', k + 1)) starts.push(k + 1);
+  return (o) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= o) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+}
+
 function linksOf(src: string, format: Format): Link[] {
-  const seen = new Set<string>();
+  const byKey = new Map<string, Set<number>>();
   const out: Link[] = [];
-  const add = (text: string, url: string) => {
-    const u = url.trim().replace(/[.,;:!?'"]+$/, '');
+  const lineSets: Set<number>[] = [];
+  const add = (text: string, url: string, line: number) => {
+    const u = trimEndOf(url.trim(), '.,;:!?\'"');
     if (!u || u.startsWith('#')) return;
     const key = u + '\u0000' + text;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const had = byKey.get(key);
+    if (had) {
+      had.add(line);
+      return;
+    }
+    const lines = new Set([line]);
+    byKey.set(key, lines);
+    lineSets.push(lines);
     out.push({ text: inline(text, format), url: u });
   };
-  const defs = new Map<string, string>();
-  for (const m of finditer(MD_REF_DEF, src)) defs.set(m[1].trim().toLowerCase(), m[2]);
-  for (const m of finditer(RST_TARGET, src)) defs.set(m[1].trim().toLowerCase(), m[2]);
+  const srcLine = lineFinder(src);
+  const defs = new Map<string, { url: string; line: number }>();
+  for (const m of finditer(MD_REF_DEF, src)) defs.set(m[1].trim().toLowerCase(), { url: m[2], line: srcLine(m.index) });
+  for (const m of finditer(RST_TARGET, src)) defs.set(m[1].trim().toLowerCase(), { url: m[2], line: srcLine(m.index) });
   let rest = blank(MD_IMAGE, src);
-  for (const m of finditer(MD_LINK, rest)) add(m[1], m[2]);
+  let at = lineFinder(rest);
+  for (const m of finditer(MD_LINK, rest)) add(m[1], m[2], at(m.index));
   rest = blank(MD_LINK, rest);
+  at = lineFinder(rest);
   for (const m of finditer(MD_REF_USE, rest)) {
     const key = (m[2] || m[1]).trim().toLowerCase();
-    const url = defs.get(key);
-    if (url) add(m[1], url);
+    const def = defs.get(key);
+    if (def) add(m[1], def.url, at(m.index));
   }
-  for (const m of finditer(HTML_A, rest)) add(m[2], m[1]);
+  for (const m of finditer(HTML_A, rest)) {
+    const href = search(HREF, m[1]);
+    if (href) add(m[2], href[1], at(m.index));
+  }
   if (format === 'rst') {
-    for (const m of finditer(RST_LINK, rest)) add(m[1] || m[2], m[2]);
+    for (const m of finditer(RST_LINK, rest)) add(m[1].trim() || m[2], m[2], at(m.index));
     for (const m of finditer(RST_NAMED_REF, rest)) {
-      const url = defs.get(m[1].trim().toLowerCase());
-      if (url) add(m[1], url);
+      const def = defs.get(m[1].trim().toLowerCase());
+      if (def) add(m[1], def.url, at(m.index));
     }
   }
   if (format === 'asciidoc') {
-    for (const m of finditer(ADOC_LINK, rest)) add(m[2] || m[1], m[1]);
+    for (const m of finditer(ADOC_LINK, rest)) add(m[2] || m[1], m[1], at(m.index));
   }
-  for (const m of finditer(AUTOLINK, rest)) add(m[1], m[1]);
+  for (const m of finditer(AUTOLINK, rest)) add(m[1], m[1], at(m.index));
   // Bare URLs, outside the forms above.
   let bare = blank(HTML_A, blank(AUTOLINK, rest));
   bare = blank(MD_REF_DEF, bare);
   if (format === 'rst') bare = blank(RST_LINK, blank(RST_TARGET, bare));
   if (format === 'asciidoc') bare = blank(ADOC_LINK, bare);
-  for (const m of finditer(BARE_URL, bare)) add(m[0], m[0]);
-  for (const [, url] of defs) if (!out.some((l) => l.url === url)) add(url, url);
+  at = lineFinder(bare);
+  for (const m of finditer(BARE_URL, bare)) add(m[0], m[0], at(m.index));
+  const urls = new Set(out.map((l) => l.url));
+  for (const [, def] of defs) if (!urls.has(def.url)) add(def.url, def.url, def.line);
+  out.forEach((l, k) => (l.lines = [...lineSets[k]].sort((a, b) => a - b)));
   return out;
 }
 
 /** Email addresses in the text, written plainly, in a mailto: link, or spelled out (name [at] example [dot] org). */
 function emailsOf(text: string, links: Link[]): string[] {
   const found: string[] = [];
+  const seen = new Set<string>();
   const add = (e: string) => {
-    const addr = e
-      .replace(/^mailto:/i, '')
-      .split('?')[0]
-      .replace(/[.,;:]+$/, '');
+    const addr = trimEndOf(e.replace(/^mailto:/i, '').split('?')[0], '.,;:');
     const [local, domain = ''] = addr.split('@');
     // user@EXAMPLE.COM, a lower-case name at a domain in capitals, is a Kerberos principal, not an inbox.
     if (/[a-z]/.test(local) && /[A-Z]/.test(domain) && !/[a-z]/.test(domain)) return;
-    if (!search(NOT_AN_INBOX, addr) && !found.some((f) => f.toLowerCase() === addr.toLowerCase())) found.push(addr);
+    if (search(NOT_AN_INBOX, addr) || seen.has(addr.toLowerCase())) return;
+    seen.add(addr.toLowerCase());
+    found.push(addr);
   };
   for (const l of links) if (/^mailto:/i.test(l.url)) add(l.url);
   for (const m of finditer(EMAIL, text)) add(m[1]);
   for (const m of finditer(MAILTO_TEXT, text)) add(m[1]);
   // The spelled-out dots of a domain ([dot], (.), " dot ") become dots.
   const dots = (d: string) =>
-    d.replace(/[ \t]+-[ \t]+/g, '-').replace(/[ \t]*(?:[[({<][ \t]*(?:dot|\.)[ \t]*[\])}>]|\bdot\b|\.)[ \t]*/gi, '.');
+    d
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ - /g, '-')
+      .replace(/ ?(?:[[({<] ?(?:dot|\.) ?[\])}>]|\bdot\b|\.) ?/gi, '.');
   for (const m of finditer(OBFUSCATED_EMAIL, text)) add(`${m[1]}@${dots(m[2])}`);
   for (const m of finditer(SPELLED_EMAIL, text)) add(`${m[1]}@${dots(m[2])}`);
   for (const m of finditer(SPELLED_AT, text)) add(m[1] ? `${m[1]}@${m[2]}` : `${m[3]}@${m[4]}`);
@@ -693,10 +869,18 @@ function emailsOf(text: string, links: Link[]): string[] {
 }
 
 // ---------------------------------------------------------------------------------------------- read
+/**
+ * How much of a policy the reader looks at: 256 KB (in characters), well above any real one, so a huge file can't make a
+ * scan slow. Past that the reader takes the first 256 KB, and the policy says it did (truncated).
+ */
+export const MAX_POLICY = 256 * 1024;
+
 /** Read a policy file: its path names the format (SECURITY.md, SECURITY.rst, SECURITY.adoc, SECURITY.txt, SECURITY). */
 export function readPolicy(raw: string, path: string): Policy {
-  const format = formatOf(path, raw);
-  const src = prepare(raw, format);
+  const truncated = raw.length > MAX_POLICY;
+  const body = truncated ? raw.slice(0, MAX_POLICY) : raw;
+  const format = formatOf(path, body);
+  const src = prepare(body, format);
   const srcLines = src.split('\n');
   // Code fences and literal blocks: their lines are text, but no headings or tables start there.
   const code = srcLines.map(() => false);
@@ -713,34 +897,19 @@ export function readPolicy(raw: string, path: string): Policy {
   }
   const { headings, underline } = headingsOf(srcLines, format, code);
   const used = new Set<number>(underline);
-  const offsets: number[] = [];
-  let off = 0;
-  for (const l of srcLines) {
-    offsets.push(off);
-    off += l.length + 1;
-  }
-  const lineAt = (o: number) => {
-    let lo = 0;
-    let hi = offsets.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (offsets[mid] <= o) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
-  };
-  const html = htmlTables(src, lineAt, format);
-  for (const t of finditer(HTML_TABLE, src)) {
-    for (let k = lineAt(t.index); k <= lineAt(t.index + t[0].length - 1); k++) used.add(k);
-  }
+  const lineAt = lineFinder(src);
+  const spans = htmlTableSpans(src);
+  const html = htmlTables(src, spans, lineAt, format);
+  for (const [start, end] of spans) for (let k = lineAt(start); k <= lineAt(end - 1); k++) used.add(k);
   const tables = [...tablesOf(srcLines, format, code, used), ...html].sort((a, b) => a.line - b.line);
   const links = linksOf(src, format);
-  const headingLines = new Set(headings.map((h) => h.line));
+  const headingAt = new Map(headings.map((h) => [h.line, h]));
   const items = srcLines.flatMap((l, i) => (!code[i] && match(LIST_MARK, l) ? [i] : []));
   const lines = srcLines.map((l, i) => {
     if (underline.has(i)) return '';
-    if (headingLines.has(i)) return headings.find((h) => h.line === i)!.text;
-    if (match(PIPE_SEPARATOR, l) && l.includes('-') && l.includes('|')) return '';
+    const h = headingAt.get(i);
+    if (h) return h.text;
+    if (l.includes('|') && separator(l)) return '';
     if (match(GRID_BORDER, l) || (format === 'rst' && match(SIMPLE_BORDER, l))) return '';
     if (format === 'asciidoc' && (match(ADOC_FENCE, l) || match(ADOC_ATTR_LINE, l.trim()))) return '';
     let t = l;
@@ -752,8 +921,11 @@ export function readPolicy(raw: string, path: string): Policy {
   });
   const text = lines.join('\n');
   const emails = emailsOf(text, links);
-  let prose = text;
-  for (const l of links) prose = prose.split(l.url).join(' ');
+  // Words outside links: a word that is a URL, or one of the links' targets, isn't one.
+  const urls = new Set(links.map((l) => l.url));
+  const prose = text.replace(/\S+/g, (w) =>
+    w.includes('://') || urls.has(w) || urls.has(trimEndOf(w, ').,;:!?\'">]')) ? ' ' : w,
+  );
   const latin = (prose.match(/[A-Za-z]{2,}/g) ?? []).length;
   // Chinese, Japanese and Korean words are about two characters long; Cyrillic, Greek, Hebrew, Arabic, Hindi or Thai
   // ones about six.
@@ -764,28 +936,42 @@ export function readPolicy(raw: string, path: string): Policy {
   const hits = finditer(ENGLISH, prose).length;
   // A policy of a few words (a link and "see") is too short to tell its language: it's read as English.
   const english = (latin < 6 && other < 3) || (hits >= 2 && hits >= 0.08 * latin && latin >= 0.3 * other);
-  return { path, format, lines, text, headings, links, emails, tables, words, english, items };
+  return { path, format, lines, text, headings, links, emails, tables, words, english, items, truncated };
+}
+
+const endsCache = new WeakMap<Policy, number[]>();
+/** Where each heading's section ends: the line of the next heading at its level or above (one pass, with a stack). */
+function sectionEnds(p: Policy): number[] {
+  let ends = endsCache.get(p);
+  if (ends) return ends;
+  ends = p.headings.map(() => p.lines.length);
+  const open: number[] = [];
+  p.headings.forEach((h, k) => {
+    while (open.length && p.headings[open[open.length - 1]].level >= h.level) ends![open.pop()!] = h.line;
+    open.push(k);
+  });
+  endsCache.set(p, ends);
+  return ends;
 }
 
 /** The sections whose heading matches rx, each up to the next heading at its level or above. */
 export function sections(p: Policy, rx: RegExp): Section[] {
   const out: Section[] = [];
+  const ends = sectionEnds(p);
   p.headings.forEach((h, k) => {
     if (!search(rx, h.text)) return;
-    let end = p.lines.length;
-    for (const n of p.headings.slice(k + 1)) {
-      if (n.level <= h.level) {
-        end = n.line;
-        break;
-      }
+    const end = ends[k];
+    // The tables are in line order: the first one after the heading, then those before the end.
+    let lo = 0;
+    let hi = p.tables.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (p.tables[mid].line > h.line) hi = mid;
+      else lo = mid + 1;
     }
-    out.push({
-      heading: h,
-      start: h.line + 1,
-      end,
-      text: p.lines.slice(h.line + 1, end).join('\n'),
-      tables: p.tables.filter((t) => t.line > h.line && t.line < end),
-    });
+    const tables: Table[] = [];
+    for (let t = lo; t < p.tables.length && p.tables[t].line < end; t++) tables.push(p.tables[t]);
+    out.push({ heading: h, start: h.line + 1, end, text: p.lines.slice(h.line + 1, end).join('\n'), tables });
   });
   return out;
 }
@@ -908,7 +1094,7 @@ const VULN_CONTEXT = re(
 );
 /** The words just before a link that make it the place to report: report it to [...], contact [...], use [...]. */
 const LINK_LEAD = re(
-  String.raw`(?i)(?:\bto|\bat|\bvia|\bthrough|\busing|\buse|\bvisit|\bsee|\bcontact(?:ing)?|\be-?mail|\bmessage|\breach(?:[ \t]+out)?(?:[ \t]+to)?|\bwrite[ \t]+to|\bping|\bon|\bwith|\bin)[ \t]+(?:our|the|us|me|him|her|them|my|its|this|a|an)?[ \t]*[(\["'*_]*$|\b(?:link|url|here|portal|platform|form|page)[ \t]*:[ \t]*$`,
+  String.raw`(?i)(?:\bto|\bat|\bvia|\bthrough|\busing|\buse|\bvisit|\bsee|\bcontact(?:ing)?|\be-?mail|\bmessage|\breach(?:[ \t]+out)?(?:[ \t]+to)?|\bwrite[ \t]+to|\bping|\bon|\bwith|\bin)[ \t]+(?:(?:our|the|us|me|him|her|them|my|its|this|a|an)[ \t]*)?[(\["'*_]*$|\b(?:link|url|here|portal|platform|form|page)[ \t]*:[ \t]*$`,
 );
 /** Link text that names a place to report on its own: [here], [contact us], [security team]. */
 const LINK_NAMES_PLACE = re(
@@ -928,7 +1114,7 @@ const ISSUES_URL = re(
   String.raw`(?i)^https?://(?:www\.)?(?:github\.com|gitlab\.com|codeberg\.org)/[\w.-]+/[\w.-]+/(?:-/)?issues(?:/new\b\S*|/?(?:[?#]\S*)?)$|^\.\./\.\./issues/?(?:new\b\S*)?$`,
 );
 const PUBLIC_ISSUE_TEXT = re(
-  String.raw`(?i)\b(?:open|opening|create|creating|file|filing|submit|submitting|raise|raising|post|log|use|using|report(?:ing)?[ \t]+(?:it|them|this|vulnerabilities|issues|bugs)?[ \t]*(?:as|in|via|on|through|to))[ \t]+(?:an?[ \t]+|the[ \t]+|our[ \t]+)?(?:new[ \t]+|public[ \t]+)?(?:github[ \t]+|gitlab[ \t]+)?(?:issues?|bug[ \t]+reports?|tickets?|pull[ \t]+requests?|discussions?)\b|\bissue[ \t]+tracker\b`,
+  String.raw`(?i)\b(?:open|opening|create|creating|file|filing|submit|submitting|raise|raising|post|log|use|using|report(?:ing)?[ \t]+(?:(?:it|them|this|vulnerabilities|issues|bugs)[ \t]+)?(?:as|in|via|on|through|to))[ \t]+(?:an?[ \t]+|the[ \t]+|our[ \t]+)?(?:new[ \t]+|public[ \t]+)?(?:github[ \t]+|gitlab[ \t]+)?(?:issues?|bug[ \t]+reports?|tickets?|pull[ \t]+requests?|discussions?)\b|\bissue[ \t]+tracker\b`,
 );
 /** A phrase right after a name that says it isn't there: "... is not currently enabled". */
 const NOT_AFTER = re(
@@ -951,42 +1137,45 @@ export function paragraphs(p: Policy): string[] {
   return blocks(p).map((b) => b.text);
 }
 
-/** The policy's paragraphs with the heading each sits under. */
-function blocks(p: Policy): { text: string; heading: string | null }[] {
+interface Block {
+  text: string;
+  heading: string | null;
+  /** Its lines: [start, end). */
+  start: number;
+  end: number;
+}
+
+const blockCache = new WeakMap<Policy, Block[]>();
+/** The policy's paragraphs with the heading each sits under and the lines they span. */
+function blocks(p: Policy): Block[] {
+  const cached = blockCache.get(p);
+  if (cached) return cached;
   const heads = new Map(p.headings.map((h) => [h.line, h.text]));
   const items = new Set(p.items);
-  const out: { text: string; heading: string | null }[] = [];
+  const out: Block[] = [];
   let heading: string | null = null;
   let cur: string[] = [];
-  const flush = () => {
-    if (cur.length) out.push({ text: cur.join(' '), heading });
+  let start = 0;
+  const flush = (end: number) => {
+    if (cur.length) out.push({ text: cur.join(' '), heading, start, end });
     cur = [];
   };
   p.lines.forEach((l, i) => {
     if (heads.has(i)) {
-      flush();
+      flush(i);
       heading = heads.get(i)!;
-      out.push({ text: l, heading });
-    } else if (!l.trim()) flush();
+      out.push({ text: l, heading, start: i, end: i + 1 });
+    } else if (!l.trim()) flush(i);
     else {
       // A list item starts a paragraph of its own: "1. Don't open an issue 2. Email us" is two instructions.
-      if (items.has(i)) flush();
+      if (items.has(i)) flush(i);
+      if (!cur.length) start = i;
       cur.push(l.trim());
     }
   });
-  flush();
+  flush(p.lines.length);
+  blockCache.set(p, out);
   return out;
-}
-
-const headingCache = new WeakMap<Policy, Map<string, string | null>>();
-/** The heading a paragraph (as paragraphs() gives it) sits under. */
-function headingOf(p: Policy, para: string): string | null {
-  let m = headingCache.get(p);
-  if (!m) {
-    m = new Map(blocks(p).map((b) => [b.text, b.heading]));
-    headingCache.set(p, m);
-  }
-  return m.get(para) ?? null;
 }
 
 /**
@@ -1010,8 +1199,12 @@ function sameRepoUrl(url: string, repo: string): boolean {
 /** How the policy says to report a vulnerability. repo (owner/name) tells its own links from others'. */
 export function howToReport(p: Policy, repo: string): Reporting {
   const found: Channel[] = [];
+  const have = new Set<string>();
   const add = (kind: ChannelKind, label: string) => {
-    if (!found.some((c) => c.kind === kind && c.label === label)) found.push({ kind, label });
+    const key = kind + '\u0000' + label;
+    if (have.has(key)) return;
+    have.add(key);
+    found.push({ kind, label });
   };
   for (const e of p.emails) add('email', e);
   let issues = false;
@@ -1060,22 +1253,38 @@ export function howToReport(p: Policy, repo: string): Reporting {
     if (search(PUBLIC_ISSUE_TEXT, s) && !negated(s, PUBLIC_ISSUE_TEXT)) publicIssues = true;
     if (search(CONTACT_ELSEWHERE, s) && search(REPORT_WORD, s)) elsewhere = true;
   }
-  for (const para of paras) {
+  // The links each line holds, so a paragraph looks only at its own.
+  const byLine = new Map<number, Link[]>();
+  for (const l of [...weak, ...others]) {
+    for (const n of l.lines ?? []) {
+      const at = byLine.get(n);
+      if (at) at.push(l);
+      else byLine.set(n, [l]);
+    }
+  }
+  for (const b of blocks(p)) {
+    const para = b.text;
     // The heading a paragraph sits under says what it's about ("Reporting a vulnerability").
-    const heading = headingOf(p, para) ?? '';
+    const heading = b.heading ?? '';
     const context = `${heading} ${para}`;
     if (search(CHAT_TEXT, para) && search(REPORT_WORD, context)) add('chat', 'a private message');
     if (search(ASKS_FOR_MAIL, para) && search(REPORT_WORD, context)) noAddress = true;
+    // At most 50 links per paragraph: no real one has more, and each is looked for in the whole paragraph.
+    const near = new Set<Link>();
+    for (let n = b.start; n < b.end && near.size < 50; n++) {
+      for (const l of byLine.get(n) ?? []) if (near.size < 50) near.add(l);
+    }
+    if (!near.size) continue;
     // Links on lines of their own in a section about reporting are that section's ways to report.
     if (search(VULN_CONTEXT, heading)) {
-      const inPara = [...weak, ...others].filter((l) => l.text.trim() && para.includes(l.text.trim()));
+      const inPara = [...near].filter((l) => l.text.trim() && para.includes(l.text.trim()));
       let rest = para;
       for (const l of inPara) rest = rest.split(l.text.trim()).join(' ');
       if (inPara.length && !/[\p{L}\p{N}]/u.test(rest)) for (const l of inPara) add('page', l.url);
     }
     // A link in a sentence about sending reports is where they go: "report it to [our maintainer](...)",
     // "use [this link](...) to submit your report". A link that's only mentioned there isn't.
-    for (const l of [...weak, ...others]) {
+    for (const l of near) {
       const name = l.text.trim();
       const at = name.length >= 3 ? para.indexOf(name) : -1;
       if (at < 0) continue;
@@ -1091,7 +1300,8 @@ export function howToReport(p: Policy, repo: string): Reporting {
   }
   const strength = (c: Channel) => (c.kind === 'page' && !search(REPORTING_LINK, c.label) ? 1 : 0);
   found.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || strength(a) - strength(b));
-  const rest = [...weak, ...others].filter((l) => !found.some((c) => c.label === l.url));
+  const labels = new Set(found.map((c) => c.label));
+  const rest = [...weak, ...others].filter((l) => !labels.has(l.url));
   const pointer = !found.length && rest.length && p.words <= 60 ? rest[0] : null;
   return {
     channels: found,
@@ -1281,7 +1491,7 @@ export function sameRepoLink(
   repo: string,
   needs: { report: boolean; versions: boolean },
 ): string | null {
-  const sym = match(SYMLINK_TEXT, raw);
+  const sym = raw.length < 1024 ? match(SYMLINK_TEXT, raw) : null;
   if (sym) return repoPath(sym[1], repo, p.path);
   if (!needs.report && !needs.versions) return null;
   for (const l of p.links) {

@@ -175,10 +175,14 @@ export function compareVersions(a: Version, b: Version): number {
   return 0;
 }
 
-/** A version in a table cell: an optional comparison, numbers maybe with x, *, y or latest, then a range or a +. */
+/**
+ * A version in a table cell: an optional comparison, numbers maybe with x, *, y or latest, then a range or a +. The
+ * spaces around its parts are at most three and a version has at most seven parts, so the pattern stays linear on a
+ * cell of spaces or of 1.2.3.4.5... (a pattern with unbounded ones takes time squared there).
+ */
 const VERSION_TOKEN = re(
-  String.raw`(?i)(>=|<=|=>|=<|≥|≤|>|<|=|\^|~)?[ \t]*(?<![\w.])v?(\d+(?:\.(?:\d+|x|\*|latest|y|z))*)(?![\w.]*[a-wz])` +
-    String.raw`(?:([ \t]*\.?\+)|[ \t]*(?:and|or|&|und|et|ou|y)[ \t]+(above|later|newer|higher|up|greater|older|earlier|below|lower|prior|before)\b|[ \t]*(?:-|–|—|to|through|thru|\.\.)[ \t]*v?(\d+(?:\.(?:\d+|x|\*|y|z))*)(?![\w.]*[a-wz]))?`,
+  String.raw`(?i)(>=|<=|=>|=<|≥|≤|>|<|=|\^|~)?[ \t]{0,3}(?<![\w.])v?(\d+(?:\.(?:\d+|x|\*|latest|y|z)){0,6})(?![\w.]*[a-wz])` +
+    String.raw`(?:([ \t]{0,3}\.?\+)|[ \t]{0,3}(?:and|or|&|und|et|ou|y)[ \t]{1,3}(above|later|newer|higher|up|greater|older|earlier|below|lower|prior|before)\b|[ \t]{0,3}(?:-|–|—|to|through|thru|\.\.)[ \t]{0,3}v?(\d+(?:\.(?:\d+|x|\*|y|z)){0,6})(?![\w.]*[a-wz]))?`,
 );
 const LATEST_CELL = re(
   String.raw`(?i)\b(?:latest|current|newest|most[ \t]+recent|recent|last[ \t]+(?:(?:two|three|four|\d+)[ \t]+)?(?:stable[ \t]+)?(?:releases?|versions?|minors?|majors?|lines?))\b`,
@@ -400,7 +404,8 @@ function rowsOf(t: Table, example: boolean, now: Date): Row[] {
   let header = t.header;
   let body = t.rows;
   if (!header && body.length && looksLikeHeader(body[0])) [header, body] = [body[0], body.slice(1)];
-  const width = Math.max(header?.length ?? 0, ...body.map((r) => r.length));
+  let width = header?.length ?? 0;
+  for (const r of body) width = Math.max(width, r.length);
   const cols = columnsOf(header, width);
   const out: Row[] = [];
   for (const r of body) {
