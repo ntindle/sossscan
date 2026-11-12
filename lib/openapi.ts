@@ -100,7 +100,7 @@ export const RESULT_SCHEMA: Json = {
       type: 'object',
       additionalProperties: true,
       description: "Facts that belong to this check, such as a file's path and length. Often empty.",
-      examples: [{ path: 'SECURITY.md', length: 1293, report: ['github', 'page'] }],
+      examples: [{ path: 'SECURITY.md', length: 1293, report: ['github'] }],
     },
     layer: {
       type: 'string',
@@ -456,7 +456,7 @@ const EXAMPLE_REPORT = {
       status: 'pass',
       summary: "SECURITY.md found; it says to report through GitHub's private vulnerability reporting",
       evidence: [{ label: 'SECURITY.md', url: 'https://github.com/ntindle/sossscan/blob/main/SECURITY.md' }],
-      details: { path: 'SECURITY.md', length: 1293, report: ['github', 'page'] },
+      details: { path: 'SECURITY.md', length: 1293, report: ['github'] },
       layer: 'public',
     },
     'plan-irp': {

@@ -104,7 +104,7 @@ Here's a report for this project's own repository, trimmed to two results:
       "status": "pass",
       "summary": "SECURITY.md found; it says to report through GitHub's private vulnerability reporting",
       "evidence": [{ "label": "SECURITY.md", "url": "https://github.com/ntindle/sossscan/blob/main/SECURITY.md" }],
-      "details": { "path": "SECURITY.md", "length": 1293, "report": ["github", "page"] },
+      "details": { "path": "SECURITY.md", "length": 1293, "report": ["github"] },
       "layer": "public"
     },
     "plan-irp": {
