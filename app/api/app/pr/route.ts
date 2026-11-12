@@ -8,7 +8,10 @@ import { unseal } from '@/lib/sealed.ts';
 
 export const maxDuration = 300;
 
-/** Open the pull request from a preview: only for the person who previewed it, within 15 minutes. */
+/**
+ * Open the pull request from a preview: only for the person who previewed it, within 15 minutes. Through the app that
+ * makes fixes (the fix app when the site has one), with a token that holds only what this fix's files take.
+ */
 export const POST = route(async (req: NextRequest) => {
   const limited = rateLimit(req, 'app');
   if (limited) return limited;
@@ -20,8 +23,8 @@ export const POST = route(async (req: NextRequest) => {
   if (!p || p.login !== sess.login.toLowerCase()) {
     throw new HttpError(410, 'preview_expired', 'This preview has expired.', 'Preview the fix again.');
   }
-  const { inst, need } = await prReady(cfg, sess, p.repo, p.item_id);
-  const token = await installationToken(cfg, p.repo, { permissions: { ...need, metadata: 'read' }, inst });
+  const { app, inst, need } = await prReady(cfg, sess, p.repo, p.item_id);
+  const token = await installationToken(app, p.repo, { permissions: { ...need, metadata: 'read' }, inst });
   const gh = client(token);
   // Opening the same preview twice gives back the pull request it already opened.
   const existing = await openPull(gh, p.repo, p.head);

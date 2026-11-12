@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { appConfig, sessionCookie, stateCookie } from '@/lib/github-app.ts';
+import { appConfig, fixAppConfig, sessionCookie, stateCookie } from '@/lib/github-app.ts';
 import { HttpError } from '@/lib/http.ts';
 import { VERSION } from '@/lib/scanner/index.ts';
 import { seal, unseal } from '@/lib/sealed.ts';
@@ -112,6 +112,65 @@ describe('appConfig', () => {
       expect(appConfig()).toBeNull();
     },
   );
+});
+
+describe('fixAppConfig', () => {
+  /** The fix app's three settings (made up). It signs no one in, so there's no client ID or secret. */
+  const FIX_ENV = {
+    GITHUB_FIX_APP_ID: '5677634',
+    GITHUB_FIX_APP_SLUG: 'sossscan-fix',
+    GITHUB_FIX_APP_PRIVATE_KEY: PEM.replaceAll('\n', '\\n'),
+  };
+  const status = async () => (await new Browser().get('/api/app/status')).json();
+
+  it('comes from the environment only, and the status says no more than its name and install page', async () => {
+    const secrets = path.join(env.dataDir(), '.secrets');
+    fs.mkdirSync(secrets);
+    fs.writeFileSync(path.join(secrets, 'github_fix_app.json'), JSON.stringify({ id: 99, slug: 'x', pem: PEM }));
+    expect(fixAppConfig()).toBeNull();
+    Object.assign(process.env, APP_ENV, FIX_ENV);
+    expect(fixAppConfig()).toEqual({
+      id: 5677634,
+      slug: 'sossscan-fix',
+      pem: PEM,
+      html_url: 'https://github.com/apps/sossscan-fix',
+    });
+    const st = await status();
+    expect(st.fix_app).toEqual({
+      configured: true,
+      slug: 'sossscan-fix',
+      install_url: 'https://github.com/apps/sossscan-fix/installations/new',
+    });
+    expect(JSON.stringify(st)).not.toMatch(/PRIVATE KEY|5677634/);
+  });
+
+  it.each(['GITHUB_FIX_APP_ID', 'GITHUB_FIX_APP_SLUG', 'GITHUB_FIX_APP_PRIVATE_KEY'])(
+    'is null without %s, and the main app makes the fixes',
+    async (name) => {
+      Object.assign(process.env, APP_ENV, FIX_ENV);
+      expect(fixAppConfig()).not.toBeNull();
+      process.env[name] = '  ';
+      expect(fixAppConfig()).toBeNull();
+      delete process.env[name];
+      expect(fixAppConfig()).toBeNull();
+      expect((await status()).fix_app).toEqual({ configured: false, slug: null, install_url: null });
+    },
+  );
+
+  it.each(['0', '007', '12abc', '1e3', 'abc'])('is null for the app id %j', (id) => {
+    Object.assign(process.env, FIX_ENV, { GITHUB_FIX_APP_ID: id });
+    expect(fixAppConfig()).toBeNull();
+  });
+
+  it.each(['a/b', '../x', '-x', 'x?y'])('is null for the slug %j, which would go into its links', (slug) => {
+    Object.assign(process.env, FIX_ENV, { GITHUB_FIX_APP_SLUG: slug });
+    expect(fixAppConfig()).toBeNull();
+  });
+
+  it("isn't offered without the main app, which signs people in", async () => {
+    Object.assign(process.env, FIX_ENV);
+    expect(await status()).toMatchObject({ configured: false, fix_app: { configured: false } });
+  });
 });
 
 // ------------------------------------------------------------------------------------------ SOSF_SECRET

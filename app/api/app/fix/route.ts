@@ -1,11 +1,25 @@
 import type { NextRequest } from 'next/server';
 import { ghRequest } from '@/lib/github.ts';
-import { configOr404, FIXES, installationToken, repoCache, requireAdmin, sessionOf } from '@/lib/github-app.ts';
+import {
+  configOr404,
+  FIXES,
+  fixer,
+  installationToken,
+  installed,
+  repoCache,
+  requireAdmin,
+  requirePermissions,
+  sessionOf,
+  SETTINGS_FIX_PERMISSIONS,
+} from '@/lib/github-app.ts';
 import { csrf, field, HttpError, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
 import { parseRepo, REPO_LENGTH } from '@/lib/public-scan.ts';
 
-/** One allow-listed settings fix: a single API call through the app, for a signed-in admin of the repo. */
+/**
+ * One allow-listed settings fix: a single API call for a signed-in admin of the repo, through the app that makes fixes
+ * (the fix app when the site has one), with a token that holds only the permission that call takes.
+ */
 export const POST = route(async (req: NextRequest) => {
   const limited = rateLimit(req, 'app');
   if (limited) return limited;
@@ -26,7 +40,11 @@ export const POST = route(async (req: NextRequest) => {
   const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   await requireAdmin(sess, repo);
   const [owner, name] = repo.split('/');
-  const token = await installationToken(cfg, repo);
+  const app = fixer(cfg);
+  const inst = await installed(app, repo);
+  const need = SETTINGS_FIX_PERMISSIONS[fixId];
+  requirePermissions(app, inst, repo, need, 'change settings');
+  const token = await installationToken(app, repo, { inst, permissions: { ...need, metadata: 'read' } });
   const r = await ghRequest(
     fix.method,
     fix.path.replaceAll('{owner}', owner).replaceAll('{repo}', name),
@@ -38,7 +56,7 @@ export const POST = route(async (req: NextRequest) => {
   if (!ok) {
     message = (r.data && typeof r.data === 'object' && !Array.isArray(r.data) && r.data.message) || `HTTP ${r.status}`;
     if (r.status === 403 || r.status === 404) {
-      message = `${message}. The app may not have the permission this fix needs on ${repo}.`;
+      message = `${message}. The ${app.slug} app may not have the permission this fix needs on ${repo}.`;
     }
   }
   repoCache.delete(`${sess.login.toLowerCase()}\n${repo.toLowerCase()}`);

@@ -463,9 +463,12 @@ async function filePlan(
     const { status } = await gh('GET', `/orgs/${quote(ctx.owner)}/teams/maintainers`);
     if (status !== 200) {
       fillCtx = { ...ctx, maintainer: `@${login}` };
-      notes.push(
-        `There's no @${ctx.owner}/maintainers team, so the file names @${login}. Swap in the team that maintains this repository.`,
-      );
+      // Only a 404 says there's no such team: a token that can't read the org's teams (the fix app's) gets a 403.
+      const why =
+        status === 404
+          ? `There's no @${ctx.owner}/maintainers team`
+          : `Couldn't check for a @${ctx.owner}/maintainers team (HTTP ${status})`;
+      notes.push(`${why}, so the file names @${login}. Swap in the team that maintains this repository.`);
     }
   }
   if (itemId === 'deps-update-automation') {

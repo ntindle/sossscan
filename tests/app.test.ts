@@ -4,16 +4,24 @@
  * machine.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { appConfig, newState, sessionCookie, stateCookie } from '@/lib/github-app.ts';
+import skeleton from '@/build/skeleton.json';
+import { appConfig, FIXES, newState, sessionCookie, SETTINGS_FIX_PERMISSIONS, stateCookie } from '@/lib/github-app.ts';
 import { appJwt } from '@/lib/github.ts';
 import { seal, unseal } from '@/lib/sealed.ts';
+// The page's browser module (allowJs lets TypeScript read it; it isn't type-checked).
+import * as core from '../public/shared/core.js';
 import {
   ADMIN,
   ALL_WRITE,
+  BEFORE_SPLIT,
   Browser,
   CFG,
   configure,
+  configureFix,
+  FIX_CFG,
+  FIX_PERMS,
   H,
+  MAIN_READ,
   openPrRoutes,
   PEM,
   READER,
@@ -24,6 +32,7 @@ import {
 } from './helpers.ts';
 
 const env = useTestEnv();
+const sg: any = core;
 
 // ------------------------------------------------------------------------------------------ sealed data
 describe('sealed values', () => {
@@ -243,8 +252,21 @@ it("gives Deep scan the token's permissions, so a check whose permission the ins
     '2 repository Actions secret(s); prefer environment secrets and OIDC',
   ]);
   expect(got('disc-triage-sla')).toEqual(['info', 'No private vulnerability reports are waiting in triage']);
-  // The token it scanned with was one for that repository alone, with all the installation's permissions.
-  expect(w.tokenRequests.at(-1)).toEqual({ repositories: ['demo'] });
+  // It scanned with a token for that repository alone that only reads, and read the advisories with another, which
+  // holds nothing else.
+  expect(w.tokenRequests.slice(-2)).toEqual([
+    {
+      repositories: ['demo'],
+      permissions: {
+        administration: 'read',
+        contents: 'read',
+        metadata: 'read',
+        pull_requests: 'read',
+        secrets: 'read',
+      },
+    },
+    { repositories: ['demo'], permissions: { repository_advisories: 'read', metadata: 'read' } },
+  ]);
 });
 
 // ------------------------------------------------------------------------------------- pull request fixes
@@ -335,4 +357,275 @@ it('makes a state whose nonce the same browser must hold, and nothing else', () 
   const [state, nonce] = newState('/x');
   expect(unseal('state', state, 60)).toEqual({ next: '/x', nonce });
   expect(H['x-requested-with']).toBe('sosf');
+});
+
+// ---------------------------------------------------------------------------------------------- two apps
+describe('two apps: the main app reads, and the fix app changes things', () => {
+  const ADVISORIES = { repository_advisories: 'read', metadata: 'read' };
+  const INSTALL_FIX = `https://github.com/apps/${FIX_CFG.slug}/installations/new`;
+  /** What Deep scan's token holds on a personal account's installation: organization permissions aren't asked for. */
+  const { members: _members, organization_administration: _orgAdmin, ...PERSONAL_READ } = MAIN_READ;
+
+  /** A signed-in admin of octo/demo, in a world that names each token apart. */
+  async function admin() {
+    const w = env.world();
+    w.distinctTokens = true;
+    w.repo.set('GET /repos/octo/demo/security-advisories', [200, []]);
+    const c = new Browser();
+    await signIn(c);
+    return { w, c };
+  }
+
+  it('gives Deep scan a token that only reads, even while the main app can still write', async () => {
+    configure();
+    const { w, c } = await admin();
+    w.perms = { ...BEFORE_SPLIT };
+    w.account = { login: 'octo', type: 'Organization' };
+    const r = await c.post('/api/app/check', { repo: 'octo/demo' });
+    expect(r.status).toBe(200);
+    // Every read Deep scan uses, nothing that writes, and not the advisories: they get a token of their own.
+    expect(w.tokenRequests).toEqual([
+      { repositories: ['demo'], permissions: MAIN_READ },
+      { repositories: ['demo'], permissions: ADVISORIES },
+    ]);
+    expect(Object.values(w.tokenRequests[0].permissions).every((v) => v === 'read')).toBe(true);
+    const [scanToken, reportsToken] = w.tokensOf(5);
+    expect(w.callsBy(scanToken).every((call) => call.startsWith('GET '))).toBe(true);
+    expect(w.callsBy(scanToken).filter((call) => call.includes('/security-advisories'))).toEqual([]);
+    // The advisories' token read the four lists, and nothing else.
+    expect(w.callsBy(reportsToken).map((call) => /state=(\w+)/.exec(call)![1])).toEqual(
+      expect.arrayContaining(['published', 'triage', 'closed', 'draft']),
+    );
+    expect(w.callsBy(reportsToken).every((call) => call.startsWith('GET /repos/octo/demo/security-advisories?'))).toBe(
+      true,
+    );
+    expect((await r.json()).results['disc-triage-sla'].status).toBe('info');
+  });
+
+  it('with the fix app, fixes and reads the advisories through it, and Deep scans through the main app', async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    w.perms = { ...MAIN_READ };
+
+    // Deep scan: the main app's token reads; the fix app's reads the advisories, and nothing else.
+    const rep = await (await c.post('/api/app/check', { repo: 'octo/demo' })).json();
+    expect(rep.results['disc-triage-sla'].status).toBe('info');
+    expect(w.tokenRequests).toEqual([{ repositories: ['demo'], permissions: PERSONAL_READ }]);
+    expect(w.fixTokenRequests).toEqual([{ repositories: ['demo'], permissions: ADVISORIES }]);
+    const [reports] = w.tokensOf(7);
+    expect(w.callsBy(reports)).toHaveLength(4);
+    expect(w.callsBy(reports).every((call) => call.startsWith('GET /repos/octo/demo/security-advisories?'))).toBe(true);
+
+    // A settings fix: a fix app token that holds only what that fix takes, and makes the one call.
+    w.repo.set('PUT /repos/octo/demo/private-vulnerability-reporting', [204, null]);
+    const done = await (await c.post('/api/app/fix', { repo: 'octo/demo', fix_id: 'enable-private-reporting' })).json();
+    expect(done).toMatchObject({ ok: true, status: 204 });
+    expect(w.fixTokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { administration: 'write', metadata: 'read' },
+    });
+    expect(w.callsBy(w.tokensOf(7).at(-1)!)).toEqual(['PUT /repos/octo/demo/private-vulnerability-reporting']);
+    expect(w.tokenRequests).toHaveLength(1); // the main app minted nothing for it
+
+    // A pull request fix: the main app's read-only token builds the preview, and the fix app's opens it.
+    const view = await (await c.post('/api/app/pr/preview', { repo: 'octo/demo', item_id: 'disc-security-md' })).json();
+    expect(view.files[0].path).toBe('SECURITY.md');
+    expect(w.tokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { contents: 'read', pull_requests: 'read', metadata: 'read' },
+    });
+    expect(w.callsBy(w.tokensOf(5).at(-1)!).every((call) => call.startsWith('GET '))).toBe(true);
+    openPrRoutes(w);
+    expect((await (await c.post('/api/app/pr', { plan: view.plan })).json()).number).toBe(3);
+    expect(w.fixTokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { contents: 'write', pull_requests: 'write', metadata: 'read' },
+    });
+    expect(w.callsBy(w.tokensOf(7).at(-1)!).filter((call) => !call.startsWith('GET '))).toEqual([
+      'POST /repos/octo/demo/git/trees',
+      'POST /repos/octo/demo/git/commits',
+      'POST /repos/octo/demo/git/refs',
+      'POST /repos/octo/demo/pulls',
+    ]);
+
+    // What the page reads: the fix app's name and install page, and that it's installed here.
+    const st = await (await c.get('/api/app/status')).json();
+    expect(st.fix_app).toEqual({ configured: true, slug: FIX_CFG.slug, install_url: INSTALL_FIX });
+    const info = await (await c.post('/api/app/repo', { repo: 'octo/demo' })).json();
+    expect(info).toMatchObject({
+      installed: true,
+      can_settings: true,
+      can_pr: true,
+      can_pr_workflows: true,
+      fix_app: {
+        configured: true,
+        installed: true,
+        install_url: INSTALL_FIX,
+        manage_url: 'https://github.com/settings/installations/7',
+      },
+    });
+    expect(sg.fixerOn(st, info)).toMatchObject({ fix: true, name: FIX_CFG.slug, installed: true });
+  });
+
+  it('without the fix app, fixes go through the main app, each token cut down to its request', async () => {
+    configure();
+    const { w, c } = await admin();
+    w.perms = { ...BEFORE_SPLIT };
+    w.repo.set('PUT /repos/octo/demo/private-vulnerability-reporting', [204, null]);
+    const done = await (await c.post('/api/app/fix', { repo: 'octo/demo', fix_id: 'enable-private-reporting' })).json();
+    expect(done.ok).toBe(true);
+    expect(w.tokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { administration: 'write', metadata: 'read' },
+    });
+    const view = await (await c.post('/api/app/pr/preview', { repo: 'octo/demo', item_id: 'disc-security-md' })).json();
+    expect(w.tokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { contents: 'read', pull_requests: 'read', metadata: 'read' },
+    });
+    openPrRoutes(w);
+    expect((await c.post('/api/app/pr', { plan: view.plan })).status).toBe(200);
+    expect(w.tokenRequests.at(-1)).toEqual({
+      repositories: ['demo'],
+      permissions: { contents: 'write', pull_requests: 'write', metadata: 'read' },
+    });
+    expect(w.fixTokenRequests).toEqual([]);
+    const st = await (await c.get('/api/app/status')).json();
+    expect(st.fix_app).toEqual({ configured: false, slug: null, install_url: null });
+    const info = await (await c.post('/api/app/repo', { repo: 'octo/demo' })).json();
+    expect(info).toMatchObject({
+      installed: true,
+      can_settings: true,
+      can_pr: true,
+      fix_app: { configured: false, installed: null, install_url: null, manage_url: null },
+    });
+    // The page sends people to the main app, as before there were two.
+    expect(sg.fixerOn(st, info)).toMatchObject({ fix: false, name: 'the GitHub App', installed: true });
+  });
+
+  it('asks for only the permission each settings fix takes', async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    // Every settings fix in the guide says what it takes, so none is left out of the ones offered.
+    expect(Object.keys(FIXES).sort()).toEqual(Object.keys(skeleton.app_fixes).sort());
+    for (const [id, fix] of Object.entries(FIXES)) {
+      const path = fix.path.replace('{owner}', 'octo').replace('{repo}', 'demo');
+      w.repo.set(`${fix.method} ${path}`, [204, null]);
+      expect(await (await c.post('/api/app/fix', { repo: 'octo/demo', fix_id: id })).json(), id).toMatchObject({
+        ok: true,
+      });
+      expect(w.fixTokenRequests.at(-1), id).toEqual({
+        repositories: ['demo'],
+        permissions: { ...SETTINGS_FIX_PERMISSIONS[id], metadata: 'read' },
+      });
+      expect(w.callsBy(w.tokensOf(7).at(-1)!), id).toEqual([`${fix.method} ${path}`]);
+    }
+    // GitHub lists all nine under Administration (write), CodeQL default setup included.
+    expect(new Set(Object.values(SETTINGS_FIX_PERMISSIONS).map((p) => JSON.stringify(p)))).toEqual(
+      new Set([JSON.stringify({ administration: 'write' })]),
+    );
+    // An installation without it gets no token, and a reason.
+    w.fixPerms = { ...FIX_PERMS, administration: 'read' };
+    const r = await c.post('/api/app/fix', { repo: 'octo/demo', fix_id: 'enable-private-reporting' });
+    expect(r.status).toBe(403);
+    expect((await r.json()).error.message).toBe(
+      `The ${FIX_CFG.slug} app on octo/demo can't change settings yet. It needs write access to administration.`,
+    );
+  });
+
+  it('says where the fix app is missing and offers its install, while Deep scan carries on', async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    w.perms = { ...MAIN_READ };
+    w.fixInstalled = false;
+    const st = await (await c.get('/api/app/status')).json();
+    expect(st.fix_app).toEqual({ configured: true, slug: FIX_CFG.slug, install_url: INSTALL_FIX });
+    const info = await (await c.post('/api/app/repo', { repo: 'octo/demo' })).json();
+    expect(info).toMatchObject({
+      admin: true,
+      installed: true,
+      can_settings: false,
+      can_pr: false,
+      can_pr_workflows: false,
+      fix_app: { configured: true, installed: false, install_url: INSTALL_FIX, manage_url: null },
+    });
+    // The page asks for the fix app, by its name, with a link to install it (public/shared/core.js).
+    expect(sg.fixerOn(st, info)).toEqual({
+      fix: true,
+      name: FIX_CFG.slug,
+      slug: FIX_CFG.slug,
+      installed: false,
+      install_url: INSTALL_FIX,
+      manage_url: null,
+    });
+    // Without its name in the status, the page calls it "the sossscan fix app".
+    expect(sg.fixerOf({ fix_app: { configured: true } }).name).toBe('the sossscan fix app');
+    // A fix says the same, and the main app isn't asked for a token instead.
+    for (const [path, body] of [
+      ['/api/app/fix', { repo: 'octo/demo', fix_id: 'enable-private-reporting' }],
+      ['/api/app/pr/preview', { repo: 'octo/demo', item_id: 'disc-security-md' }],
+    ] as const) {
+      const r = await c.post(path, body);
+      expect(r.status, path).toBe(404);
+      expect((await r.json()).error, path).toEqual({
+        code: 'app_not_installed',
+        message: `The ${FIX_CFG.slug} app is not installed on octo/demo.`,
+        hint: `Install it from ${INSTALL_FIX}, then try again.`,
+      });
+    }
+    expect(w.tokenRequests).toEqual([]);
+    // Deep scan works through the main app, and the private-report checks say what they need. Nothing reads them.
+    const rep = await (await c.post('/api/app/check', { repo: 'octo/demo' })).json();
+    expect(rep.results['disc-triage-sla']).toMatchObject({
+      status: 'unknown',
+      summary:
+        `Couldn't read the private vulnerability reports: Deep scan reads them through ${FIX_CFG.slug}, the app ` +
+        "for one-click fixes, which isn't installed on this repository. Install it if you want this check, or use " +
+        "the CLI with an admin's token",
+    });
+    expect(w.fixTokenRequests).toEqual([]);
+    expect(w.used.filter(([, , p]) => /security-advisories\?state=(?:triage|closed|draft)/.test(p))).toEqual([]);
+    // The answer without it wasn't kept, so once it's installed the next one says so.
+    w.fixInstalled = true;
+    expect((await (await c.post('/api/app/repo', { repo: 'octo/demo' })).json()).fix_app.installed).toBe(true);
+  });
+
+  it("builds a preview with the fix app's read-only token where only the fix app is installed", async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    w.installed = false;
+    const view = await (await c.post('/api/app/pr/preview', { repo: 'octo/demo', item_id: 'disc-security-md' })).json();
+    expect(view.files[0].path).toBe('SECURITY.md');
+    expect(w.tokenRequests).toEqual([]);
+    expect(w.fixTokenRequests).toEqual([
+      { repositories: ['demo'], permissions: { contents: 'read', pull_requests: 'read', metadata: 'read' } },
+    ]);
+    // Deep scan needs the main app.
+    const r = await c.post('/api/app/check', { repo: 'octo/demo' });
+    expect(r.status).toBe(404);
+    expect((await r.json()).error.message).toBe(`The ${CFG.slug} app is not installed on octo/demo.`);
+  });
+
+  it('reads the advisories through the main app while only it may, and otherwise says how to let the fix app', async () => {
+    configure();
+    configureFix();
+    const { w, c } = await admin();
+    w.perms = { ...BEFORE_SPLIT };
+    w.fixPerms = { ...FIX_PERMS, repository_advisories: null };
+    let rep = await (await c.post('/api/app/check', { repo: 'octo/demo' })).json();
+    expect(rep.results['disc-triage-sla'].status).toBe('info');
+    expect(w.tokenRequests.at(-1)).toEqual({ repositories: ['demo'], permissions: ADVISORIES });
+    expect(w.fixTokenRequests).toEqual([]);
+    w.perms = { ...MAIN_READ };
+    rep = await (await c.post('/api/app/check', { repo: 'octo/demo' })).json();
+    expect(rep.results['disc-triage-sla'].summary).toBe(
+      `Couldn't read the private vulnerability reports: ${FIX_CFG.slug} hasn't been given access to security ` +
+        "advisories on this installation. An owner can approve the new permission in the installation's settings, " +
+        "or use the CLI with an admin's token",
+    );
+  });
 });

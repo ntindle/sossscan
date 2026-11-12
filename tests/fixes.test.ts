@@ -198,6 +198,14 @@ describe('plan', () => {
     const p = await planFor(gh, 'repo-codeowners', 'alice');
     expect(p.files[0].content).toContain('/.github/        @alice');
     expect(p.notes.some((n) => n.includes('no @octo/maintainers team'))).toBe(true);
+    // A token that can't read the org's teams says it couldn't check, not that there's no team.
+    gh.set('GET /orgs/octo/teams/maintainers', [403, { message: 'Resource not accessible by integration' }]);
+    const refused = await planFor(gh, 'repo-codeowners', 'alice');
+    expect(refused.files[0].content).toContain('/.github/        @alice');
+    expect(refused.notes).toContain(
+      "Couldn't check for a @octo/maintainers team (HTTP 403), so the file names @alice. Swap in the team that " +
+        'maintains this repository.',
+    );
   });
 
   it('points dependabot at the repo folders', async () => {
