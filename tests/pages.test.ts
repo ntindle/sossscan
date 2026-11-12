@@ -240,13 +240,17 @@ describe('the facts on the pages', () => {
     const kept: Record<string, string[]> = {
       'pl:theme': ['your theme'],
       'sg:lastRepo': ['the last repository you looked at'],
-      'sg:report:': ['the latest public scan of each repository', 'reports from deep scans', 'reports from the CLI'],
+      'sg:report:': ['the latest public scan of each repository'],
       'sg:progress:': ['the checks you marked done'],
       'sg:intent': ['the repository to deep scan, or the check whose fix you had open', 'after 15 minutes'],
     };
     expect([...names].filter((n) => !events.includes(n)).sort()).toEqual(Object.keys(kept).sort());
     const privacy = pageMarkdown('/privacy');
     for (const phrase of Object.values(kept).flat()) expect(privacy).toContain(phrase);
+    // Reports that read admin-only settings are kept in the page's memory, not in storage, and the page says so.
+    expect(privacy).toContain(
+      "Reports from deep scans, and reports from the CLI when its token had admin access, aren't saved anywhere.",
+    );
     expect(read('public/shared/core.js')).toContain('export const INTENT_TTL = 15 * 60 * 1000;');
   });
 
