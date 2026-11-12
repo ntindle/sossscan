@@ -750,6 +750,7 @@
     "label": "diffoscope",
     "url": "https://diffoscope.org/"
    }
-  ]
+  ],
+  "check": "Rebuild your latest release from its tag, as in the snippet below, and compare checksums: they should match the files you published."
  }
 }
