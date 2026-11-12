@@ -247,46 +247,38 @@ function localPath(uses: string): string {
   return p;
 }
 
+/** ${{ env.NAME }} or ${{env.NAME}}, the two ways a value names an env variable. */
+const ENV_REF = /\$\{\{ env\.([^\s{}]+) \}\}|\$\{\{env\.([^\s{}]+)\}\}/g;
+
 /**
- * A value with its ${{ env.NAME }} expressions replaced by the fixed values of an env (its entries without
- * expressions), one name after another. Only the names in the value are tried: a job can set thousands.
+ * A value with its ${{ env.NAME }} expressions replaced by their fixed values: from the first of envs (the step's,
+ * the job's, the workflow's) that sets the name, unless that value is an expression itself. Each name is looked up,
+ * so a job that sets thousands takes no longer.
  */
-function withEnv(value: string | undefined, fixed: [string, string][]): string | null {
-  let v = value?.trim();
+function withEnv(value: string | undefined, envs: Record<string, string>[]): string | null {
+  const v = value?.trim();
   if (!v) return null;
   if (!v.includes('env.')) return v;
-  for (const [k, x] of fixed) {
-    if (!v.includes(k)) continue;
-    for (const form of [`\${{ env.${k} }}`, `\${{env.${k}}}`]) v = v.replaceAll(form, x);
-  }
-  return v;
+  return v.replace(ENV_REF, (m: string, a?: string, b?: string) => {
+    const k = (a ?? b)!;
+    const x = envs.find((e) => Object.hasOwn(e, k))?.[k];
+    return x === undefined || x.includes('${{') ? m : x;
+  });
 }
 
-/** An env's entries whose values hold no expression, in order. */
-const fixedEntries = (env: Record<string, string>): [string, string][] =>
-  Object.entries(env).filter(([, x]) => !x.includes('${{'));
-
-/**
- * The artifacts a step uploads or downloads, with env (the workflow's and job's, as fixed: its fixedEntries) and the
- * step's own filled in to their names.
- */
-function artifactsOf(
-  step: Step,
-  env: Record<string, string>,
-  fixed = fixedEntries(env),
-): { uploads: string[]; downloads: Download[] } {
+/** The artifacts a step uploads or downloads, with the step's, then the job's or workflow's env (envs) filled in. */
+function artifactsOf(step: Step, envs: Record<string, string>[]): { uploads: string[]; downloads: Download[] } {
   const name = actionName(step);
-  const all = () => (Object.keys(step.env).length ? fixedEntries({ ...env, ...step.env }) : fixed);
+  const all = [step.env, ...envs];
   if (name === 'actions/upload-artifact') {
-    return { uploads: [withEnv(step.with.name, all()) || 'artifact'], downloads: [] };
+    return { uploads: [withEnv(step.with.name, all) || 'artifact'], downloads: [] };
   }
   if (name === 'actions/download-artifact') {
     const w = step.with;
-    const both = all();
     const other = ['run-id', 'github-token', 'repository'].some((k) => (w[k] ?? '').trim() !== '');
     return {
       uploads: [],
-      downloads: [{ name: withEnv(w.name, both), pattern: withEnv(w.pattern, both), otherRun: other, step }],
+      downloads: [{ name: withEnv(w.name, all), pattern: withEnv(w.pattern, all), otherRun: other, step }],
     };
   }
   if (name === 'dawidd6/action-download-artifact') {
@@ -717,17 +709,10 @@ async function check(
       let got = ios.get(n);
       if (got) return got;
       got = { uploads: [], downloads: [] };
-      const env = { ...n.wf.env, ...n.job.env };
-      const fixed = fixedEntries(env);
-      spend(1 + fixed.length);
+      const envs = [n.job.env, n.wf.env];
       for (const s of n.steps) {
-        // An upload or download fills its names in from the env, merged with the step's own (artifactsOf): a few
-        // units for each name it merges or tries.
-        const own = Object.keys(s.env).length;
-        const tries = (x?: string) => (x?.includes('env.') ? fixed.length + own : 0);
-        const artifact = actionName(s)?.endsWith('-artifact');
-        spend(1 + (artifact ? (own ? 8 * (fixed.length + own) : 0) + tries(s.with.name) + tries(s.with.pattern) : 0));
-        const a = artifactsOf(s, env, fixed);
+        spend(1 + (s.with.name?.length ?? 0) + (s.with.pattern?.length ?? 0));
+        const a = artifactsOf(s, envs);
         for (const x of a.uploads) got.uploads.push(x);
         for (const x of a.downloads) got.downloads.push(x);
       }
@@ -741,25 +726,33 @@ async function check(
       if (!got) fed.set(n, (got = feedersOf(n)));
       return got;
     };
+    // Downloads that ask for the same artifacts (by name and pattern) link to the same uploads: worked out once, and
+    // listed once, as chainOf would keep them.
     const feedersOf = (n: Node) => {
       const out: { node: Node; strong: boolean; artifact: string }[] = [];
       const untraced: Download[] = [];
+      const linked = new Map<string, boolean>();
       for (const d of io(n).downloads) {
         if (d.otherRun) continue;
-        let linked = false;
-        const want = (d.name ?? d.pattern ?? '').length;
-        for (const m of ancestors(n)) {
-          for (const up of io(m).uploads) {
-            // Matching a glob against a name takes at most the product of their lengths.
-            spend(1 + ((want * up.length) >> 6));
-            const t = takes(d, up);
-            if (t === 'yes' || t === 'all') {
-              out.push({ node: m, strong: t === 'yes', artifact: up });
-              linked = true;
+        const key = `${d.name ?? '\u0000'}\u0001${d.pattern ?? '\u0000'}`;
+        let any = linked.get(key);
+        if (any === undefined) {
+          any = false;
+          const want = (d.name ?? d.pattern ?? '').length;
+          for (const m of ancestors(n)) {
+            for (const up of io(m).uploads) {
+              // Matching a glob against a name takes at most the product of their lengths.
+              spend(1 + ((want * up.length) >> 6));
+              const t = takes(d, up);
+              if (t === 'yes' || t === 'all') {
+                out.push({ node: m, strong: t === 'yes', artifact: up });
+                any = true;
+              }
             }
           }
+          linked.set(key, any);
         }
-        if (!linked) untraced.push(d);
+        if (!any) untraced.push(d);
       }
       return { out, untraced };
     };

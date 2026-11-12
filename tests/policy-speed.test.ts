@@ -2,6 +2,10 @@
 // than linear time: a hostile SECURITY.md must not be able to hang a scan. These tests run every reader on 1 MB
 // policies built to be slow, and every pattern the readers compile on 256 KB of such text, and fail on anything slow.
 // This file imports only the readers, so COMPILED holds exactly their patterns.
+//
+// The limits are those of tests/scanner-speed.test.ts, far from what a loaded CI runner takes and close to nothing
+// slow: 500 ms for a pattern on 256 KB, 5 s for the readers on a 1 MB policy, and work that takes over 100 ms may take
+// at most 8 times what it takes on a quarter of its input (linear work takes 4 times as long, squared 16).
 import { describe, expect, it } from 'vitest';
 import { COMPILED, re } from '../lib/scanner/py.ts';
 import {
@@ -210,18 +214,40 @@ const FRAMED: [string, string, string][] = [
   ['[a](b', ' ', 'x'],
 ];
 
+const PATTERN_LIMIT = 500;
+const READER_LIMIT = 5000;
+
+/** How long one run of fn takes, in milliseconds. */
+function once(fn: () => void): number {
+  const t0 = performance.now();
+  fn();
+  return performance.now() - t0;
+}
+
 /**
  * How long fn takes, in milliseconds: the faster of two runs when the first is over the limit. Something slow is slow
  * every time; a pause for garbage collection, or another test file running alongside, isn't.
  */
 function time(fn: () => void, limit: number): number {
-  const once = () => {
-    const t0 = performance.now();
-    fn();
-    return performance.now() - t0;
-  };
-  const first = once();
-  return first <= limit ? first : Math.min(first, once());
+  const first = once(fn);
+  return first <= limit ? first : Math.min(first, once(fn));
+}
+
+/**
+ * Why work is too slow, or null: big (the work on the larger input) takes over limit, or over 100 ms and more than 8
+ * times what small (the same on a quarter of it) takes. While the ratio is over 8 each runs again, up to three times,
+ * and the faster counts: under load one run can be slow.
+ */
+function slowness(small: () => void, big: () => void, limit: number): string | null {
+  let tb = time(big, limit);
+  if (tb > limit) return `${Math.round(tb)} ms`;
+  if (tb <= 100) return null;
+  let ts = once(small);
+  for (let k = 0; tb > 8 * ts && k < 2; k++) {
+    tb = Math.min(tb, once(big));
+    ts = Math.min(ts, once(small));
+  }
+  return tb > 8 * ts ? `${Math.round(tb)} ms, ${(tb / ts).toFixed(1)} times what a quarter of the input takes` : null;
 }
 
 describe('reading a security policy takes linear time', () => {
@@ -232,9 +258,7 @@ describe('reading a security policy takes linear time', () => {
     expect(readPolicy('# Security\n\nEmail security@example.org.', 'SECURITY.md').truncated).toBe(false);
   });
 
-  // 500 ms, as for the other parsers (tests/scanner-speed.test.ts): about 150 ms alone, it can take twice that while
-  // the other test files load every core.
-  it('runs every reader on each 1 MB policy built to be slow in under 500 ms', () => {
+  it('runs every reader on each 1 MB policy built to be slow in under 5 s, growing linearly', () => {
     // Warm up: compile the patterns and the code, as a running server has.
     for (const text of Object.values(policies(4000))) {
       const p = readPolicy(text, 'SECURITY.md');
@@ -242,47 +266,53 @@ describe('reading a security policy takes linear time', () => {
       readSupport(p);
     }
     const tags = [{ tag: 'v1.2.3' }];
+    const read = (text: string, path: string) => () => {
+      const p = readPolicy(text, path);
+      const r = howToReport(p, 'acme/widget');
+      const s = readSupport(p);
+      sameRepoLink(p, text, 'acme/widget', { report: true, versions: true });
+      reportVerdict(p, r, null);
+      supportVerdict(s, releaseLine(tags, 'widget'), path, null, 'widget');
+      paragraphs(p);
+      mentions(p, /report/);
+      sections(p, /./);
+    };
     const slow: string[] = [];
+    // The reader reads the first MAX_POLICY (256 KB) of a 1 MB policy, so its growth is against a quarter of that.
+    const quarter = policies(MAX_POLICY / 4);
     for (const [name, text] of Object.entries(policies(1_000_000))) {
       for (const path of ['SECURITY.md', 'SECURITY.rst', 'SECURITY.adoc']) {
-        const ms = time(() => {
-          const p = readPolicy(text, path);
-          const r = howToReport(p, 'acme/widget');
-          const s = readSupport(p);
-          sameRepoLink(p, text, 'acme/widget', { report: true, versions: true });
-          reportVerdict(p, r, null);
-          supportVerdict(s, releaseLine(tags, 'widget'), path, null, 'widget');
-          paragraphs(p);
-          mentions(p, /report/);
-          sections(p, /./);
-        }, 500);
-        if (ms > 500) slow.push(`${name} as ${path}: ${Math.round(ms)} ms`);
+        const why = slowness(read(quarter[name], path), read(text, path), READER_LIMIT);
+        if (why) slow.push(`${name} as ${path}: ${why}`);
       }
     }
     expect(slow).toEqual([]);
   }, 300_000);
 
-  it('runs every pattern the readers compile on 256 KB of text built to be slow in under 50 ms', () => {
-    const size = 256 * 1024;
-    const texts = [
-      ...UNITS.map((u) => fill(u, size)),
-      ...FRAMED.map(([before, unit, after]) => before + fill(unit, size) + after),
-    ];
+  it('runs every pattern the readers compile on 256 KB of text built to be slow in under 500 ms, growing linearly', () => {
+    const shapes: [string, string, string][] = [...UNITS.map((u): [string, string, string] => ['', u, '']), ...FRAMED];
+    const at = (size: number) => shapes.map(([before, unit, after]) => before + fill(unit, size) + after);
+    const [texts, big] = [at(256 * 1024), at(1024 * 1024)];
     expect(COMPILED.length).toBeGreaterThan(150);
     const slow: string[] = [];
     for (const { source, flags } of COMPILED) {
       const rx = re(source, flags, false);
       const g = new RegExp(rx.source, rx.flags + 'g');
-      for (const text of texts) {
-        const run = () => {
-          g.lastIndex = 0;
-          for (let m: RegExpExecArray | null; (m = g.exec(text));) if (m[0] === '') g.lastIndex++;
-        };
-        const ms = time(run, 50);
-        if (ms > 50)
-          slow.push(`${source.slice(0, 80)} on ${JSON.stringify(text.slice(0, 12))}...: ${Math.round(ms)} ms`);
+      const scan = (text: string) => () => {
+        g.lastIndex = 0;
+        for (let m: RegExpExecArray | null; (m = g.exec(text));) if (m[0] === '') g.lastIndex++;
+      };
+      for (const [k, text] of texts.entries()) {
+        const ms = time(scan(text), PATTERN_LIMIT);
+        const name = `${source.slice(0, 80)} on ${JSON.stringify(text.slice(0, 12))}...`;
+        if (ms > PATTERN_LIMIT) slow.push(`${name}: ${Math.round(ms)} ms`);
+        // Work that could take over 100 ms on 1 MB if it grew faster than linear: how it grows.
+        else if (ms > 6) {
+          const why = slowness(scan(text), scan(big[k]), Infinity);
+          if (why) slow.push(`${name} on 1 MB: ${why}`);
+        }
       }
     }
     expect(slow).toEqual([]);
-  }, 300_000);
+  }, 600_000);
 });

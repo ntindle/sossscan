@@ -3,6 +3,11 @@
 // take more than linear time, or it must stop at a cap. These tests run every pattern lib/scanner compiles outside the
 // policy reader (tests/policy-speed.test.ts has those) on 256 KB of text built to be slow, and every parser and check
 // on 1 MB files built to be slow: the shapes an independent audit tried, and the ones that were slow.
+//
+// The limits are far from what a loaded CI runner takes, and close to nothing slow: 500 ms for a pattern on 256 KB
+// (the mildest of round 2's patterns that took time squared took 4.7 s), 5 s for a parser on 1 MB (those took over a
+// minute), and work that takes over 100 ms on 1 MB may take at most 8 times what it takes on 256 KB (linear work takes
+// 4 times as long, work that takes time squared 16).
 import { describe, expect, it } from 'vitest';
 
 // The policy reader's patterns first, so the rest of COMPILED is everything else the scanner compiles.
@@ -24,18 +29,40 @@ const MB = 1024 * KB;
 const fill = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
 const lines = (n: number, make: (i: number) => string) => Array.from({ length: n }, (_, i) => make(i)).join('\n');
 
+const PATTERN_LIMIT = 500;
+const PARSER_LIMIT = 5000;
+
+/** How long one run of fn takes, in milliseconds. */
+async function once(fn: () => unknown): Promise<number> {
+  const t0 = performance.now();
+  await fn();
+  return performance.now() - t0;
+}
+
 /**
  * How long fn takes, in milliseconds: the faster of two runs when the first is over the limit. Something slow is slow
  * every time; a pause for garbage collection, or another test file running alongside, isn't.
  */
 async function time(fn: () => unknown, limit: number): Promise<number> {
-  const once = async () => {
-    const t0 = performance.now();
-    await fn();
-    return performance.now() - t0;
-  };
-  const first = await once();
-  return first <= limit ? first : Math.min(first, await once());
+  const first = await once(fn);
+  return first <= limit ? first : Math.min(first, await once(fn));
+}
+
+/**
+ * Why work is too slow, or null: big (the work on the larger input) takes over limit, or over 100 ms and more than 8
+ * times what small (the same on a quarter of it) takes. While the ratio is over 8 each runs again, up to three times,
+ * and the faster counts: under load one run can be slow.
+ */
+async function slowness(small: () => unknown, big: () => unknown, limit: number): Promise<string | null> {
+  let tb = await time(big, limit);
+  if (tb > limit) return `${Math.round(tb)} ms`;
+  if (tb <= 100) return null;
+  let ts = await once(small);
+  for (let k = 0; tb > 8 * ts && k < 2; k++) {
+    tb = Math.min(tb, await once(big));
+    ts = Math.min(ts, await once(small));
+  }
+  return tb > 8 * ts ? `${Math.round(tb)} ms, ${(tb / ts).toFixed(1)} times what a quarter of the input takes` : null;
 }
 
 /** Repeated units for the patterns: runs of space and lines, and the words the workflow and config patterns look for. */
@@ -166,30 +193,33 @@ const FRAMED: [string, string, string][] = [
 ];
 
 describe('the scanner takes linear time on files built to be slow', () => {
-  it('runs every pattern it compiles on 256 KB of text built to be slow in under 50 ms', async () => {
-    const size = 256 * KB;
-    const texts = [
-      ...UNITS.map((u) => fill(u, size)),
-      ...FRAMED.map(([before, unit, after]) => before + fill(unit, size) + after),
-    ];
+  it('runs every pattern it compiles on 256 KB of text built to be slow in under 500 ms, growing linearly', async () => {
+    const shapes: [string, string, string][] = [...UNITS.map((u): [string, string, string] => ['', u, '']), ...FRAMED];
+    const at = (size: number) => shapes.map(([before, unit, after]) => before + fill(unit, size) + after);
+    const [texts, big] = [at(256 * KB), at(MB)];
     const patterns = COMPILED.slice(READER);
     expect(patterns.length).toBeGreaterThan(100);
     const slow: string[] = [];
     for (const { source, flags } of patterns) {
       const rx = re(source, flags, false);
       const g = new RegExp(rx.source, rx.flags + 'g');
-      for (const text of texts) {
-        const run = () => {
-          g.lastIndex = 0;
-          for (let m: RegExpExecArray | null; (m = g.exec(text));) if (m[0] === '') g.lastIndex++;
-        };
-        const ms = await time(run, 50);
-        if (ms > 50)
-          slow.push(`${source.slice(0, 80)} on ${JSON.stringify(text.slice(0, 16))}...: ${Math.round(ms)} ms`);
+      const scan = (text: string) => () => {
+        g.lastIndex = 0;
+        for (let m: RegExpExecArray | null; (m = g.exec(text));) if (m[0] === '') g.lastIndex++;
+      };
+      for (const [k, text] of texts.entries()) {
+        const ms = await time(scan(text), PATTERN_LIMIT);
+        const name = `${source.slice(0, 80)} on ${JSON.stringify(text.slice(0, 16))}...`;
+        if (ms > PATTERN_LIMIT) slow.push(`${name}: ${Math.round(ms)} ms`);
+        // Work that could take over 100 ms on 1 MB if it grew faster than linear: how it grows.
+        else if (ms > 6) {
+          const why = await slowness(scan(text), scan(big[k]), Infinity);
+          if (why) slow.push(`${name} on 1 MB: ${why}`);
+        }
       }
     }
     expect(slow).toEqual([]);
-  }, 300_000);
+  }, 600_000);
 
   /** 1 MB files built to be slow: what each is, the function it's for, and the file. */
   function hostile(size: number): [string, string, string][] {
@@ -295,7 +325,7 @@ describe('the scanner takes linear time on files built to be slow', () => {
     ];
   }
 
-  it('reads and analyzes each 1 MB workflow built to be slow in under 500 ms, or stops at a cap', async () => {
+  it('reads and analyzes each 1 MB workflow built to be slow in under 5 s, growing linearly, or stops at a cap', async () => {
     // Warm up, as a running server is.
     for (const [, kind, text] of hostile(4 * KB)) {
       try {
@@ -307,38 +337,40 @@ describe('the scanner takes linear time on files built to be slow', () => {
     }
     const slow: string[] = [];
     const stopped: string[] = [];
-    for (const [name, kind, text] of hostile(MB)) {
-      const ms = await time(async () => {
-        const file = { path: '.github/workflows/x.yml', text };
-        analyzeWorkflow(file.path, text);
-        parseYaml(text);
-        try {
-          if (kind === 'action') readCompositeSteps('action.yml', text);
-          else {
-            readWorkflow(file.path, text);
-            tracedSecrets([file]);
-            await licenseGate({
-              workflows: [file],
-              files: [],
-              read: async () => null,
-              hops: new Hops([], async () => null),
-            });
-            await customQueries({ workflows: [file], files: [], read: async () => null });
-            await releaseCacheCheck({
-              workflows: [file],
-              unread: [],
-              files: [],
-              treeRead: true,
-              read: async () => null,
-              hops: new Hops([], async () => null),
-            });
-          }
-        } catch (e) {
-          if (!(e instanceof TooComplex)) throw e;
-          stopped.push(name);
+    const read = (name: string, kind: string, text: string) => async () => {
+      const file = { path: '.github/workflows/x.yml', text };
+      analyzeWorkflow(file.path, text);
+      parseYaml(text);
+      try {
+        if (kind === 'action') readCompositeSteps('action.yml', text);
+        else {
+          readWorkflow(file.path, text);
+          tracedSecrets([file]);
+          await licenseGate({
+            workflows: [file],
+            files: [],
+            read: async () => null,
+            hops: new Hops([], async () => null),
+          });
+          await customQueries({ workflows: [file], files: [], read: async () => null });
+          await releaseCacheCheck({
+            workflows: [file],
+            unread: [],
+            files: [],
+            treeRead: true,
+            read: async () => null,
+            hops: new Hops([], async () => null),
+          });
         }
-      }, 500);
-      if (ms > 500) slow.push(`${name}: ${Math.round(ms)} ms`);
+      } catch (e) {
+        if (!(e instanceof TooComplex)) throw e;
+        stopped.push(name);
+      }
+    };
+    const quarter = hostile(256 * KB);
+    for (const [k, [name, kind, text]] of hostile(MB).entries()) {
+      const why = await slowness(read(name, kind, quarter[k][2]), read(name, kind, text), PARSER_LIMIT);
+      if (why) slow.push(`${name}: ${why}`);
     }
     expect(slow).toEqual([]);
     // What's too deep, or too big with its aliases expanded, is too complex to read.
@@ -388,7 +420,9 @@ describe('the scanner takes linear time on files built to be slow', () => {
     }
     // Twenty stars took longer than a minute.
     for (const k of [12, 16, 20, 1000]) {
-      expect(await time(() => globMatch('*a'.repeat(k) + 'b', 'a'.repeat(k * 3)), 50)).toBeLessThan(50);
+      expect(await time(() => globMatch('*a'.repeat(k) + 'b', 'a'.repeat(k * 3)), PATTERN_LIMIT)).toBeLessThan(
+        PATTERN_LIMIT,
+      );
     }
   });
 
@@ -431,68 +465,73 @@ describe('the scanner takes linear time on files built to be slow', () => {
     ];
   }
 
-  it('checks release workflows built to be slow in under 500 ms, or stops with unknown', async () => {
+  it('checks release workflows built to be slow in under 5 s, growing linearly, or stops with unknown', async () => {
     const slow: string[] = [];
-    for (const [name, files] of releases(MB)) {
+    const statuses: string[] = [];
+    // Each run reads the files afresh (Hops keeps what it read).
+    const check = (files: Record<string, string>) => async () => {
       const read = async (p: string) => files[p] ?? null;
       const workflows = Object.entries(files)
         .filter(([p]) => p.startsWith('.github/workflows/'))
         .map(([path, text]) => ({ path, text }));
       const hops = new Hops(Object.keys(files), read);
-      let status = '';
-      const ms = await time(async () => {
-        const r = await releaseCacheCheck({
-          workflows,
-          unread: [],
-          files: Object.keys(files),
-          treeRead: true,
-          read,
-          hops,
-        });
-        status = r.status;
-        await licenseGate({ workflows, files: Object.keys(files), read, hops });
-        tracedSecrets(workflows);
-      }, 500);
-      if (ms > 500) slow.push(`${name}: ${Math.round(ms)} ms`);
-      expect(['pass', 'info', 'unknown'], name).toContain(status);
+      const r = await releaseCacheCheck({
+        workflows,
+        unread: [],
+        files: Object.keys(files),
+        treeRead: true,
+        read,
+        hops,
+      });
+      statuses.push(r.status);
+      await licenseGate({ workflows, files: Object.keys(files), read, hops });
+      tracedSecrets(workflows);
+    };
+    const quarter = releases(256 * KB);
+    for (const [k, [name, files]] of releases(MB).entries()) {
+      const why = await slowness(check(quarter[k][1]), check(files), PARSER_LIMIT);
+      if (why) slow.push(`${name}: ${why}`);
     }
     expect(slow).toEqual([]);
+    expect(statuses.filter((s) => !['pass', 'info', 'unknown'].includes(s))).toEqual([]);
   }, 300_000);
 
-  it('reads hostile Makefiles, package.json files and tags in under 500 ms', async () => {
-    const cases: [string, string, string][] = [
-      ['Makefile', 'many targets', lines(MB / 20, (i) => `t${i}: dep\n\techo ${i}`)],
-      ['Makefile', 'one long target line', fill('a ', MB) + ':'],
-      ['Makefile', 'a long line of spaces', 'a' + fill(' ', MB) + 'b'],
-      ['package.json', 'a huge script', JSON.stringify({ scripts: { release: fill('npm publish ', MB) } })],
+  it('reads hostile Makefiles, package.json files and tags in under 5 s, growing linearly', async () => {
+    const cases = (size: number): [string, string, string][] => [
+      ['Makefile', 'many targets', lines(size / 20, (i) => `t${i}: dep\n\techo ${i}`)],
+      ['Makefile', 'one long target line', fill('a ', size) + ':'],
+      ['Makefile', 'a long line of spaces', 'a' + fill(' ', size) + 'b'],
+      ['package.json', 'a huge script', JSON.stringify({ scripts: { release: fill('npm publish ', size) } })],
       [
         'package.json',
         'many scripts',
         JSON.stringify({
           scripts: Object.fromEntries(
-            lines(MB / 30, (i) => `s${i}`)
+            lines(size / 30, (i) => `s${i}`)
               .split('\n')
               .map((k) => [k, 'x']),
           ),
         }),
       ],
     ];
-    const slow: string[] = [];
-    for (const [file, name, text] of cases) {
+    // Each run reads the file afresh (Hops keeps what it read), and asks for 1000 targets or scripts.
+    const ask = (file: string, text: string) => async () => {
       const hops = new Hops([file], async () => text);
-      const ms = await time(async () => {
-        for (let k = 0; k < 1000; k++)
-          await hops.body(file === 'Makefile' ? 'make' : 'npm', k % 2 ? 'release' : `t${k}`);
-      }, 500);
-      if (ms > 500) slow.push(`${file}, ${name}: ${Math.round(ms)} ms`);
+      for (let k = 0; k < 1000; k++) await hops.body(file === 'Makefile' ? 'make' : 'npm', k % 2 ? 'release' : `t${k}`);
+    };
+    const slow: string[] = [];
+    const quarter = cases(256 * KB);
+    for (const [k, [file, name, text]] of cases(MB).entries()) {
+      const why = await slowness(ask(file, quarter[k][2]), ask(file, text), PARSER_LIMIT);
+      if (why) slow.push(`${file}, ${name}: ${why}`);
     }
     const tags = [
       Array.from({ length: 100 }, (_, i) => ({ tag: `v${'1.'.repeat(120)}${i}` })),
       Array.from({ length: 100 }, (_, i) => ({ tag: `${'9'.repeat(200)}.${i}` })),
     ];
     for (const t of tags) {
-      const ms = await time(() => releaseLine(t, 'x'), 500);
-      if (ms > 500) slow.push(`tags: ${Math.round(ms)} ms`);
+      const ms = await time(() => releaseLine(t, 'x'), PARSER_LIMIT);
+      if (ms > PARSER_LIMIT) slow.push(`tags: ${Math.round(ms)} ms`);
     }
     expect(slow).toEqual([]);
   }, 300_000);
