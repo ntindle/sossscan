@@ -38,6 +38,13 @@ The server doesn't save your sign-in anywhere. It uses your token for two reads 
 
 For Deep scan and for "Fix it for me", the server calls GitHub with a token of the app's installation that covers only that repository. A deep scan runs the whole scan, so for a public repository it also asks the two OpenSSF services about it, as a public scan does. A settings fix is a single API call. A pull request fix is built on the server and shown to you as a preview, with an encrypted copy of the change that only you can use to open the pull request, within 15 minutes. The pull request opens only when you confirm.
 
+Two things Deep scan reads are private, and it keeps neither:
+
+- Private vulnerability reports and other unpublished security advisories. It reads how many reports have waited over 14 days with no comment and how old the oldest is, when the last practice advisory titled DRILL was closed, and how many advisories brought in collaborators or have a temporary private fork. None of their text goes into the result: no title, description, reporter or severity.
+- The names of the repository's Actions secrets, for the secrets check. GitHub never gives anyone a secret's value, and the result has only how many secrets there are.
+
+The result goes only to your browser, which keeps it for the tab, as below. The server doesn't store it.
+
 A pull request the app opens can be seen by everyone who can see the repository, and its description says it was opened at your request, with your GitHub username. A new file it adds, such as CODEOWNERS, may also name you as the maintainer. Both are in the preview, so you see them before you confirm.
 
 ## AI fixes
@@ -57,7 +64,7 @@ A report from the CLI without admin access is marked as a public scan, so the pa
 
 ## The private scan
 
-The [sossscan CLI](/docs/cli) runs on your machine and sends nothing to this site. It reads the repository on GitHub with your token, asks the two OpenSSF services about public repositories, and writes its report to a file on your machine. When you load that file into the page, the page reads it in your browser and keeps it as described above. It isn't uploaded. If you're signed in with GitHub, the page does send the repository's name, though not the report, to ask whether you're an admin there.
+The [sossscan CLI](/docs/cli) runs on your machine and sends nothing to this site. It reads the repository on GitHub with your token, asks the two OpenSSF services about public repositories, and writes its report to a file on your machine. With an admin's token it reads unpublished advisories and secret names as Deep scan does, and its report has the same counts and dates, nothing more. When you load that file into the page, the page reads it in your browser and keeps it as described above. It isn't uploaded. If you're signed in with GitHub, the page does send the repository's name, though not the report, to ask whether you're an admin there.
 
 ## Hosting
 
@@ -67,4 +74,4 @@ The site runs on Vercel. Vercel receives every request, including your IP addres
 
 Write to [sossscan@ntindle.com](mailto:sossscan@ntindle.com), or see [Contact](/contact) for other ways to reach the maintainer. If this page and the code ever disagree, please [open an issue](https://github.com/ntindle/sossscan/issues/new).
 
-Last updated November 11, 2026.
+Last updated November 12, 2026.

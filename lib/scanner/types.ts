@@ -120,6 +120,11 @@ export interface ScanOptions {
   ossFuzzLookup?: ((repo: string) => string[]) | null;
   /** Run the private layer even though the token's permissions aren't reported (GitHub App installation tokens). */
   assumeAdmin?: boolean;
+  /**
+   * The permissions the token holds, when the caller knows them: a GitHub App installation token's, as GitHub gave
+   * them with it. An admin check whose permission is missing then says so, and an empty list it gets isn't read as none.
+   */
+  grants?: Record<string, string> | null;
   /** false refuses private repositories (the shared web server, whose token must not expose them). */
   allowPrivate?: boolean;
 }

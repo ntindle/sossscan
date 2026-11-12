@@ -208,6 +208,45 @@ it('runs a settings fix as the app, for an admin only', async () => {
   expect(env.world().repo.made('PUT', '/repos/octo/demo/private-vulnerability-reporting')).toHaveLength(1);
 });
 
+it("gives Deep scan the token's permissions, so a check whose permission the installation lacks says so", async () => {
+  configure();
+  const c = new Browser();
+  await signIn(c, { token: READER, login: 'eve' });
+  expect((await c.post('/api/app/check', { repo: 'octo/demo' })).status).toBe(403);
+  await signIn(c);
+  const w = env.world();
+  // An installation that hasn't accepted Secrets or Repository security advisories: GitHub refuses the secrets and
+  // lists no unpublished advisories, which the scan mustn't read as none.
+  w.repo.set('GET /repos/octo/demo/actions/secrets', [403, { message: 'Resource not accessible by integration' }]);
+  w.repo.set('GET /repos/octo/demo/security-advisories', [200, []]);
+  const check = async () => {
+    const r = await c.post('/api/app/check', { repo: 'octo/demo' });
+    expect([r.status, r.headers.get('cache-control')]).toEqual([200, 'private, no-store']);
+    const rep = await r.json();
+    expect(rep.layer).toBe('app');
+    return (id: string) => [rep.results[id]?.status, rep.results[id]?.summary];
+  };
+  let got = await check();
+  expect(got('ci-secrets-hygiene')).toEqual([
+    'unknown',
+    "Couldn't read the names of Actions secrets: the GitHub App hasn't been given access to them on this " +
+      "installation. An owner can approve the new permission in the installation's settings, or use the CLI with " +
+      "an admin's token",
+  ]);
+  expect(got('disc-triage-sla')[1]).toMatch(/^Couldn't read the private vulnerability reports: the GitHub App hasn't/);
+  // Once it accepts them.
+  w.perms = { ...w.perms, secrets: 'read', repository_advisories: 'read' };
+  w.repo.set('GET /repos/octo/demo/actions/secrets', [200, { total_count: 2, secrets: [{ name: 'PYPI_TOKEN' }] }]);
+  got = await check();
+  expect(got('ci-secrets-hygiene')).toEqual([
+    'info',
+    '2 repository Actions secret(s); prefer environment secrets and OIDC',
+  ]);
+  expect(got('disc-triage-sla')).toEqual(['info', 'No private vulnerability reports are waiting in triage']);
+  // The token it scanned with was one for that repository alone, with all the installation's permissions.
+  expect(w.tokenRequests.at(-1)).toEqual({ repositories: ['demo'] });
+});
+
 // ------------------------------------------------------------------------------------- pull request fixes
 it('checks admin, install and permissions before a preview', async () => {
   configure();

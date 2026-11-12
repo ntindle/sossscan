@@ -16,7 +16,8 @@
  * With a token that has admin access to the repo, it also checks settings only
  * admins can see: secret scanning, push protection, Dependabot alerts, Actions permissions,
  * fork-PR approval, rulesets, immutable releases, environments, org 2FA, the org's security
- * configuration, open alert backlogs.
+ * configuration, open alert backlogs, private vulnerability reports left unanswered and drill
+ * advisories. Of unpublished advisories it reads only counts and dates.
  *
  * Load the JSON report into the guide site with "Load the report" under Private scan; it is read
  * in your browser and not uploaded.

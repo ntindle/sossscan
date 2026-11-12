@@ -1,5 +1,5 @@
 {
-  "_comment": "Canned GitHub responses for the offline scan tests. The Python scanner was served them when expected.json was recorded; scanner.test.ts serves them to lib/scanner. A route is a response or a list of responses given in turn (the last repeats). status 0 is a network failure. Unlisted URLs get a 404. The fixes and admin-denied scenarios were added with 0.3.0, for the focused tests of its bug fixes. The oss-scanner-* scenarios (and the anthropics/oss-scanner routes in public) were added with 0.4.0, for the OSS Scanner check. The private-large scenarios were added with 0.4.1: a private repo big enough for every program lookup, whose Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner routes answer as if it were enrolled, and the same repo made public. Since 0.4.1 a private repo's scan never requests those routes (admin-org's included).",
+  "_comment": "Canned GitHub responses for the offline scan tests. The Python scanner was served them when expected.json was recorded; scanner.test.ts serves them to lib/scanner. A route is a response or a list of responses given in turn (the last repeats). status 0 is a network failure. Unlisted URLs get a 404. The fixes and admin-denied scenarios were added with 0.3.0, for the focused tests of its bug fixes. The oss-scanner-* scenarios (and the anthropics/oss-scanner routes in public) were added with 0.4.0, for the OSS Scanner check. The private-large scenarios were added with 0.4.1: a private repo big enough for every program lookup, whose Scorecard, Best Practices badge, OSS-Fuzz and OSS Scanner routes answer as if it were enrolled, and the same repo made public. Since 0.4.1 a private repo's scan never requests those routes (admin-org's included). The admin-org, assume-admin and admin-denied scenarios got security advisory routes with 0.5.2: admin-org has an admin's classic token (its scopes in X-OAuth-Scopes), assume-admin an app installation that has accepted the Secrets and Repository security advisories permissions (options.grants), and admin-denied one that hasn't. The public scenario's incident response plan dates a drill.",
   "scenarios": {
     "public": {
       "repo": "Octo/Demo",
@@ -201,6 +201,9 @@
         },
         "https://raw.githubusercontent.com/anthropics/oss-scanner/main/projects/demo-core/project.yaml": {
           "text": "# Demo, enrolled under a folder name of its own\nrepo: \"https://www.github.com/Octo/Demo.git/\"   # the repository to scan\nprimary_contact: security@octo.example\ndisabled: false\n"
+        },
+        "https://raw.githubusercontent.com/octo/demo/main/docs/INCIDENT_RESPONSE.md": {
+          "text": "# Incident response\n\n## Drills\n\nWe ran a tabletop drill of a leaked publish token on 2026-03-04 and\nupdated the contact list the same day.\n"
         }
       }
     },
@@ -234,7 +237,8 @@
               "secret_scanning_push_protection": { "status": "disabled" },
               "dependabot_security_updates": { "status": "enabled" }
             }
-          }
+          },
+          "headers": { "content-type": "application/json", "x-oauth-scopes": "repo, read:org" }
         },
         "https://api.github.com/repos/acme/secret/git/trees/release/2.x?recursive=1": {
           "json": {
@@ -364,6 +368,37 @@
         "https://api.github.com/orgs/acme": { "json": { "login": "acme", "two_factor_requirement_enabled": false } },
         "https://api.github.com/orgs/acme/members?filter=2fa_disabled&per_page=100": {
           "json": [{ "login": "x" }, { "login": "y" }]
+        },
+        "https://api.github.com/repos/acme/secret/security-advisories?state=triage&sort=created&direction=asc&per_page=100": {
+          "json": []
+        },
+        "https://api.github.com/repos/acme/secret/security-advisories?state=closed&sort=updated&per_page=100": {
+          "json": [
+            {
+              "state": "closed",
+              "summary": "DRILL: leaked publish token",
+              "created_at": "2024-03-04T09:00:00Z",
+              "closed_at": "2024-03-04T10:30:00Z",
+              "comments": 2,
+              "collaborating_users": null,
+              "collaborating_teams": null,
+              "private_fork": null
+            }
+          ]
+        },
+        "https://api.github.com/repos/acme/secret/security-advisories?state=draft&per_page=100": {
+          "json": [
+            {
+              "state": "draft",
+              "summary": "Path traversal in the archive reader",
+              "created_at": "2026-10-01T09:00:00Z",
+              "closed_at": null,
+              "comments": 4,
+              "collaborating_users": [{ "login": "upstream-maintainer" }],
+              "collaborating_teams": [],
+              "private_fork": { "full_name": "acme/secret-ghsa-wxyz-wxyz-wxyz" }
+            }
+          ]
         }
       }
     },
@@ -377,7 +412,21 @@
       "options": {
         "token": "app-token",
         "assume_admin": true,
-        "oss_fuzz_lookup": { "solo/tool": ["tool", "tool-extra"] }
+        "oss_fuzz_lookup": { "solo/tool": ["tool", "tool-extra"] },
+        "grants": {
+          "actions": "read",
+          "administration": "write",
+          "contents": "write",
+          "environments": "read",
+          "metadata": "read",
+          "pull_requests": "write",
+          "repository_advisories": "read",
+          "secret_scanning_alerts": "read",
+          "secrets": "read",
+          "security_events": "write",
+          "vulnerability_alerts": "read",
+          "workflows": "write"
+        }
       },
       "routes": {
         "https://api.github.com/repos/solo/tool": {
@@ -443,7 +492,14 @@
         "https://api.github.com/repos/solo/tool/collaborators?affiliation=all&permission=admin&per_page=100": {
           "json": [{ "login": "solo" }]
         },
-        "https://api.github.com/repos/solo/tool/actions/secrets?per_page=1": { "json": { "total_count": 0 } }
+        "https://api.github.com/repos/solo/tool/actions/secrets?per_page=1": { "json": { "total_count": 0 } },
+        "https://api.github.com/repos/solo/tool/security-advisories?state=triage&sort=created&direction=asc&per_page=100": {
+          "json": []
+        },
+        "https://api.github.com/repos/solo/tool/security-advisories?state=closed&sort=updated&per_page=100": {
+          "json": []
+        },
+        "https://api.github.com/repos/solo/tool/security-advisories?state=draft&per_page=100": { "json": [] }
       }
     },
     "empty-repo": {
@@ -552,7 +608,23 @@
     },
     "admin-denied": {
       "repo": "solo/tool",
-      "options": { "token": "app-token", "assume_admin": true, "oss_fuzz_lookup": { "solo/tool": [] } },
+      "options": {
+        "token": "app-token",
+        "assume_admin": true,
+        "oss_fuzz_lookup": { "solo/tool": [] },
+        "grants": {
+          "actions": "read",
+          "administration": "write",
+          "contents": "write",
+          "environments": "read",
+          "metadata": "read",
+          "pull_requests": "write",
+          "secret_scanning_alerts": "read",
+          "security_events": "write",
+          "vulnerability_alerts": "read",
+          "workflows": "write"
+        }
+      },
       "routes_from": "assume-admin",
       "routes": {
         "https://api.github.com/repos/solo/tool/vulnerability-alerts": {
@@ -576,6 +648,10 @@
           "json": { "message": "Resource not accessible by integration" }
         },
         "https://api.github.com/repos/solo/tool/collaborators?affiliation=all&permission=admin&per_page=100": {
+          "status": 403,
+          "json": { "message": "Resource not accessible by integration" }
+        },
+        "https://api.github.com/repos/solo/tool/security-advisories?state=triage&sort=created&direction=asc&per_page=100": {
           "status": 403,
           "json": { "message": "Resource not accessible by integration" }
         },

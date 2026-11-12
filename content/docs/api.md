@@ -37,7 +37,7 @@ The answer is the same report, sent with `Cache-Control: no-store`, so the CDN d
 
 ## Check that the service is up
 
-`GET /api/health` returns `{"ok": true, "scanner_version": "0.5.1"}`. It says nothing else about the server, and it isn't rate limited.
+`GET /api/health` returns `{"ok": true, "scanner_version": "0.5.2"}`. It says nothing else about the server, and it isn't rate limited.
 
 ## Download the guide's data
 
@@ -84,7 +84,7 @@ Here's a report for this project's own repository, trimmed to two results:
 ```json
 {
   "schema": "sosf-scan/1",
-  "tool": { "name": "sosf-scan", "version": "0.5.1" },
+  "tool": { "name": "sosf-scan", "version": "0.5.2" },
   "repo": "ntindle/sossscan",
   "scanned_at": "2026-11-10T20:29:59Z",
   "layer": "public",

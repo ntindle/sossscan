@@ -37,6 +37,14 @@ import { fundEntry, sharingResult, trainingResult } from '../lib/scanner/fund.ts
 import { Hops } from '../lib/scanner/hops.ts';
 import { actionMajor, readWorkflow } from '../lib/scanner/jobs.ts';
 import { securityConfiguration, smsTwoFactor } from '../lib/scanner/private-layer.ts';
+import {
+  canReadUnpublished,
+  disclosureTerms,
+  drillNote,
+  quoteOf,
+  releasesNaming,
+  responseTarget,
+} from '../lib/scanner/advisories.ts';
 import { cacheOf, publishOf, releaseCacheCheck } from '../lib/scanner/release-caches.ts';
 import { bestBadge } from '../lib/scanner/scan.ts';
 import { customQueries, licenseGate, memorySafety, refreshBacklog, tracedSecrets } from '../lib/scanner/self-checks.ts';
@@ -140,6 +148,7 @@ async function scanScenario(name: string, replace: Record<string, Route | Route[
     ossFuzzLookup: o.oss_fuzz_lookup ? (r) => o.oss_fuzz_lookup[r] ?? [] : null,
     assumeAdmin: o.assume_admin ?? false,
     allowPrivate: o.allow_private ?? true,
+    grants: o.grants ?? null,
   });
   return { rep, calls, logs };
 }
@@ -151,7 +160,7 @@ const PIN = 'b4ffde65f46336ab88eb53be808477a3936bae11';
 // ------------------------------------------------------------------------------------------ public API
 describe('public API', () => {
   it('exports the constants the server and browser code rely on', () => {
-    expect(VERSION).toBe('0.5.1');
+    expect(VERSION).toBe('0.5.2');
     expect(SCHEMA).toBe('sosf-scan/1');
     expect(TIERS.map((t) => t.name)).toEqual(expected.tier_names.map((t: { name: string }) => t.name));
     expect(ECOSYSTEM_FILES.map(([, eco]) => eco)).toEqual([
@@ -697,9 +706,11 @@ describe('scan() against a fake GitHub gives the recorded report', () => {
       'ci-fork-pr-approval': unknown('Could not read the fork PR approval policy (HTTP 403)'),
       'rel-gated-release': unknown('Could not read the environment protection rules (HTTP 403)'),
       'acct-least-privilege': unknown('Could not read the accounts with admin on this repo (HTTP 403)'),
-      // The app has no "Secrets: read" permission, so its 403 points to the CLI instead of a retry.
+      // This installation hasn't accepted the app's "Secrets: read" permission, so its 403 says how to give it.
       'ci-secrets-hygiene': unknown(
-        "The GitHub App can't read the names of Actions secrets; the CLI with an admin's token can check them",
+        "Couldn't read the names of Actions secrets: the GitHub App hasn't been given access to them on this " +
+          "installation. An owner can approve the new permission in the installation's settings, or use the CLI " +
+          "with an admin's token",
       ),
     });
     // The CLI with an admin's token that GitHub refuses keeps the plain message.
@@ -4080,5 +4091,559 @@ describe('security policies in any format', () => {
         { report: true, versions: true },
       ),
     ).toBeNull();
+  });
+});
+
+// --------------------------------------------- 0.5.2: private reports, drills and coordinated disclosure
+describe('private vulnerability reports, drills and coordinated disclosure (0.5.2)', () => {
+  const DAY = 86_400_000;
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  const SOLO = 'https://api.github.com/repos/solo/tool';
+  const lists = (repo: string) => ({
+    triage: `${repo}/security-advisories?state=triage&sort=created&direction=asc&per_page=100`,
+    closed: `${repo}/security-advisories?state=closed&sort=updated&per_page=100`,
+    drafts: `${repo}/security-advisories?state=draft&per_page=100`,
+  });
+  const APP = lists(SOLO);
+  const CLI = lists(TINY);
+  /** The app's permissions where an installation has accepted the two new ones, and where it hasn't. */
+  const WITH: Record<string, string> = scenarios['assume-admin'].options.grants;
+  const WITHOUT: Record<string, string> = scenarios['admin-denied'].options.grants;
+  const report = (days: number, comments: number) => ({ state: 'triage', created_at: ago(days), comments });
+  const closed = (summary: string, days: number) => ({
+    state: 'closed',
+    summary,
+    created_at: ago(days + 2),
+    closed_at: ago(days),
+    comments: 1,
+  });
+  const triageLink = {
+    label: 'Reports in triage (admins only)',
+    url: 'https://github.com/solo/tool/security/advisories?state=triage',
+  };
+  /** A Deep scan of solo/tool through an installation with these permissions (null: the scanner isn't told). */
+  const deep = async (grants: Record<string, string> | null, replace: Record<string, Route | Route[]> = {}) => {
+    stubFetch({ ...routesFor('assume-admin'), ...replace });
+    return scan('solo/tool', { token: 'app-token', assumeAdmin: true, grants, ossFuzzLookup: () => [] });
+  };
+  /**
+   * octo/tiny scanned with its admin's token: a classic one with these scopes, or (null) a fine-grained one, which
+   * GitHub gives no scopes for. Its unpublished advisories are empty lists unless api says otherwise.
+   */
+  const cli = async (
+    scopes: string | null,
+    api: Record<string, Route | Route[]> = {},
+    files: Record<string, string> = {},
+  ) => {
+    const empty = { [CLI.triage]: { json: [] }, [CLI.closed]: { json: [] }, [CLI.drafts]: { json: [] } };
+    const routes = tiny(files, { ...empty, ...api }, { meta: { permissions: { admin: true } } });
+    if (scopes !== null) {
+      routes[TINY] = {
+        ...(routes[TINY] as Route),
+        headers: { 'content-type': 'application/json', 'x-oauth-scopes': scopes },
+      };
+    }
+    return (await scanTiny(routes)).rep;
+  };
+  const ITEMS = ['disc-triage-sla', 'plan-irp-exercise', 'disc-coordinated-disclosure'];
+
+  it('warns on private reports that waited over 14 days with no comment, with only a count and an age', async () => {
+    const rep = await deep(WITH, {
+      [APP.triage]: { json: [report(40, 0), report(20, 0), report(30, 1), report(3, 0)] },
+    });
+    expect(rep.results['disc-triage-sla']).toEqual({
+      status: 'warn',
+      summary: '2 private vulnerability reports have waited over 14 days with no comment, the oldest for 40 days',
+      evidence: [triageLink],
+      details: { waiting: '2', oldest_days: 40 },
+      layer: 'private',
+    });
+    expect(statusOf(await deep(WITH, { [APP.triage]: { json: [report(15, 0)] } }), 'disc-triage-sla')).toEqual([
+      'warn',
+      '1 private vulnerability report has waited 15 days with no comment',
+    ]);
+    // The list comes oldest first, so a full page holds the oldest reports, though maybe not all that wait.
+    const page = Array.from({ length: 100 }, (_, i) => report(200 - i, i % 2));
+    expect(statusOf(await deep(WITH, { [APP.triage]: { json: page } }), 'disc-triage-sla')).toEqual([
+      'warn',
+      '50+ private vulnerability reports have waited over 14 days with no comment, the oldest for 200 days',
+    ]);
+  });
+
+  it('says how many reports are in triage when none waits, and nothing it cannot know', async () => {
+    expect(statusOf(await deep(WITH), 'disc-triage-sla')).toEqual([
+      'info',
+      'No private vulnerability reports are waiting in triage',
+    ]);
+    expect(
+      statusOf(await deep(WITH, { [APP.triage]: { json: [report(3, 0), report(30, 2)] } }), 'disc-triage-sla'),
+    ).toEqual(['info', '2 private vulnerability reports are in triage, none waiting over 14 days with no comment']);
+    // A full page in which none waits says nothing of the reports after it.
+    const answered = Array.from({ length: 100 }, (_, i) => report(200 - i, 1));
+    expect(statusOf(await deep(WITH, { [APP.triage]: { json: answered } }), 'disc-triage-sla')).toBeNull();
+    // A report without a comment count, or a date, isn't counted as one that waits.
+    const unclear = [
+      { state: 'triage', created_at: ago(40) },
+      { state: 'triage', comments: 0 },
+    ];
+    expect(statusOf(await deep(WITH, { [APP.triage]: { json: unclear } }), 'disc-triage-sla')?.[0]).toBe('info');
+  });
+
+  it("without the permission, says how to give it and never reads GitHub's empty list as no reports", async () => {
+    const message =
+      "Couldn't read the private vulnerability reports: the GitHub App hasn't been given access to security " +
+      "advisories on this installation. An owner can approve the new permission in the installation's settings, " +
+      "or use the CLI with an admin's token";
+    for (const answer of [
+      { json: [] },
+      { status: 403, json: { message: 'Resource not accessible by integration' } },
+      { status: 404, json: { message: 'Not Found' } },
+    ]) {
+      expect(statusOf(await deep(WITHOUT, { [APP.triage]: answer }), 'disc-triage-sla')).toEqual(['unknown', message]);
+    }
+    // The page says it couldn't check, not that it needs a deeper scan: this was the deep scan.
+    const merged = sg.mergeReports({ ...(await deep(WITHOUT)), layer: 'app' });
+    const label = (id: string) => sg.statusLabel(sg.itemStatus({ id, layer: 'manual' }, merged, merged.repo));
+    expect(label('disc-triage-sla')).toBe('Couldn’t check');
+    // With the permission, a refusal is just that.
+    expect(
+      statusOf(await deep(WITH, { [APP.triage]: { status: 404, json: { message: 'Not Found' } } }), 'disc-triage-sla'),
+    ).toEqual(['unknown', 'Could not read the private vulnerability reports (HTTP 404)']);
+    // Not told the token's permissions, an empty list could be the one anyone gets: no result.
+    expect(statusOf(await deep(null), 'disc-triage-sla')).toBeNull();
+    // A report GitHub lists shows the token can read them, whatever it was told.
+    expect(statusOf(await deep(WITHOUT, { [APP.triage]: { json: [report(40, 0)] } }), 'disc-triage-sla')?.[0]).toBe(
+      'warn',
+    );
+  });
+
+  it("goes by an admin's classic token's scopes, and a fine-grained token's lists only when they show a report", async () => {
+    const none = ['info', 'No private vulnerability reports are waiting in triage'];
+    expect(statusOf(await cli('gist, read:org, repo, workflow'), 'disc-triage-sla')).toEqual(none);
+    expect(statusOf(await cli('repository_advisories:read'), 'disc-triage-sla')).toEqual(none);
+    expect(statusOf(await cli('public_repo'), 'disc-triage-sla')).toEqual([
+      'unknown',
+      "Couldn't read the private vulnerability reports: the token needs the repo scope",
+    ]);
+    expect(statusOf(await cli(''), 'disc-triage-sla')?.[0]).toBe('unknown');
+    expect(statusOf(await cli(null), 'disc-triage-sla')).toBeNull();
+    expect(statusOf(await cli(null, { [CLI.triage]: { json: [report(40, 0)] } }), 'disc-triage-sla')?.[0]).toBe('warn');
+    expect([canReadUnpublished(null, null), canReadUnpublished({ secrets: 'read' }, ['repo'])]).toEqual([null, false]);
+    // A public scan doesn't ask for them.
+    const { rep, calls } = await scanTiny(tiny({}));
+    expect(ITEMS.map((id) => statusOf(rep, id))).toEqual([null, null, null]);
+    expect(calls.filter(([url]) => /state=(?:triage|closed|draft)/.test(url))).toEqual([]);
+  });
+
+  it('quotes the response time SECURITY.md sets, and puts it with what the reports show', async () => {
+    const policy = {
+      'SECURITY.md':
+        'Report vulnerabilities to security@octo-project.org.\n\n' +
+        'We acknowledge reports within 48 hours\nand send an assessment within 10 business days.\n',
+    };
+    const said =
+      'Looks done: SECURITY.md says "We acknowledge reports within 48 hours and send an assessment within 10 ' +
+      'business days."';
+    expect((await scanTiny(tiny(policy))).rep.results['disc-triage-sla']).toEqual({
+      status: 'info',
+      summary: said,
+      evidence: [{ label: 'SECURITY.md', url: 'https://github.com/octo/tiny/blob/main/SECURITY.md' }],
+      details: {},
+      layer: 'public',
+    });
+    expect(statusOf(await cli('repo', {}, policy), 'disc-triage-sla')).toEqual([
+      'info',
+      `${said}; no private vulnerability reports are waiting in triage`,
+    ]);
+    const late = (await cli('repo', { [CLI.triage]: { json: [report(30, 0)] } }, policy)).results['disc-triage-sla'];
+    expect([late.status, late.evidence.map((e) => e.label)]).toEqual([
+      'warn',
+      ['Reports in triage (admins only)', 'SECURITY.md'],
+    ]);
+    // Without access to the reports, what the policy says stays, and nothing is said about them.
+    expect(statusOf(await cli('public_repo', {}, policy), 'disc-triage-sla')).toEqual(['info', said]);
+  });
+
+  it('takes a time as a response time only near a word for answering, outside code', () => {
+    const target = (text: string, path = 'SECURITY.md') => responseTarget(readPolicy(text, path));
+    expect(target('We aim to acknowledge reports within 2 business days.')).toBe(
+      'We aim to acknowledge reports within 2 business days.',
+    );
+    expect(target('| Step | Target |\n| --- | --- |\n| Acknowledge your report | 3 business days |\n')).toBe(
+      'Acknowledge your report 3 business days',
+    );
+    expect(target('If you do not hear back within a week,\nplease email us again.')).toBe(
+      'If you do not hear back within a week, please email us again.',
+    );
+    expect(target('Expect a first response in 24-48h.')).toBe('Expect a first response in 24-48h.');
+    expect(target('Reports\n=======\n\nWe will reply within three working days.\n', 'SECURITY.rst')).toBe(
+      'We will reply within three working days.',
+    );
+    // Fix and disclosure deadlines, vague times and "responsible disclosure" aren't response times.
+    for (const text of [
+      'We fix critical issues within 30 days and disclose after 90 days.',
+      'We follow responsible disclosure: allow us 90 days before going public.',
+      'Confirmed vulnerabilities will be addressed within 30 days.',
+      'We reply to 0-day reports first.',
+      'We usually reply within a few days.',
+      '```\nWe acknowledge reports within 48 hours.\n```\n',
+      'Nous répondons sous 48 heures.',
+    ]) {
+      expect([text, target(text)]).toEqual([text, null]);
+    }
+    // A quote is one line, without control or bidirectional formatting characters, and at most 200 characters.
+    const esc = String.fromCharCode(27);
+    const rlo = String.fromCharCode(0x202e);
+    expect(quoteOf(`We reply ${esc}[2Jwithin ${rlo}2 days.`)).toBe('We reply [2Jwithin 2 days.');
+    const long = quoteOf(`We acknowledge reports within 2 days ${'and then some more words '.repeat(20)}`);
+    expect([long.length <= 201, long.endsWith('…'), long.startsWith('We acknowledge')]).toEqual([true, true, true]);
+  });
+
+  it('passes a drill only on a practice advisory titled DRILL closed in the last 12 months, by its date alone', async () => {
+    const recent = closed('DRILL: leaked publish token', 40);
+    const rep = await deep(WITH, {
+      [APP.closed]: { json: [closed('Path traversal in the archive reader', 5), recent] },
+    });
+    const date = recent.closed_at.slice(0, 10);
+    expect(rep.results['plan-irp-exercise']).toEqual({
+      status: 'pass',
+      summary: `A practice advisory titled DRILL was closed on ${date}, within the last 12 months`,
+      evidence: [
+        {
+          label: 'Closed advisories (admins only)',
+          url: 'https://github.com/solo/tool/security/advisories?state=closed',
+        },
+      ],
+      details: { drill_closed: date },
+      layer: 'private',
+    });
+    const old = closed('[DRILL] practice advisory', 400);
+    expect(statusOf(await deep(WITH, { [APP.closed]: { json: [old] } }), 'plan-irp-exercise')).toEqual([
+      'info',
+      `The last practice advisory titled DRILL was closed on ${old.closed_at.slice(0, 10)}, over 12 months ago`,
+    ]);
+    // Anything else leaves it a self-check: "drill" in other words or another case, a drill not closed, no access.
+    const cases: [Record<string, string> | null, Route][] = [
+      [WITH, { json: [closed('Drill-down filter bypass', 10), closed('drill', 10), closed('DRILLING rig', 10)] }],
+      [WITH, { json: [{ ...closed('DRILL', 10), state: 'draft' }] }],
+      [WITH, { status: 403, json: { message: 'Resource not accessible by integration' } }],
+      [WITHOUT, { json: [] }],
+      [null, { json: [] }],
+    ];
+    for (const [grants, answer] of cases) {
+      expect(statusOf(await deep(grants, { [APP.closed]: answer }), 'plan-irp-exercise')).toBeNull();
+    }
+  });
+
+  it('quotes a drill the incident response plan dates, as info, and adds it to an old drill advisory', async () => {
+    const plan = {
+      'docs/incident-response.md':
+        '# Incident response\n\n## Exercises\n\n- 2026-02-10: tabletop of a leaked npm token.\n- Next one in a year.\n',
+    };
+    const note = 'docs/incident-response.md mentions a drill: "2026-02-10: tabletop of a leaked npm token."';
+    expect(statusOf((await scanTiny(tiny(plan))).rep, 'plan-irp-exercise')).toEqual(['info', note]);
+    for (const text of [
+      '# Plan\n\nWe run a tabletop drill every year.\n',
+      '# Plan\n\nThe plan was written on 2026-02-10.\n',
+    ]) {
+      const files = { 'docs/incident-response.md': text };
+      expect(statusOf((await scanTiny(tiny(files))).rep, 'plan-irp-exercise')).toBeNull();
+    }
+    expect(drillNote(readPolicy('Drill log\n=========\n\n* 4 March 2026, leaked token\n', 'IRP.rst'))).toBe(
+      '4 March 2026, leaked token',
+    );
+    const old = closed('DRILL', 400);
+    expect(statusOf(await cli('repo', { [CLI.closed]: { json: [old] } }, plan), 'plan-irp-exercise')).toEqual([
+      'info',
+      `The last practice advisory titled DRILL was closed on ${old.closed_at.slice(0, 10)}, over 12 months ago; ${note}`,
+    ]);
+    const fresh = await cli('repo', { [CLI.closed]: { json: [closed('DRILL', 30)] } }, plan);
+    expect(fresh.results['plan-irp-exercise'].status).toBe('pass');
+  });
+
+  it('collects what shows coordinated disclosure, as info only', async () => {
+    const policy = {
+      'SECURITY.md':
+        'Email security@octo-project.org.\n\nWe give downstream distributors 7 days of advance notice under embargo.\n',
+    };
+    const published = {
+      json: [
+        {
+          ghsa_id: 'GHSA-abcd-efgh-ijkl',
+          cve_id: 'CVE-2026-11111',
+          state: 'published',
+          published_at: '2026-05-01T00:00:00Z',
+          credits_detailed: [{ user: { login: 'finder' }, type: 'reporter', state: 'accepted' }],
+        },
+        {
+          ghsa_id: 'GHSA-mnop-qrst-uvwx',
+          cve_id: null,
+          state: 'published',
+          published_at: '2026-02-01T00:00:00Z',
+          credits_detailed: [{ user: { login: 'dev' }, type: 'remediation_developer', state: 'accepted' }],
+        },
+      ],
+    };
+    const v141 = 'https://github.com/octo/tiny/releases/tag/v1.4.1';
+    const releases = {
+      json: [
+        { tag_name: 'v1.5.0', draft: true, body: 'Fixes GHSA-mnop-qrst-uvwx.' },
+        { tag_name: 'v1.4.1', html_url: v141, body: 'Security: fixes GHSA-abcd-efgh-ijkl (cve-2026-11111).' },
+        { tag_name: 'v1.4.0', body: 'Bumps a dependency for CVE-2025-99999 and CVE-2026-111111.' },
+      ],
+    };
+    const api = { '/security-advisories?state=published&per_page=100': published, '/releases?per_page=10': releases };
+    const said = 'SECURITY.md says "We give downstream distributors 7 days of advance notice under embargo."';
+    expect((await scanTiny(tiny(policy, api))).rep.results['disc-coordinated-disclosure']).toEqual({
+      status: 'info',
+      summary:
+        `${said}; 1 of 2 published advisories credits a reporter or finder; 1 of the 2 latest releases cites this ` +
+        "repository's advisories (v1.4.1)",
+      evidence: [
+        { label: 'SECURITY.md', url: 'https://github.com/octo/tiny/blob/main/SECURITY.md' },
+        { label: 'Advisories', url: 'https://github.com/octo/tiny/security/advisories' },
+        { label: 'v1.4.1', url: v141 },
+      ],
+      details: { credited: 1, releases: ['v1.4.1'] },
+      layer: 'public',
+    });
+    // "Responsible disclosure", or downstream without telling anyone, isn't coordination; another project's CVE isn't
+    // the repository's own.
+    for (const text of [
+      'We follow responsible disclosure. Email security@octo-project.org.',
+      'Bugs in downstream projects belong to them.',
+    ]) {
+      expect(disclosureTerms(readPolicy(text, 'SECURITY.md'))).toBeNull();
+    }
+    expect(disclosureTerms(readPolicy('We coordinate with downstream packagers before a release.', 'x.md'))).toBe(
+      'We coordinate with downstream packagers before a release.',
+    );
+    expect(releasesNaming(published.json, [{ tag_name: 'v2', body: 'CVE-2026-1111 and GHSA-abcd-efgh-ijk' }])).toEqual(
+      [],
+    );
+    // The admin checks add how many advisories brought in collaborators or have a temporary private fork, and no more.
+    // GitHub makes a private report's reporter a collaborator, and the reporter can start a fork when sending it: a
+    // report in triage doesn't count, nor does its reporter.
+    const reported = { accepted: true };
+    const drafts = {
+      json: [
+        { state: 'draft', collaborating_users: [{ login: 'upstream' }], private_fork: { full_name: 'octo/tiny-ghsa' } },
+        { state: 'draft', collaborating_users: [], collaborating_teams: [{ slug: 'security' }], private_fork: null },
+        { state: 'draft', collaborating_users: null, collaborating_teams: null, private_fork: null },
+        { state: 'draft', submission: reported, author: { login: 'rep' }, collaborating_users: [{ login: 'rep' }] },
+        { state: 'draft', submission: reported, author: null, collaborating_users: [{ login: 'rep' }] },
+      ],
+    };
+    const inTriage = {
+      json: [{ ...report(3, 1), author: { login: 'rep' }, collaborating_users: [{ login: 'x' }], private_fork: {} }],
+    };
+    const admin = await cli('repo', { [CLI.drafts]: drafts, [CLI.triage]: inTriage }, policy);
+    expect(admin.results['disc-coordinated-disclosure']).toMatchObject({
+      status: 'info',
+      summary: `${said}; 2 of 5 advisories brought in collaborators, and 1 has a temporary private fork`,
+      details: { advisories: 5, with_collaborators: 2, with_private_fork: 1 },
+      layer: 'private',
+    });
+    expect(JSON.stringify(admin.results['disc-coordinated-disclosure'])).not.toMatch(/upstream|tiny-ghsa|"security"/);
+    expect(
+      statusOf(await cli('repo', { [CLI.drafts]: { json: [drafts.json[2]] } }), 'disc-coordinated-disclosure'),
+    ).toBeNull();
+  });
+
+  it('counts the Actions secrets with the Secrets permission, never names them, and says how to give it', async () => {
+    const SECRETS = `${SOLO}/actions/secrets?per_page=1`;
+    const listed = {
+      json: { total_count: 2, secrets: [{ name: 'PYPI_TOKEN', created_at: ago(400), updated_at: ago(300) }] },
+    };
+    const denied = { status: 403, json: { message: 'Resource not accessible by integration' } };
+    const secrets = async (grants: Record<string, string> | null, answer: Route) =>
+      (await deep(grants, { [SECRETS]: answer })).results['ci-secrets-hygiene'];
+    const counted = await secrets(WITH, listed);
+    expect([counted.status, counted.summary]).toEqual([
+      'info',
+      '2 repository Actions secret(s); prefer environment secrets and OIDC',
+    ]);
+    expect(JSON.stringify(counted)).not.toContain('PYPI_TOKEN');
+    const how =
+      "Couldn't read the names of Actions secrets: the GitHub App hasn't been given access to them on this " +
+      "installation. An owner can approve the new permission in the installation's settings, or use the CLI with " +
+      "an admin's token";
+    for (const grants of [WITHOUT, null]) expect((await secrets(grants, denied)).summary).toBe(how);
+    // An installation that has the permission and still gets a refusal says only that.
+    expect((await secrets(WITH, denied)).summary).toBe('Could not read the repository Actions secrets (HTTP 403)');
+    const merged = sg.mergeReports({ ...(await deep(WITHOUT, { [SECRETS]: denied })), layer: 'app' });
+    expect(sg.statusLabel(sg.itemStatus({ id: 'ci-secrets-hygiene' }, merged, merged.repo))).toBe('Couldn’t check');
+  });
+
+  it('never passes the response-time or disclosure checks, whatever it finds', async () => {
+    const policy = {
+      'SECURITY.md':
+        'We acknowledge reports within 24 hours.\n\nWe notify downstream users under embargo.\n\n' +
+        'We follow coordinated disclosure.\n',
+    };
+    const reps = [
+      (await scanTiny(tiny(policy))).rep,
+      await cli('repo', {}, policy),
+      await cli('repo', { [CLI.triage]: { json: [report(3, 1)] } }, policy),
+      await deep(WITH),
+    ];
+    for (const rep of reps) {
+      for (const id of ['disc-triage-sla', 'disc-coordinated-disclosure'])
+        expect(rep.results[id]?.status).not.toBe('pass');
+    }
+  });
+
+  it("keeps nothing of an unpublished advisory but counts and dates: no other field reaches the report, the CLI's file or what it prints", async () => {
+    // Every field GitHub documents for a repository advisory (and comments, which it sends too), each with a value
+    // found nowhere else. Only the dates, the state and the comment count may be read.
+    const marks: string[] = [];
+    const mark = () => {
+      const m = `SENTINEL${marks.length}QZ`;
+      marks.push(m);
+      return m;
+    };
+    const num = () => {
+      const n = 7_770_001 + marks.length;
+      marks.push(String(n));
+      return n;
+    };
+    const score = () => {
+      const s = (7_770_001 + marks.length) / 1000;
+      marks.push(String(s));
+      return s;
+    };
+    const user = () => ({
+      login: mark(),
+      id: num(),
+      node_id: mark(),
+      avatar_url: `https://example.invalid/${mark()}`,
+      url: `https://api.github.com/users/${mark()}`,
+      html_url: `https://github.com/${mark()}`,
+      name: mark(),
+      email: `${mark()}@example.invalid`,
+      type: 'User',
+      site_admin: false,
+    });
+    const advisory = (state: string, summary: string, dates: Record<string, string | null>, comments: number) => ({
+      ghsa_id: mark(),
+      cve_id: mark(),
+      url: `https://api.github.com/repos/${mark()}`,
+      html_url: `https://github.com/${mark()}`,
+      summary,
+      description: mark(),
+      severity: mark(),
+      author: user(),
+      publisher: user(),
+      identifiers: [
+        { type: 'GHSA', value: mark() },
+        { type: 'CVE', value: mark() },
+      ],
+      state,
+      created_at: null,
+      updated_at: null,
+      published_at: null,
+      closed_at: null,
+      withdrawn_at: null,
+      ...dates,
+      submission: { accepted: false },
+      vulnerabilities: [
+        {
+          package: { ecosystem: 'npm', name: mark() },
+          vulnerable_version_range: mark(),
+          patched_versions: mark(),
+          vulnerable_functions: [mark()],
+        },
+      ],
+      cvss: { vector_string: mark(), score: score() },
+      cvss_severities: {
+        cvss_v3: { vector_string: mark(), score: score() },
+        cvss_v4: { vector_string: mark(), score: score() },
+      },
+      cwes: [{ cwe_id: mark(), name: mark() }],
+      cwe_ids: [mark()],
+      credits: [{ login: mark(), type: 'reporter' }],
+      credits_detailed: [{ user: user(), type: 'reporter', state: 'accepted' }],
+      collaborating_users: [user()],
+      collaborating_teams: [
+        {
+          id: num(),
+          node_id: mark(),
+          name: mark(),
+          slug: mark(),
+          description: mark(),
+          permission: 'push',
+          parent: null,
+        },
+      ],
+      private_fork: {
+        id: num(),
+        node_id: mark(),
+        name: mark(),
+        full_name: mark(),
+        owner: user(),
+        private: true,
+        html_url: `https://github.com/${mark()}`,
+        description: mark(),
+        fork: true,
+      },
+      comments,
+    });
+    const stale = advisory('triage', mark(), { created_at: ago(40), updated_at: ago(39) }, 0);
+    const drillClosed = ago(30);
+    const drill = advisory('closed', `DRILL ${mark()}`, { created_at: ago(31), closed_at: drillClosed }, 3);
+    const draft = advisory('draft', mark(), { created_at: ago(5), updated_at: ago(1) }, 2);
+    const served = (where: ReturnType<typeof lists>) => ({
+      [where.triage]: { json: [stale] },
+      [where.closed]: { json: [drill] },
+      [where.drafts]: { json: [draft] },
+    });
+    expect(marks.length).toBeGreaterThan(150);
+    const leaks = (text: string) => marks.filter((m) => text.includes(m));
+    const kept = (rep: Report) =>
+      ITEMS.map((id) => [id, rep.results[id]?.status, rep.results[id]?.details]) as unknown[];
+    const want = [
+      ['disc-triage-sla', 'warn', { waiting: '1', oldest_days: 40 }],
+      ['plan-irp-exercise', 'pass', { drill_closed: drillClosed.slice(0, 10) }],
+      ['disc-coordinated-disclosure', 'info', { advisories: 2, with_collaborators: 2, with_private_fork: 2 }],
+    ];
+
+    // Deep scan: the report the server sends the page, which keeps it in sessionStorage.
+    const logs: string[] = [];
+    stubFetch({ ...routesFor('assume-admin'), ...served(APP) });
+    const app = await scan('solo/tool', {
+      token: 'app-token',
+      assumeAdmin: true,
+      grants: WITH,
+      ossFuzzLookup: () => [],
+      log: (m) => logs.push(m),
+    });
+    expect(kept(app)).toEqual(want);
+    expect(leaks(JSON.stringify(app) + logs.join('\n'))).toEqual([]);
+
+    // The CLI: the JSON file it writes, and what it prints.
+    const dir = mkdtempSync(join(tmpdir(), 'sosf-adv-'));
+    try {
+      const routes = tiny({}, served(CLI), { meta: { permissions: { admin: true } } });
+      routes[TINY] = { ...(routes[TINY] as Route), headers: { 'x-oauth-scopes': 'repo' } };
+      stubFetch(routes);
+      let printed = '';
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+        printed += String(chunk);
+        return true;
+      });
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+        printed += String(chunk);
+        return true;
+      });
+      const out = join(dir, 'report.json');
+      expect(await main(['octo/tiny', '--token', 't', '--out', out])).toBe(0);
+      vi.restoreAllMocks();
+      const file = readFileSync(out, 'utf8');
+      expect(kept(JSON.parse(file))).toEqual(want);
+      expect(leaks(file + printed)).toEqual([]);
+      expect(printed).toContain('1 private vulnerability report has waited 40 days with no comment');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

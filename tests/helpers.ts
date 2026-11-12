@@ -161,9 +161,11 @@ export class FakeWorld {
     if (url.pathname === '/app/installations/5/access_tokens') {
       this.tokenRequests.push(body);
       if (this.tokenStatus !== 201) return reply(this.tokenStatus, { message: 'Not Found' });
-      // GitHub's tokens last an hour, and it says until when (no milliseconds).
+      // GitHub's tokens last an hour, and it says until when (no milliseconds), and what the token may do: what the
+      // request asked for, or all the installation has.
       const expires = new Date(Date.now() + 3600_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-      return reply(201, { token: 'inst-token', expires_at: expires });
+      const permissions = (body as { permissions?: unknown } | null)?.permissions ?? this.perms;
+      return reply(201, { token: 'inst-token', expires_at: expires, permissions });
     }
     if (token !== 'inst-token') throw new Error(`unexpected call ${method} ${apiPath} with ${token}`);
     const { status, data } = await this.repo.call(method, apiPath, body);

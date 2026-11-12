@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { configOr404, installationToken, requireAdmin, sessionOf } from '@/lib/github-app.ts';
+import { configOr404, installationAccess, requireAdmin, sessionOf } from '@/lib/github-app.ts';
 import { csrf, field, jsonBody, otherMethods, privateJson, route } from '@/lib/http.ts';
 import { rateLimit } from '@/lib/limits.ts';
 import { ossFuzzLookup } from '@/lib/ossfuzz.ts';
@@ -18,8 +18,10 @@ export const POST = route(async (req: NextRequest) => {
   const sess = sessionOf(req);
   const repo = parseRepo(field(body, 'repo', REPO_LENGTH));
   await requireAdmin(sess, repo);
-  const token = await installationToken(cfg, repo);
-  const rep = await scan(repo, { token, layer: 'private', assumeAdmin: true, ossFuzzLookup });
+  // The scanner gets the token's permissions too: until an installation accepts one the app asks for, the check that
+  // needs it says so, and an empty list GitHub gives such a token isn't read as an empty list.
+  const { token, permissions } = await installationAccess(cfg, repo);
+  const rep = await scan(repo, { token, layer: 'private', assumeAdmin: true, ossFuzzLookup, grants: permissions });
   return privateJson({ ...rep, layer: 'app' });
 });
 
