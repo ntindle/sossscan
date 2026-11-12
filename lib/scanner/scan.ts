@@ -31,6 +31,7 @@ import {
   findallTuples,
   get,
   isDict,
+  LINE_SPACE,
   item,
   pyIn,
   pyInt,
@@ -86,7 +87,7 @@ const NEEDS_PRIVATE_LAYER: [string, string][] = [
 ];
 
 const WORKFLOW_FILE = re(String.raw`^\.github/workflows/[^/]+\.ya?ml$`);
-const DEPENDENTS = re(String.raw`(?s)([\d,]+)\s*(?:<[^>]+>\s*)*\s*(Repositories|Packages)\b`);
+const DEPENDENTS = re(String.raw`(?s)(?<![\d,])([\d,]+)\s*(?:<[^<>]+>\s*)*(Repositories|Packages)\b`);
 /**
  * A security policy: SECURITY.md in the root, .github/ or docs/, any case. GitHub's Security tab shows only a
  * SECURITY.md (or SECURITY with no extension); the scan also reads the other formats people use.
@@ -99,17 +100,17 @@ const VENDORED = re(String.raw`(?i)(?:^|/)(?:node_modules|vendor|third[-_]?party
 const THREAT_MODEL = re(String.raw`(?i)threat[-_ ]?model`);
 const INCIDENT_RESPONSE = re(String.raw`(?i)incident[-_ ]?response|(^|/)irp[-_.]|security[-_]incident`);
 const CODEOWNERS = re(String.raw`^(\.github/|docs/)?CODEOWNERS$`);
-const COVERS_WORKFLOWS = re(String.raw`(?m)^\s*(\*|/?\.github(/|\s)|/?\.github/workflows)`);
+const COVERS_WORKFLOWS = re(String.raw`(?m)^${LINE_SPACE}*(\*|/?\.github(/|\s)|/?\.github/workflows)`);
 const OTHER_SAST = TOOLS.find(([t]) => t === 'other_sast')![1];
 const ZIZMOR_CONFIG = re(String.raw`(?i)(^|/)\.?zizmor\.ya?ml$`);
 const DEPENDABOT = re(String.raw`^\.github/dependabot\.ya?ml$`);
 const RENOVATE = re(String.raw`(?i)^(\.github/)?(renovate\.json5?|\.renovaterc(\.json)?)$`);
 const PACKAGE_ECOSYSTEM = re(String.raw`package-ecosystem:\s*["\']?([\w-]+)`);
-const DEPENDABOT_COOLDOWN = re(String.raw`(?m)^\s*cooldown\s*:`);
+const DEPENDABOT_COOLDOWN = re(String.raw`(?m)^${LINE_SPACE}*cooldown\s*:`);
 const RENOVATE_COOLDOWN = re(String.raw`minimumReleaseAge|stabilityDays`);
 const NPM_COOLDOWN = re(String.raw`min-release-age`);
 const UV_COOLDOWN = re(String.raw`exclude-newer`);
-const IGNORE_SCRIPTS = re(String.raw`(?m)^\s*ignore-scripts\s*=\s*true`);
+const IGNORE_SCRIPTS = re(String.raw`(?m)^${LINE_SPACE}*ignore-scripts\s*=\s*true`);
 const DENY_TOML = re(String.raw`(^|/)deny\.toml$`);
 const GORELEASER = re(String.raw`^\.goreleaser\.ya?ml$`);
 const GORELEASER_SBOMS = re(String.raw`(?m)^sboms\s*:`);

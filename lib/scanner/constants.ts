@@ -104,9 +104,10 @@ export const PUBLISH_TOOLS = [
 export const REGISTRY_TOOLS = ['pypi_publish', 'npm_publish', 'crates_publish', 'rubygems_publish'];
 export const TRUSTED_TOOLS = ['pypi_publish', 'npm_publish', 'crates_trusted', 'rubygems_trusted'];
 
+/** A fuzz target's path. Each [^/]* starts a path segment, so a long file name is read once, not from every letter. */
 export const FUZZ_PATH = re(
   String.raw`(?i)(^|/)(fuzz|fuzzing|fuzzers|fuzz_targets|fuzztest|oss-fuzz)(/|$)|(^|/)fuzz_[^/]+\.(c|cc|cpp|py|go|rs|java|js|ts)$|` +
-    String.raw`[^/]*_fuzz(er)?\.(c|cc|cpp|py|go|rs)$|(^|/)Fuzz[A-Z][^/]*\.(java|kt|scala)$|[^/]*fuzz[^/]*_test\.go$|\.fuzz\.(spec|test)\.[jt]s$`,
+    String.raw`(?:^|/)[^/]*_fuzz(er)?\.(c|cc|cpp|py|go|rs)$|(^|/)Fuzz[A-Z][^/]*\.(java|kt|scala)$|(?:^|/)(?=[^/]*fuzz)[^/]*_test\.go$|\.fuzz\.(spec|test)\.[jt]s$`,
 );
 export const FUZZ_EXCLUDE = re(
   String.raw`(?i)fuzzy|(^|/)(third_party|third-party|vendor|deps|node_modules|external)/|\.gitkeep$`,

@@ -21,27 +21,56 @@
 
 /** The characters str.isspace() accepts, which are also what Python's re treats as \s. */
 const SPACE = String.raw`\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000`;
+/**
+ * \s without \n, as a class to write in a pattern: the space before something at the start of a line. (?m)^\s* there
+ * would run on into the lines below, which on many blank lines takes time squared; this finds the same matches, since
+ * the line below has a start of its own.
+ */
+export const LINE_SPACE = String.raw`[\t\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]`;
 /** Python's \w for str patterns: str.isalnum() or "_", which is exactly the Unicode L and N categories plus _. */
 const WORD = String.raw`\p{L}\p{N}_`;
-const LEADING_SPACE = new RegExp(`^[${SPACE}]+`, 'u');
-const TRAILING_SPACE = new RegExp(`[${SPACE}]+$`, 'u');
+/** Whether a UTF-16 unit is in SPACE (each of those characters is a single unit). */
+function isSpaceUnit(c: number): boolean {
+  return (
+    (c >= 0x09 && c <= 0x0d) ||
+    (c >= 0x1c && c <= 0x20) ||
+    c === 0x85 ||
+    c === 0xa0 ||
+    c === 0x1680 ||
+    (c >= 0x2000 && c <= 0x200a) ||
+    c === 0x2028 ||
+    c === 0x2029 ||
+    c === 0x202f ||
+    c === 0x205f ||
+    c === 0x3000
+  );
+}
 const LINE_BREAK = /\r\n|[\n\v\f\r\x1c-\x1e\x85\u2028\u2029]/u;
+
+const OTHER_BREAK = /[\v\f\r\x1c-\x1e\x85\u2028\u2029]/u;
 
 /** str.splitlines(): every Unicode line boundary, CRLF as one, and no empty string after a final line break. */
 export function splitLines(text: string): string[] {
-  const lines = text.split(LINE_BREAK);
+  // Most text breaks lines only at \n, which a plain split finds faster.
+  const lines = OTHER_BREAK.test(text) ? text.split(LINE_BREAK) : text.split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
   return lines;
 }
 
-/** str.lstrip() with no arguments. */
+/** str.lstrip() with no arguments. (In code: a workflow can have a million lines, each stripped a few times.) */
 export function pyLstrip(s: string): string {
-  return s.replace(LEADING_SPACE, '');
+  let a = 0;
+  while (a < s.length && isSpaceUnit(s.charCodeAt(a))) a++;
+  return a ? s.slice(a) : s;
 }
 
 /** str.strip() with no arguments. */
 export function pyStrip(s: string): string {
-  return s.replace(LEADING_SPACE, '').replace(TRAILING_SPACE, '');
+  let a = 0;
+  let b = s.length;
+  while (a < b && isSpaceUnit(s.charCodeAt(a))) a++;
+  while (b > a && isSpaceUnit(s.charCodeAt(b - 1))) b--;
+  return a || b < s.length ? s.slice(a, b) : s;
 }
 
 /** len() of a str: code points, not UTF-16 units. */
@@ -516,13 +545,11 @@ export function re(pattern: string, flags = '', register = true): RegExp {
   return out;
 }
 
-const variants = new WeakMap<RegExp, Map<string, RegExp>>();
+const variants = { g: new WeakMap<RegExp, RegExp>(), y: new WeakMap<RegExp, RegExp>() };
 
 function withFlag(rx: RegExp, flag: 'g' | 'y'): RegExp {
-  let byFlag = variants.get(rx);
-  if (!byFlag) variants.set(rx, (byFlag = new Map()));
-  let out = byFlag.get(flag);
-  if (!out) byFlag.set(flag, (out = new RegExp(rx.source, rx.flags + flag)));
+  let out = variants[flag].get(rx);
+  if (!out) variants[flag].set(rx, (out = new RegExp(rx.source, rx.flags + flag)));
   return out;
 }
 

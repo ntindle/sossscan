@@ -70,7 +70,7 @@ export const XTRACE = re(
   String.raw`(?:^|[;&|(]|\bthen\b|\bdo\b)\s*set\s+(?:-[A-Za-z]*x[A-Za-z]*\b|-o\s+xtrace\b)|\b(?:ba|z|k)?sh\s+-[A-Za-z]*x[A-Za-z]*\b`,
 );
 /** A secret in an expression: ${{ secrets.NAME }} or ${{ secrets['NAME'] }}. */
-export const SECRET_REF = re(String.raw`\$\{\{[^}]*\bsecrets\s*[.\[]`);
+export const SECRET_REF = re(String.raw`\$\{\{[^{}]*\bsecrets\s*[.\[]`);
 
 /** The run steps that trace their commands while a secret is in the step: the step, and the line of the tracing. */
 export function tracedSecrets(workflows: { path: string; text: string }[]): { step: Step; line: number }[] {
@@ -93,10 +93,14 @@ export function tracedSecrets(workflows: { path: string; text: string }[]): { st
 }
 
 // ------------------------------------------------------------------------------------------- license gates
-/** A license check that fails on licenses outside an allow list. */
+/**
+ * A license check that fails on licenses outside an allow list. The flag is at most 1000 characters after the command
+ * on its line, and before the command starts again (as in release-caches.ts' PUBLISH_RUN).
+ */
 const LICENSE_RUN = re(
-  String.raw`\bgo-licenses\s+check\b|\blicense-checker(?:-rseidelsohn)?\b[^\n]*\s--(?:onlyAllow|failOn)\b|` +
-    String.raw`\blicense-compliance\b[^\n]*\s--allow\b`,
+  String.raw`\bgo-licenses\s+check\b|` +
+    String.raw`\blicense-checker(?:-rseidelsohn)?\b(?:(?!\blicense-checker(?:-rseidelsohn)?\b)[^\n]){0,1000}\s--(?:onlyAllow|failOn)\b|` +
+    String.raw`\blicense-compliance\b(?:(?!\blicense-compliance\b)[^\n]){0,1000}\s--allow\b`,
 );
 const CARGO_DENY = re(String.raw`\bcargo[- ]deny\b([^\n]*)`);
 const DENY_CHECK = re(String.raw`\b(advisories|bans|licenses|sources)\b`);

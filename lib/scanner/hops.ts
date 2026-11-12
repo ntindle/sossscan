@@ -2,21 +2,25 @@
 // yarn X, bun run X) or a Makefile target (make X). Each file is read once, and only when a step needs it.
 import { re, search, splitLines } from './py.ts';
 
-/** A package.json script or Makefile target run from a step: the tool and the name. */
+/**
+ * A package.json script or Makefile target run from a step: the tool and the name. An option is -[\w-]+, the same as
+ * -{1,2}[\w-]+, which could read "--a" two ways and so took time doubling with each option on a line that didn't match.
+ */
 export const SCRIPT_RUN = re(
   String.raw`(?:^|[\s;&|(])(npm\s+run(?:-script)?|pnpm\s+run|yarn\s+run|bun\s+run|pnpm|yarn|make)` +
-    String.raw`(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+([A-Za-z0-9_][\w:.-]*)`,
+    String.raw`(?:\s+-[\w-]+(?:=\S+)?)*\s+([A-Za-z0-9_][\w:.-]*)`,
 );
 /** A step that runs the package.json script named publish: npm run publish, pnpm run publish or yarn run publish. */
 export const PUBLISH_SCRIPT_RUN = re(String.raw`\b(?:npm|pnpm|yarn)\s+run\s+publish(?![\w:.-])`);
 /**
  * What a package.json script must run to publish to npm: npm's or pnpm's publish (staged too), yarn npm publish, or a
- * tool that publishes (changesets, semantic-release, np, release-it, lerna publish). A dry run doesn't count.
+ * tool that publishes (changesets, semantic-release, np, release-it, lerna publish). A dry run doesn't count: its
+ * flag is looked for in the 200 characters after the command. Options as in SCRIPT_RUN.
  */
 export const NPM_PUBLISH = re(
-  String.raw`(?:^|[\s;&|(])(?:(?:npm|pnpm)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|yarn\s+npm\s+publish\b|` +
+  String.raw`(?:^|[\s;&|(])(?:(?:npm|pnpm)(?:\s+-[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|yarn\s+npm\s+publish\b|` +
     String.raw`changesets?\s+publish\b|semantic-release\b|(?:npx\s+)?np(?=\s|$)|release-it\b|lerna\s+publish\b)` +
-    String.raw`(?![^\n]*\s--dry-run\b)`,
+    String.raw`(?![^\n]{0,200}\s--dry-run\b)`,
 );
 
 /** Whether a package.json script publishes to npm (see NPM_PUBLISH). */

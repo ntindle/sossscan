@@ -11,17 +11,28 @@ import { NPM_PUBLISH, SCRIPT_RUN, publishesToNpm } from './hops.ts';
 import type { Hops } from './hops.ts';
 import { finditer, re, search, splitLines } from './py.ts';
 
-/** A command that publishes a package, an image or a release. Dry runs and snapshot builds publish nothing. */
+/**
+ * What follows a command on its line, up to the flag the command needs: at most 1000 characters, and never past the
+ * same command again. Run from each start, a run that went on past the later ones took time squared on a line of the
+ * command many times; stopping there finds the same commands, since the later start has the flag after it too.
+ */
+const upTo = (command: string) => String.raw`(?:(?!(?<=[\s;&|(/])${command})[^\n]){0,1000}`;
+/**
+ * A command that publishes a package, an image or a release. Dry runs and snapshot builds publish nothing: their flag
+ * is looked for in the 200 characters after the command, so that each start looks at a few hundred characters.
+ */
 export const PUBLISH_RUN = re(
-  String.raw`(?:^|[\s;&|(/])(?:(?:npm|pnpm)(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|` +
+  String.raw`(?:^|[\s;&|(/])(?:(?:npm|pnpm)(?:\s+-[\w-]+(?:=\S+)?)*\s+(?:stage\s+)?publish\b|` +
     String.raw`yarn\s+npm\s+publish\b|twine\s+upload\b|` +
     String.raw`(?:uv|poetry|hatch|flit)\s+publish\b|maturin\s+(?:upload|publish)\b|cargo\s+publish\b|gem\s+push\b|` +
     String.raw`docker\s+(?:image\s+)?push\b|` +
-    String.raw`docker\s+buildx\s+build\b[^\n]*\s--push\b|gh\s+release\s+(?:create|upload)\b|` +
-    String.raw`goreleaser\s+release\b(?![^\n]*\s--(?:snapshot|skip-publish|skip[= ]publish))|` +
-    String.raw`mvnw?\b[^\n]*(?<![\w.:-])deploy(?![\w.=-])|gradlew?\b[^\n]*\bpublish(?!ToMavenLocal)\w*|` +
-    String.raw`sbt\b[^\n]*(?:\bpublish(?!Local)\w*|\bci-release\b|\btlCiRelease\b)|semantic-release\b|` +
-    String.raw`(?:dotnet\s+)?nuget\s+push\b)(?![^\n]*\s--dry-run\b)`,
+    String.raw`docker\s+buildx\s+build\b${upTo(String.raw`docker\s+buildx\s+build\b`)}\s--push\b|` +
+    String.raw`gh\s+release\s+(?:create|upload)\b|` +
+    String.raw`goreleaser\s+release\b(?![^\n]{0,200}\s--(?:snapshot|skip-publish|skip[= ]publish))|` +
+    String.raw`mvnw?\b${upTo(String.raw`mvnw?\b`)}(?<![\w.:-])deploy(?![\w.=-])|` +
+    String.raw`gradlew?\b${upTo(String.raw`gradlew?\b`)}\bpublish(?!ToMavenLocal)\w*|` +
+    String.raw`sbt\b${upTo(String.raw`sbt\b`)}(?:\bpublish(?!Local)\w*|\bci-release\b|\btlCiRelease\b)|semantic-release\b|` +
+    String.raw`(?:dotnet\s+)?nuget\s+push\b)(?![^\n]{0,200}\s--dry-run\b)`,
 );
 /** A script file in the repository that a step runs (at the start of a command), which the scan doesn't read. */
 const LOCAL_SCRIPT = re(
