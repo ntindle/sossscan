@@ -41,7 +41,8 @@ The site's text pages (About, Contact, Privacy and the docs) don't use this engi
 
 ## Scan reports (`sosf-scan/1`)
 `report.results[itemId] = {status, summary, evidence[] {label, url}, details, layer}`:
-- `status` is one of `pass`, `warn`, `fail`, `info`, `unknown`, `na`.
+- `status` is one of `pass`, `warn`, `fail`, `info`, `unknown`, `na`. A check gives `info`, not `warn`, for something it can't read: a security policy in a language or format it doesn't read, or a versions table it can't parse.
+- `details` depends on the check. For `disc-security-md` it has `path` and `length`, `account_default: true` for the account's policy, `report` (the ways to report it found, best first: `github`, `email`, `platform`, `form`, `chat`, `maintainer`, `page`) and `followed` (the one other file in the repository the scan read for it). For `rel-security-support` it has `target` (the release it compared with) and `supported` (the version cells marked supported), or `packages` when the releases are for several packages it couldn't tie to the table.
 - `report.findings[]` holds specific problems: `{item_id, severity high|medium|low, title, path, line, url, hint}`.
 - `report.meta` has `stars`, `dependents_total`, `ecosystems`, `owner_type`, `default_branch`, `language`, `publishes_from_ci`, `workflow_count` and `private`.
 - Also on the report: `report.tier {id, name}`, `report.scorecard {score, checks, reasons}` (OpenSSF Scorecard, may be `null`), `report.layer` (`public | private | app`) and `report.repo`.
