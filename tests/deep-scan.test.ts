@@ -224,3 +224,61 @@ describe('names', () => {
     expect(index).not.toMatch(/Three ways to scan/i);
   });
 });
+
+/** A Storage stand-in with the parts of the Web Storage API the page uses, including key() and length. */
+function storage(init: Record<string, string> = {}) {
+  const m = new Map(Object.entries(init));
+  return {
+    getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
+    setItem: (k: string, v: string) => void m.set(k, String(v)),
+    removeItem: (k: string) => void m.delete(k),
+    key: (i: number) => [...m.keys()][i] ?? null,
+    get length() {
+      return m.size;
+    },
+    keys: () => [...m.keys()],
+  };
+}
+
+describe('where the page keeps reports', () => {
+  const report = (layer: string) => ({
+    repo: 'octo/kept',
+    layer,
+    scanned_at: '2026-11-12T00:00:00Z',
+    results: { 'disc-security-md': { status: 'pass', summary: 'SECURITY.md found', evidence: [] } },
+    findings: [],
+    meta: {},
+  });
+
+  it("keeps a Deep scan's report only in memory, and a public scan's in localStorage", async () => {
+    const local = storage();
+    const session = storage();
+    vi.stubGlobal('localStorage', local);
+    vi.stubGlobal('sessionStorage', session);
+    vi.stubGlobal('fetch', async () => Response.json(report('app')));
+    const rep = await sg.app.check('octo/kept');
+    expect(rep.layer).toBe('app');
+    // Nothing from the report is in either storage; only the last repository's name is.
+    expect(session.keys()).toEqual([]);
+    expect(local.keys()).toEqual(['sg:lastRepo']);
+    // The page still has it while it's open.
+    expect(sg.recallReports('octo/kept').map((r: { layer: string }) => r.layer)).toEqual(['app']);
+
+    vi.stubGlobal('fetch', async () => Response.json({ ...report('public'), cached: false }));
+    await sg.scanPublic('octo/kept');
+    expect(local.keys().sort()).toEqual(['sg:lastRepo', 'sg:report:public:octo/kept']);
+    expect(session.keys()).toEqual([]);
+    expect(sg.recallReports('octo/kept').map((r: { layer: string }) => r.layer)).toEqual(['public', 'app']);
+  });
+
+  it('removes admin reports that earlier versions left in sessionStorage, and nothing else', () => {
+    const session = storage({
+      'sg:report:app:octo/old': '{}',
+      'sg:report:private:octo/old': '{}',
+      'sg:report:public:octo/old': '{}',
+      'sg:intent': '{}',
+    });
+    sg.dropStoredAdminReports(session);
+    expect(session.keys().sort()).toEqual(['sg:intent', 'sg:report:public:octo/old']);
+  });
+});

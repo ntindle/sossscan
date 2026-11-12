@@ -129,21 +129,35 @@ export function scanTrouble(repo, err, where = '') {
   return [`Couldn’t scan ${repo}.`, msg ? `The scanner said: ${(err && err.message) || msg}` : 'Press Scan to try again.'];
 }
 
-// Keep reports for the current tab: public in localStorage, private/app in sessionStorage only.
+// A public scan's report is kept in localStorage, so a reload or a shared link shows it again. A report that read
+// admin-only settings (Deep scan, or the CLI with an admin's token) is kept only in this page's memory and never in
+// browser storage: a reload or a new tab means scanning again, and nothing private stays behind on the device.
+const privateReports = new Map();
+const reportKey = (layer, repo) => `sg:report:${layer}:${repo.toLowerCase()}`;
 function remember(rep) {
   if (!rep || !rep.repo) return;
   safeSet(localStorage, 'sg:lastRepo', rep.repo);
-  const store = rep.layer === 'public' ? localStorage : sessionStorage;
-  safeSet(store, `sg:report:${rep.layer}:${rep.repo.toLowerCase()}`, JSON.stringify(rep));
+  if (rep.layer === 'public') safeSet(localStorage, reportKey('public', rep.repo), JSON.stringify(rep));
+  else privateReports.set(reportKey(rep.layer, rep.repo), rep);
+}
+
+// Earlier versions kept admin reports in sessionStorage; remove any still there. boot() calls it once, since this
+// module runs nothing when it loads (the MCP server imports it too). store is a Storage (sessionStorage by default).
+export function dropStoredAdminReports(store) {
+  try {
+    const s = store || sessionStorage;
+    const old = [];
+    for (let i = 0; i < s.length; i++) { const k = s.key(i); if (/^sg:report:(?:private|app):/.test(k || '')) old.push(k); }
+    for (const k of old) s.removeItem(k);
+  } catch { /* storage blocked, or no browser */ }
 }
 
 export function recallReports(repo) {
   if (!repo) return [];
-  const k = repo.toLowerCase();
-  return ['public', 'private', 'app'].map((l) => {
-    const raw = safeGet(l === 'public' ? localStorage : sessionStorage, `sg:report:${l}:${k}`);
-    try { return raw ? sanitizeReport(JSON.parse(raw)) : null; } catch { return null; }
-  }).filter(Boolean);
+  const pub = safeGet(localStorage, reportKey('public', repo));
+  let fromStorage = null;
+  try { fromStorage = pub ? sanitizeReport(JSON.parse(pub)) : null; } catch { /* unreadable: scan again */ }
+  return [fromStorage, privateReports.get(reportKey('private', repo)), privateReports.get(reportKey('app', repo))].filter(Boolean);
 }
 
 const LAYER_RANK = { public: 1, private: 2, app: 3 };
@@ -1536,6 +1550,7 @@ export function renderScanPanel(opts = {}) {
 // ------------------------------------------------------------------- convenience: boot a UI page
 // Loads the guide, mounts the scan panel into `mountScan`, and calls render({guide, report, ctx}) on every change.
 export async function boot({ mountScan, render, compactScan = false, autoScan = false }) {
+  dropStoredAdminReports();
   const guide = await loadGuide();
   let report = mergeReports(recallReports(initialRepo()));
   let repo = (report && report.repo) || initialRepo();
