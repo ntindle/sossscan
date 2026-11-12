@@ -23,6 +23,8 @@ const { globMatch, releaseCacheCheck } = await import('../lib/scanner/release-ca
 const { customQueries, licenseGate, tracedSecrets } = await import('../lib/scanner/self-checks.ts');
 const { Hops } = await import('../lib/scanner/hops.ts');
 const { releaseLine } = await import('../lib/scanner/versions.ts');
+const { readPolicy } = await import('../lib/scanner/policy.ts');
+const { disclosureTerms, drillNote, releasesNaming, responseTarget } = await import('../lib/scanner/advisories.ts');
 
 const KB = 1024;
 const MB = 1024 * KB;
@@ -532,6 +534,54 @@ describe('the scanner takes linear time on files built to be slow', () => {
     for (const t of tags) {
       const ms = await time(() => releaseLine(t, 'x'), PARSER_LIMIT);
       if (ms > PARSER_LIMIT) slow.push(`tags: ${Math.round(ms)} ms`);
+    }
+    expect(slow).toEqual([]);
+  }, 300_000);
+
+  it('reads hostile policies, plans and release notes for response times, disclosure and drills in under 5 s, growing linearly', async () => {
+    const texts = (size: number): [string, string][] => [
+      ['times without a word for answering', fill('1 day ', size)],
+      ['ranges', fill('1 - 2 - 3 days ', size)],
+      ['dashes after a number', '1' + fill(' -', size)],
+      ['a word for answering, then times far off', 'respond ' + fill('x ', size / 2) + fill('2 days ', size / 2)],
+      ['times beside words that almost answer', fill('responsible 48 hours ', size)],
+      ['many short sentences', fill('We wait 3 days. ', size)],
+      ['one long sentence', fill('we wait about 12 working days and more ', size)],
+      ['articles', fill('a a an an ', size)],
+      ['number words', fill('forty-eight seventy-two ', size)],
+      ['an embargo everywhere', fill('embargo ', size)],
+      ['downstream without telling anyone', fill('downstream ', size)],
+      ['dates without a drill', fill('2026-03-04 March 4, 2026 ', size)],
+      ['drills without a date', fill('tabletop drill dry run ', size)],
+      ['months', fill('March March May ', size)],
+      ['table rows', '| Step | Target |\n| --- | --- |\n' + fill('| Acknowledge | x |\n', size)],
+    ];
+    const own = Array.from({ length: 100 }, (_, i) => ({
+      ghsa_id: `GHSA-aaaa-bbbb-${i}xyz`,
+      cve_id: `CVE-2026-${10000 + i}`,
+    }));
+    const notes = (size: number): [string, string][] => [
+      ['advisory IDs', fill('GHSA-abcd-efgh-ijkl ', size)],
+      ['CVE IDs', fill('CVE-2026-1234567 ', size)],
+      ['ID prefixes', fill('ghsa-', size)],
+      ['CVE prefixes', fill('CVE-', size)],
+    ];
+    const read = (text: string) => () => {
+      const p = readPolicy(text, 'SECURITY.md');
+      responseTarget(p);
+      disclosureTerms(p);
+      drillNote(p);
+    };
+    const named = (body: string) => () => releasesNaming(own, [{ tag_name: 'v1', body }]);
+    const slow: string[] = [];
+    const [quarter, quarterNotes] = [texts(256 * KB), notes(256 * KB)];
+    for (const [k, [name, text]] of texts(MB).entries()) {
+      const why = await slowness(read(quarter[k][1]), read(text), PARSER_LIMIT);
+      if (why) slow.push(`${name}: ${why}`);
+    }
+    for (const [k, [name, body]] of notes(MB).entries()) {
+      const why = await slowness(named(quarterNotes[k][1]), named(body), PARSER_LIMIT);
+      if (why) slow.push(`release notes, ${name}: ${why}`);
     }
     expect(slow).toEqual([]);
   }, 300_000);

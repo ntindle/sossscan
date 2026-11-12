@@ -2,6 +2,7 @@
 // reads, results and findings is the Python order, so the port gave the same report (and the same api_calls).
 // Checks added since make their requests where they report.
 import { mapLimit } from '../pool.ts';
+import { creditedCount, disclosureTerms, drillNote, releasesNaming, responseTarget } from './advisories.ts';
 import {
   API,
   CODEQL_ECOSYSTEMS,
@@ -177,6 +178,12 @@ function githubShows(path: string): boolean {
   return file === 'security.md' || file === 'security';
 }
 
+/** Whether the policy reader reads this file: Markdown, reStructuredText, AsciiDoc or plain text, by its extension. */
+function readableText(path: string): boolean {
+  const p = path.toLowerCase();
+  return ['.md', '.markdown', '.rst', '.adoc', '.txt'].some((ext) => p.endsWith(ext));
+}
+
 /**
  * GitHub's order for a security policy: a SECURITY.md (or SECURITY) in .github/, the root, then docs/. The formats
  * GitHub doesn't show (.rst, .adoc, .txt, .markdown) come after, in the same folder order.
@@ -202,7 +209,14 @@ function notInPlan(status: number, body: unknown): boolean {
  * false refuses private repositories (the shared web server, whose token must not expose them).
  */
 export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Report> {
-  const { token = null, layer = 'private', ossFuzzLookup = null, assumeAdmin = false, allowPrivate = true } = opts;
+  const {
+    token = null,
+    layer = 'private',
+    ossFuzzLookup = null,
+    assumeAdmin = false,
+    allowPrivate = true,
+    grants = null,
+  } = opts;
   const log = opts.log || (() => {});
   const http = new Http(token);
   let repo = repoArg;
@@ -240,7 +254,15 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     return f;
   };
 
-  const [st, meta] = await http.json(`/repos/${repo}`);
+  const [st, meta, metaHeaders] = await http.json(`/repos/${repo}`);
+  /** A classic token's scopes, which GitHub sends with each answer; null for a fine-grained token or an app's. */
+  const scopes =
+    typeof metaHeaders['x-oauth-scopes'] === 'string'
+      ? metaHeaders['x-oauth-scopes']
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null;
   if (st !== 200 || !truthy(meta)) {
     rep.errors.push(`repo lookup failed: HTTP ${st}` + (st === 404 ? ' (private repo? pass a token)' : ''));
     if (http.rateLimited) rep.errors.push(RATE_LIMITED);
@@ -749,6 +771,62 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
       { count: advs.length, with_cve: advs.filter((a) => truthy(get(a, 'cve_id'))).length },
     );
   }
+  // ---- what the policy, the advisories and the releases show of two self-checks (new in 0.5.2, advisories.ts): how
+  // soon reports get an answer, and coordinated disclosure. Each gives info for a person to confirm, or nothing.
+  /** The policy GitHub shows, the file it led to, and the account's default when GitHub shows that one instead. */
+  const policyTexts = [
+    ...(policy && doc ? [{ p: doc, label: policy.label, url: policy.url }] : []),
+    ...(followed ? [{ p: followed.policy, label: followed.label, url: followed.url }] : []),
+    ...(shownDefault ? [{ p: shownDefault.policy, label: shownDefault.label, url: shownDefault.url }] : []),
+  ];
+  /** The first of those with a sentence find picks, quoted, and where it is. */
+  const quoted = (find: (p: Policy) => string | null) => {
+    for (const { p, label, url } of policyTexts) {
+      const q = find(p);
+      if (q) return { q, evidence: { label, url }, says: `${label} says "${q}"` };
+    }
+    return null;
+  };
+  const target = quoted(responseTarget);
+  if (target) res('disc-triage-sla', 'info', `Looks done: ${target.says}`, [target.evidence]);
+  const coordination: string[] = [];
+  const coordinationLinks: Evidence[] = [];
+  const coordinationDetails: Record<string, unknown> = {};
+  const terms = quoted(disclosureTerms);
+  if (terms) {
+    coordination.push(terms.says);
+    coordinationLinks.push(terms.evidence);
+  }
+  const credited = creditedCount(advs);
+  if (credited) {
+    coordination.push(
+      `${credited} of ${advs.length} published advisor${advs.length === 1 ? 'y' : 'ies'} ` +
+        `${credited === 1 ? 'credits' : 'credit'} a reporter or finder`,
+    );
+    coordinationLinks.push(...advisoriesLink);
+    coordinationDetails.credited = credited;
+  }
+  // The latest releases' notes, for the repository's own advisories (a draft release isn't out yet).
+  const latest =
+    got.releases[0] === 200 && Array.isArray(got.releases[1])
+      ? got.releases[1].filter((r: unknown) => isDict(r) && !truthy(r.draft))
+      : [];
+  const naming = releasesNaming(advs, latest);
+  if (naming.length) {
+    const tags = naming.map((r) => r.tag);
+    const which = `(${tags.slice(0, 3).join(', ')}${tags.length > 3 ? ', …' : ''})`;
+    coordination.push(
+      latest.length === 1
+        ? `The latest release cites this repository's advisories ${which}`
+        : `${naming.length} of the ${latest.length} latest releases ${naming.length === 1 ? 'cites' : 'cite'} this ` +
+            `repository's advisories ${which}`,
+    );
+    coordinationLinks.push(...naming.slice(0, 3).flatMap((r) => (r.url ? [{ label: r.tag, url: r.url }] : [])));
+    coordinationDetails.releases = tags;
+  }
+  if (coordination.length) {
+    res('disc-coordinated-disclosure', 'info', coordination.join('; '), coordinationLinks, coordinationDetails);
+  }
 
   // ---- planning docs. A threat-model/ or incident-response/ folder counts: it holds the documents, and a truncated
   // tree may list the folder without its files.
@@ -766,6 +844,14 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
     irp.length ? `${irp[0]} found` : 'No incident response plan found in the repo',
     irp.length ? fileLink(irp[0]) : [],
   );
+  // A drill the plan dates (new in 0.5.2): the first plan file in a format the policy reader reads, at the cost of a
+  // read. It's info: the private layer passes the check on a closed practice advisory.
+  const planFile = files.find((p) => search(INCIDENT_RESPONSE, p) && !search(VENDORED, p) && readableText(p));
+  const planText = planFile ? await read(planFile, POLICY_FILE) : null;
+  const drill = planFile && planText !== null ? drillNote(readPolicy(planText, planFile)) : null;
+  if (planFile && drill) {
+    res('plan-irp-exercise', 'info', `${planFile} mentions a drill: "${drill}"`, fileLink(planFile));
+  }
 
   // ---- repository settings visible publicly
   const co = find(CODEOWNERS);
@@ -1572,7 +1658,12 @@ export async function scan(repoArg: string, opts: ScanOptions = {}): Promise<Rep
 
   // ---- private layer (admin-only settings)
   if (admin) {
-    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed, assumeAdmin);
+    await privateLayer(http, rep, repo, owner, branch, meta, res, finding, noBlock, rulesetsFailed, {
+      app: assumeAdmin,
+      grants,
+      scopes,
+      published: advs,
+    });
   } else {
     for (const [it, why] of NEEDS_PRIVATE_LAYER) {
       if (!Object.hasOwn(R, it)) res(it, 'unknown', `${why}: needs the private scan (admin token) or the GitHub App`);

@@ -1,9 +1,18 @@
 // Admin-only settings, ported from private_layer() in the Python scanner. Runs only when the token has admin on
 // the repo (or the caller vouches for it, as the GitHub App does).
 import { mapLimit } from '../pool.ts';
+import {
+  advisoriesLink,
+  advisoryFacts,
+  canReadUnpublished,
+  lastDrill,
+  showsUnpublished,
+  waitingReports,
+} from './advisories.ts';
+import type { Answer } from './advisories.ts';
 import type { Http } from './http.ts';
 import { get, isDict, item, pyIn, pyIter, pyJoin, pyLenOf, pyOr, pyStr, quote, truthy } from './py.ts';
-import type { Evidence, Finding, Report, Status } from './types.ts';
+import type { Evidence, Finding, Report, Result, Status } from './types.ts';
 
 export type AddResult = (
   itemId: string,
@@ -25,11 +34,22 @@ export type AddFinding = (
 
 const P = 'private';
 
+/** What else the private layer knows about the token, and what the public layer read that it uses. */
+export interface PrivateContext {
+  /** The token is the GitHub App's installation token, whose permissions are the app's, not an admin's. */
+  app?: boolean;
+  /** The permissions the token holds, when known: an installation token's, as GitHub gave them. */
+  grants?: Record<string, string> | null;
+  /** A classic token's scopes (GitHub's X-OAuth-Scopes header); null for a token without them. */
+  scopes?: string[] | null;
+  /** The published advisories the public layer listed. */
+  published?: unknown[];
+}
+
 /**
  * noBlock: the findings for workflows without a permissions block. Their token gets the repository's default, which
  * the public layer could only guess at; they're reworded here once the default is read. rulesetsFailed: the HTTP status
  * of the public layer's rulesets lookup if GitHub didn't answer it, which leaves unknown whether a tag ruleset exists.
- * app: the token is the GitHub App's installation token, whose permissions are the app's, not an admin's.
  */
 export async function privateLayer(
   http: Http,
@@ -42,8 +62,9 @@ export async function privateLayer(
   finding: AddFinding,
   noBlock: Finding[],
   rulesetsFailed: number | null,
-  app = false,
+  ctx: PrivateContext = {},
 ): Promise<void> {
+  const app = ctx.app ?? false;
   const calls: [string, string][] = [
     ['vuln_alerts', `/repos/${repo}/vulnerability-alerts`],
     ['autofix', `/repos/${repo}/automated-security-fixes`],
@@ -59,6 +80,11 @@ export async function privateLayer(
     ['dep_alerts', `/repos/${repo}/dependabot/alerts?state=open&per_page=100`],
     ['admins', `/repos/${repo}/collaborators?affiliation=all&permission=admin&per_page=100`],
     ['secrets', `/repos/${repo}/actions/secrets?per_page=1`],
+    // New in 0.5.2, for counts and dates only (advisories.ts): the private vulnerability reports in triage, oldest
+    // first; the closed advisories, latest first, for a drill; and the drafts, for who worked on them.
+    ['triage', `/repos/${repo}/security-advisories?state=triage&sort=created&direction=asc&per_page=100`],
+    ['closed', `/repos/${repo}/security-advisories?state=closed&sort=updated&per_page=100`],
+    ['drafts', `/repos/${repo}/security-advisories?state=draft&per_page=100`],
   ];
   const isOrg = item(item(meta, 'owner'), 'type') === 'Organization';
   if (isOrg) {
@@ -335,12 +361,14 @@ export async function privateLayer(
       null,
       P,
     );
-  } else if (app && got.secrets[0] === 403) {
-    // The app has no "Secrets: read" permission. The call stays, so it works once an owner grants that.
+  } else if (app && got.secrets[0] === 403 && !granted(ctx.grants, 'secrets')) {
+    // The installation hasn't accepted the app's "Secrets: read" permission (it reads names and dates, never values).
     res(
       'ci-secrets-hygiene',
       'unknown',
-      "The GitHub App can't read the names of Actions secrets; the CLI with an admin's token can check them",
+      "Couldn't read the names of Actions secrets: the GitHub App hasn't been given access to them on this " +
+        "installation. An owner can approve the new permission in the installation's settings, or use the CLI " +
+        "with an admin's token",
       null,
       null,
       P,
@@ -348,6 +376,7 @@ export async function privateLayer(
   } else {
     unreadable('ci-secrets-hygiene', 'the repository Actions secrets', 'secrets');
   }
+  unpublishedAdvisories({ triage: got.triage, closed: got.closed, drafts: got.drafts }, repo, ctx, R, res);
   if (Object.hasOwn(got, 'org')) {
     const org = ok('org') ? got.org[1] : {};
     const req = get(org, 'two_factor_requirement_enabled');
@@ -381,6 +410,144 @@ export async function privateLayer(
     securityConfiguration(got.security_config, got.config_defaults, meta, res);
   } else {
     res('repo-org-security-config', 'na', 'Personal accounts have no security configurations', null, null, P);
+  }
+}
+
+/** Whether the token is known to hold a permission, read or write. */
+function granted(grants: Record<string, string> | null | undefined, name: string): boolean {
+  return !!grants && (grants[name] === 'read' || grants[name] === 'write');
+}
+
+/**
+ * The self-checks the unpublished advisories can show (new in 0.5.2): disc-triage-sla warns when private vulnerability
+ * reports have waited over 14 days with no comment, plan-irp-exercise passes on a practice advisory titled DRILL closed
+ * in the last 12 months, and disc-coordinated-disclosure counts the advisories that brought in collaborators or have a
+ * temporary private fork. Each list is reduced to counts and dates first (advisoryFacts), and the results say nothing
+ * else about any report. An empty list means something only when the token is known to read unpublished advisories,
+ * or GitHub listed one: a token that can't gets an empty list too. Each adds to what the public layer found (in R).
+ */
+export function unpublishedAdvisories(
+  answers: { triage: Answer; closed: Answer; drafts: Answer },
+  repo: string,
+  ctx: PrivateContext,
+  R: Record<string, Result>,
+  res: AddResult,
+  now: Date = new Date(),
+): void {
+  const triage = advisoryFacts(answers.triage, 'triage');
+  const closed = advisoryFacts(answers.closed, 'closed');
+  const drafts = advisoryFacts(answers.drafts, 'draft');
+  const known = canReadUnpublished(ctx.grants, ctx.scopes);
+  const access =
+    known === true ||
+    showsUnpublished(answers.triage, 'triage') ||
+    showsUnpublished(answers.closed, 'closed') ||
+    showsUnpublished(answers.drafts, 'draft');
+
+  // disc-triage-sla. Oldest first, so a full page holds the oldest reports, though not every one waiting.
+  const before = R['disc-triage-sla'];
+  const policyLinks = before?.evidence ?? [];
+  if (access && triage) {
+    const full = pyLenOf(answers.triage[1]) >= 100;
+    const { waiting, oldest } = waitingReports(triage, now);
+    if (waiting) {
+      const n = `${waiting}${full ? '+' : ''}`;
+      res(
+        'disc-triage-sla',
+        'warn',
+        n === '1'
+          ? `1 private vulnerability report has waited ${oldest} days with no comment`
+          : `${n} private vulnerability reports have waited over 14 days with no comment, ` +
+              `the oldest for ${oldest} days`,
+        [advisoriesLink(repo, 'triage'), ...policyLinks],
+        { waiting: n, oldest_days: oldest },
+        P,
+      );
+    } else if (!full) {
+      const fact = triage.length
+        ? `${triage.length} private vulnerability report${triage.length === 1 ? ' is' : 's are'} in triage, none ` +
+          'waiting over 14 days with no comment'
+        : 'no private vulnerability reports are waiting in triage';
+      res(
+        'disc-triage-sla',
+        'info',
+        before ? `${before.summary}; ${fact}` : fact.charAt(0).toUpperCase() + fact.slice(1),
+        [advisoriesLink(repo, 'triage'), ...policyLinks],
+        { in_triage: triage.length },
+        P,
+      );
+    }
+  } else if (!before && (known === false || triage === null)) {
+    res(
+      'disc-triage-sla',
+      'unknown',
+      known === false && ctx.app
+        ? "Couldn't read the private vulnerability reports: the GitHub App hasn't been given access to security " +
+            "advisories on this installation. An owner can approve the new permission in the installation's " +
+            "settings, or use the CLI with an admin's token"
+        : known === false
+          ? "Couldn't read the private vulnerability reports: the token needs the repo scope"
+          : `Could not read the private vulnerability reports (HTTP ${answers.triage[0]})`,
+      null,
+      null,
+      P,
+    );
+  }
+
+  // plan-irp-exercise: the latest closed advisories, for a drill.
+  const plan = R['plan-irp-exercise'];
+  const last = access && closed ? lastDrill(closed, now) : null;
+  if (last?.recent) {
+    res(
+      'plan-irp-exercise',
+      'pass',
+      `A practice advisory titled DRILL was closed on ${last.date}, within the last 12 months`,
+      [advisoriesLink(repo, 'closed')],
+      { drill_closed: last.date },
+      P,
+    );
+  } else if (last) {
+    res(
+      'plan-irp-exercise',
+      'info',
+      `The last practice advisory titled DRILL was closed on ${last.date}, over 12 months ago` +
+        (plan ? `; ${plan.summary}` : ''),
+      [advisoriesLink(repo, 'closed'), ...(plan?.evidence ?? [])],
+      { drill_closed: last.date },
+      P,
+    );
+  }
+
+  // disc-coordinated-disclosure: the advisories the maintainers brought collaborators into, or that have a temporary
+  // private fork. Not the reports still in triage: a reporter can start a fork when they send one.
+  if (access) {
+    const all = [
+      ...(drafts ?? []),
+      ...(closed ?? []),
+      ...(advisoryFacts([200, ctx.published ?? [], {}], 'published') ?? []),
+    ];
+    const people = all.filter((f) => f.collaborators).length;
+    const forks = all.filter((f) => f.fork).length;
+    if (people || forks) {
+      const of = `of ${all.length} advisor${all.length === 1 ? 'y' : 'ies'}`;
+      const has = forks === 1 ? 'has' : 'have';
+      const part =
+        people && forks
+          ? `${people} ${of} brought in collaborators, and ${forks} ${has} a temporary private fork`
+          : people
+            ? `${people} ${of} brought in collaborators`
+            : `${forks} ${of} ${has} a temporary private fork`;
+      const prev = R['disc-coordinated-disclosure'];
+      const links = prev?.evidence ?? [];
+      res(
+        'disc-coordinated-disclosure',
+        'info',
+        prev ? `${prev.summary}; ${part}` : part,
+        links.some((e) => e.url === advisoriesLink(repo).url) ? links : [...links, advisoriesLink(repo)],
+        { ...(prev?.details ?? {}), advisories: all.length, with_collaborators: people, with_private_fork: forks },
+        P,
+      );
+    }
   }
 }
 
