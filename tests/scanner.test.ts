@@ -4232,7 +4232,7 @@ describe('private vulnerability reports, drills and coordinated disclosure (0.5.
     // A public scan doesn't ask for them.
     const { rep, calls } = await scanTiny(tiny({}));
     expect(ITEMS.map((id) => statusOf(rep, id))).toEqual([null, null, null]);
-    expect(calls.filter(([url]) => /state=(?:triage|closed|draft)/.test(url))).toEqual([]);
+    expect(calls.filter(([url]) => /security-advisories\?state=(?:triage|closed|draft)/.test(url))).toEqual([]);
   });
 
   it('quotes the response time SECURITY.md sets, and puts it with what the reports show', async () => {
@@ -4645,5 +4645,199 @@ describe('private vulnerability reports, drills and coordinated disclosure (0.5.
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ------------------------------------------------------------------------------- 0.5.3: settings reviews
+describe('settings reviews (0.5.3)', () => {
+  const DAY = 86_400_000;
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  const ISSUES = `${TINY}/issues?labels=settings-review&state=closed&per_page=5`;
+  const WORKFLOWS = `${TINY}/actions/workflows?per_page=100`;
+  const FLOW = '.github/workflows/settings-review.yml';
+  /** A scheduled workflow that opens the review issue, as the guide's template does. */
+  const opener = workflow([
+    'name: Settings review',
+    'on:',
+    '  schedule:',
+    "    - cron: '23 9 2 1,7 *'",
+    '  workflow_dispatch:',
+    'permissions:',
+    '  issues: write',
+    'jobs:',
+    '  open:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: gh issue create --title "Settings review" --label settings-review --body "Review the settings."',
+  ]);
+  const issue = (number: number, days: number, extra: Record<string, unknown> = {}) => ({
+    number,
+    html_url: `https://github.com/octo/tiny/issues/${number}`,
+    state: 'closed',
+    state_reason: 'completed',
+    closed_at: ago(days),
+    ...extra,
+  });
+  /** octo/tiny with these files, its closed issues labeled settings-review, and these workflow states. */
+  const review = async (
+    files: Record<string, string>,
+    issues: Route | null,
+    states: { path: string; state: string }[] = [],
+    meta: Record<string, unknown> = {},
+  ) => {
+    const api: Record<string, Route | Route[]> = { [WORKFLOWS]: { json: { workflows: states } } };
+    if (issues) api[ISSUES] = issues;
+    return (await scanTiny(tiny(files, api, { meta }))).rep;
+  };
+
+  it('passes on an issue labeled settings-review closed in the last 6 months, with its date and a link', async () => {
+    const rep = await review({}, { json: [issue(12, 30), issue(7, 200)] });
+    expect(rep.results['repo-settings-review']).toEqual({
+      status: 'pass',
+      summary: `An issue labeled settings-review was closed on ${ago(30).slice(0, 10)}, within the last 6 months`,
+      evidence: [{ label: '#12', url: 'https://github.com/octo/tiny/issues/12' }],
+      details: { closed: ago(30).slice(0, 10) },
+      layer: 'public',
+    });
+    // The newest close counts, whatever order GitHub lists them in.
+    expect(statusOf(await review({}, { json: [issue(7, 200), issue(12, 170)] }), 'repo-settings-review')?.[0]).toBe(
+      'pass',
+    );
+  });
+
+  it('gives info, never a failure, for an older closed issue or a workflow that opens them', async () => {
+    const old = ago(200).slice(0, 10);
+    expect(statusOf(await review({}, { json: [issue(7, 200)] }), 'repo-settings-review')).toEqual([
+      'info',
+      `The last issue labeled settings-review was closed on ${old}, over 6 months ago`,
+    ]);
+    const rep = await review({ [FLOW]: opener }, { json: [] });
+    expect(rep.results['repo-settings-review']).toEqual({
+      status: 'info',
+      summary:
+        '.github/workflows/settings-review.yml opens a settings review issue on a schedule; no issue labeled ' +
+        'settings-review was closed in the last 6 months',
+      evidence: [{ label: FLOW, url: `https://github.com/octo/tiny/blob/main/${FLOW}` }],
+      details: { workflow: FLOW },
+      layer: 'public',
+    });
+    expect(statusOf(await review({ [FLOW]: opener }, { json: [issue(7, 200)] }), 'repo-settings-review')).toEqual([
+      'info',
+      '.github/workflows/settings-review.yml opens a settings review issue on a schedule; the last issue labeled ' +
+        `settings-review was closed on ${old}, over 6 months ago`,
+    ]);
+  });
+
+  it('says when GitHub turned the workflow off, or issues are off, so it opens nothing', async () => {
+    const off = await review({ [FLOW]: opener }, { json: [] }, [{ path: FLOW, state: 'disabled_inactivity' }]);
+    expect(off.results['repo-settings-review'].summary).toBe(
+      '.github/workflows/settings-review.yml opens a settings review issue on a schedule, but GitHub turned it off ' +
+        'for inactivity; no issue labeled settings-review was closed in the last 6 months',
+    );
+    expect(off.results['repo-settings-review'].evidence[1]).toEqual({
+      label: 'Turn it on in Actions',
+      url: 'https://github.com/octo/tiny/actions/workflows/settings-review.yml',
+    });
+    // GitHub lists no issues for a repository with issues turned off, and says so in the repository's fields.
+    const noIssues = await review({ [FLOW]: opener }, { json: [] }, [], { has_issues: false });
+    expect(noIssues.results['repo-settings-review'].summary).toContain(
+      'on a schedule, but issues are turned off in this repository;',
+    );
+  });
+
+  it('counts closed issues only: not pull requests, and not issues closed as not planned or duplicates', async () => {
+    const skipped = [
+      issue(3, 10, { pull_request: { url: 'https://api.github.com/repos/octo/tiny/pulls/3' } }),
+      issue(4, 10, { state_reason: 'not_planned' }),
+      issue(5, 10, { state_reason: 'duplicate' }),
+      issue(6, -2),
+      issue(8, 10, { closed_at: null }),
+    ];
+    expect(statusOf(await review({}, { json: skipped }), 'repo-settings-review')).toBeNull();
+    expect(statusOf(await review({}, { json: [...skipped, issue(9, 10)] }), 'repo-settings-review')?.[0]).toBe('pass');
+  });
+
+  it('finds the workflow by its schedule and the label on its own, and gives nothing without a sign', async () => {
+    const without = (from: string, to: string) => ({ [FLOW]: opener.replace(from, to) });
+    for (const files of [
+      {},
+      without("  schedule:\n    - cron: '23 9 2 1,7 *'\n", ''),
+      without('--label settings-review ', '--label settings-review-old '),
+      without('--label settings-review ', '--label old-settings-review '),
+    ]) {
+      expect(statusOf(await review(files, { json: [] }), 'repo-settings-review')).toBeNull();
+    }
+    // GitHub's 404 lists nothing too.
+    expect(statusOf(await review({}, null), 'repo-settings-review')).toBeNull();
+    // The label in an action's inputs counts like one in a script.
+    const action = workflow([
+      'on:',
+      '  schedule:',
+      "    - cron: '0 0 1 */6 *'",
+      'jobs:',
+      '  open:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      `      - uses: octo/open-issue@${PIN}`,
+      '        with:',
+      '          labels: security, settings-review',
+    ]);
+    expect(
+      statusOf(await review({ '.github/workflows/remind.yml': action }, { json: [] }), 'repo-settings-review')?.[0],
+    ).toBe('info');
+  });
+
+  it("is unknown when GitHub doesn't answer, and says the app can't read a private repository's issues", async () => {
+    for (const [answer, status] of [
+      [{ status: 403, json: { message: 'API rate limit exceeded' } }, 403],
+      [{ status: 502, json: { message: 'Server Error' } }, 502],
+      [{ status: 0 }, 0],
+    ] as const) {
+      expect(statusOf(await review({ [FLOW]: opener }, answer), 'repo-settings-review')).toEqual([
+        'unknown',
+        `Could not read the closed issues labeled settings-review (HTTP ${status})`,
+      ]);
+    }
+    // A Deep scan of a private repository: the app has no Issues permission, so GitHub refuses the list.
+    const routes = tiny(
+      {},
+      { [ISSUES]: { status: 403, json: { message: 'Resource not accessible by integration' } } },
+      { meta: { private: true } },
+    );
+    stubFetch(routes);
+    const grants = { administration: 'write', contents: 'write', metadata: 'read', pull_requests: 'write' };
+    const app = await scan('octo/tiny', { token: 'app-token', assumeAdmin: true, grants, ossFuzzLookup: () => [] });
+    expect(app.results['repo-settings-review']).toEqual({
+      status: 'unknown',
+      summary:
+        "Couldn't read the repository's issues: the GitHub App doesn't have access to them. The CLI with an " +
+        "admin's token can check for a closed settings review issue",
+      evidence: [],
+      details: {},
+      layer: 'private',
+    });
+    // The page says it couldn't check, not that it needs a deeper scan: this was the deep scan.
+    const merged = sg.mergeReports({ ...app, layer: 'app' });
+    const item = { id: 'repo-settings-review', layer: 'manual' };
+    expect(sg.statusLabel(sg.itemStatus(item, merged, merged.repo))).toBe('Couldn’t check');
+    // With the permission, a refusal is just that.
+    stubFetch(routes);
+    const allowed = await scan('octo/tiny', {
+      token: 'app-token',
+      assumeAdmin: true,
+      grants: { ...grants, issues: 'read' },
+      ossFuzzLookup: () => [],
+    });
+    expect(statusOf(allowed, 'repo-settings-review')).toEqual([
+      'unknown',
+      'Could not read the closed issues labeled settings-review (HTTP 403)',
+    ]);
+  });
+
+  it('asks GitHub once, for the 5 newest closed issues with the label', async () => {
+    const { calls } = await scanTiny(tiny({}));
+    expect(calls.filter(([url]) => url.includes('/issues?'))).toEqual([
+      [ISSUES, 'application/vnd.github+json', 'Bearer t', '2022-11-28'],
+    ]);
   });
 });

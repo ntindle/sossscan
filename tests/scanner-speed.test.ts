@@ -20,7 +20,7 @@ const { analyzeWorkflow } = await import('../lib/scanner/workflow.ts');
 const { readCompositeSteps, readWorkflow } = await import('../lib/scanner/jobs.ts');
 const { parseYaml, readYaml, TooComplex } = await import('../lib/scanner/yaml-lite.ts');
 const { globMatch, releaseCacheCheck } = await import('../lib/scanner/release-caches.ts');
-const { customQueries, licenseGate, tracedSecrets } = await import('../lib/scanner/self-checks.ts');
+const { customQueries, licenseGate, reviewWorkflows, tracedSecrets } = await import('../lib/scanner/self-checks.ts');
 const { Hops } = await import('../lib/scanner/hops.ts');
 const { releaseLine } = await import('../lib/scanner/versions.ts');
 const { readPolicy } = await import('../lib/scanner/policy.ts');
@@ -348,6 +348,7 @@ describe('the scanner takes linear time on files built to be slow', () => {
         else {
           readWorkflow(file.path, text);
           tracedSecrets([file]);
+          reviewWorkflows([file]);
           await licenseGate({
             workflows: [file],
             files: [],
