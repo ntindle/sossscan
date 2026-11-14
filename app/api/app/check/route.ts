@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { count } from '@/lib/counts.ts';
 import {
   advisoryAccess,
   configOr404,
@@ -46,6 +47,7 @@ export const POST = route(async (req: NextRequest) => {
     grants: permissions,
     advisories,
   });
+  count(req, 'deep_scan', {});
   return privateJson({ ...rep, layer: 'app' });
 });
 

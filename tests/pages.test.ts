@@ -148,7 +148,11 @@ describe('the text pages', () => {
     expect(CSP).toContain("script-src 'self'"); // /shared/theme.js
     for (const page of PAGES) {
       const scripts = [...pageHtml(page.path).matchAll(/<script\b([^>]*)>/gi)].map((m) => m[1].trim());
-      expect(scripts).toEqual(['src="/shared/theme.js"', 'type="application/ld+json"']);
+      expect(scripts).toEqual([
+        'src="/shared/theme.js"',
+        'type="module" src="/shared/visit.js"',
+        'type="application/ld+json"',
+      ]);
     }
   });
 
@@ -218,9 +222,13 @@ describe('the facts on the pages', () => {
     const limits = read('lib/limits.ts');
     const [, perMinute, perHour] = /scan: \[\s*\[60, (\d+)\],\s*\[3600, (\d+)\],?\s*\]/.exec(limits)!;
     const [, app] = /app: \[\[60, (\d+)\]\]/.exec(limits)!;
+    const [, counts] = /count: \[\[60, (\d+)\]\]/.exec(limits)!;
     expect(pageMarkdown('/docs/api')).toContain(`${perMinute} scan requests a minute and ${perHour} an hour`);
     expect(pageMarkdown('/privacy')).toContain(
       `${perMinute} scan requests a minute and ${perHour} an hour, and ${app} sign-in and app requests a minute`,
+    );
+    expect(pageMarkdown('/privacy')).toContain(
+      `The page's counts (see [Counting visits](#counting-visits)) are limited to ${counts} a minute.`,
     );
   });
 
@@ -229,16 +237,19 @@ describe('the facts on the pages', () => {
       'public/shared/core.js',
       'public/pipeline/pipeline.js',
       'public/shared/theme.js',
+      'public/shared/count.js',
+      'public/shared/visit.js',
       'public/index.html',
     ].map(read);
     const names = new Set(
       code.flatMap((text) => [...text.matchAll(/["'`]((?:sg|pl):[A-Za-z-]+:?)/g)].map((m) => m[1])),
     );
     // The page's own events, which nothing stores.
-    const events = ['sg:report', 'sg:progress'];
+    const events = ['sg:report', 'sg:progress', 'sg:count'];
     // Each storage key (one ending in ":" is one per repository) and what the privacy page calls what it holds.
     const kept: Record<string, string[]> = {
       'pl:theme': ['your theme'],
+      'pl:visit': ['the day, week and month of your last counted visit'],
       'sg:lastRepo': ['the last repository you looked at'],
       'sg:report:': ['the latest public scan of each repository'],
       'sg:progress:': ['the checks you marked done'],

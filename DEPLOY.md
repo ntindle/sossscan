@@ -198,6 +198,18 @@ They stay off until an OpenAI-compatible service is configured. Add these variab
 
 Only a signed-in admin of a repo can start one, where the app that makes fixes is installed: the fix app, when the site has one.
 
+## Counting visits (optional)
+Counting stays off until `POSTHOG_KEY` is set. The privacy page's "Counting visits" says what's counted, and `lib/counts.ts` is the code: the page reports to `/api/count`, and only the server talks to PostHog, with no IP address, user agent, repository or username, and a new random ID for every count. Nothing in the page changes, so the content security policy stays as it is.
+1. **Create a PostHog project** for the site (posthog.com, US or EU Cloud). Under Settings, Project, turn on **Discard client IP data**: counts arrive from Vercel's servers, not visitors, and the privacy page says the project discards IPs. The site uses no PostHog script, so nothing else needs turning on.
+2. **Set the variables** in Vercel (Project, Settings, Environment Variables), for **Production only**, so preview deployments don't count:
+   | Name | Value |
+   |---|---|
+   | `POSTHOG_KEY` | The project token from PostHog's project settings (`phc_…`). It's server-only, never sent to a browser. A personal API key (`phx_…`) is refused. |
+   | `POSTHOG_HOST` | Optional: `https://eu.i.posthog.com` for EU Cloud. The default is `https://us.i.posthog.com`; the privacy page says the counts go to the US, so change it if you change this. |
+3. **Redeploy**, because a Vercel deployment only has the variables that were set when it was made. Then open the site with Do Not Track off and look for a `page_view` in PostHog's Activity.
+
+If you change what's counted, change the privacy page with it: `tests/counts.test.ts` checks the page against the code.
+
 ## Updating
 - **Code:** a push to `main` deploys, if the project is connected to the repo. Otherwise run `npx vercel@65.9.0 deploy --prod` from the repo root.
 - **Build check:** to test a build locally without an account, run `npx vercel@65.9.0 build`. It needs a linked project, or a placeholder `.vercel/project.json` with `{"projectId":"x","orgId":"x","settings":{"framework":"nextjs"}}`.

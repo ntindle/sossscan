@@ -164,7 +164,8 @@ export function csrf(req: Request): void {
   }
 }
 
-export async function jsonBody(req: Request): Promise<Record<string, unknown>> {
+/** A request's JSON object (or a body already read, as a Response: app/api/count measures its body first). */
+export async function jsonBody(req: Pick<Request, 'json'>): Promise<Record<string, unknown>> {
   let data: unknown;
   try {
     data = await req.json();

@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from 'next/server';
 import { usage } from '@/lib/agent.ts';
+import { count } from '@/lib/counts.ts';
 import { available, FixError, plan, preview } from '@/lib/fixes.ts';
 import { client } from '@/lib/github.ts';
 import {
@@ -57,6 +58,7 @@ export const POST = route(async (req: NextRequest) => {
       files: p.files.map((f) => ({ path: f.path, mode: f.mode, content: f.content })),
       login: sess.login.toLowerCase(),
     };
+    count(req, 'fix_previewed', { agent: isAgent });
     return answer(privateJson({ plan: seal('plan', sealed), ...preview(p) }));
   } catch (e) {
     return answer(errorResponse(e));

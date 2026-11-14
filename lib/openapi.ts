@@ -706,6 +706,7 @@ export function openApiDocument(): Json {
         "Every error under /api/ has the same body: a code that a program can rely on, a message, and a hint that says what to do next. An address under /api/ with no endpoint gets 404 `not_found`, and a method an endpoint doesn't take gets 405 `method_not_allowed`, with an `Allow` header.",
         `${RATE_LIMIT_NOTE} The API sends no CORS headers, so a web page on another site can't read its answers.`,
         "The endpoints under /api/app/ serve the site's GitHub App features: sign-in, Deep scan and fixes. They need a signed-in browser and a header only the site's page sends, so this document leaves them out.",
+        "/api/count is where the site's page reports what it counts, as the privacy page describes. It isn't meant for scripts, so this document leaves it out too.",
       ].join('\n\n'),
       contact: { name: 'sossscan', url: `${SITE}/contact`, email: 'sossscan@ntindle.com' },
       license: { name: 'MIT', identifier: 'MIT' },

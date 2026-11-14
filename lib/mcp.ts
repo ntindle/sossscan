@@ -29,6 +29,7 @@
  */
 import { createHash } from 'node:crypto';
 import pkg from '../package.json';
+import { count } from './counts.ts';
 import { siteUrl } from './env.ts';
 import type { ErrorCode } from './http.ts';
 import { clientIp, limited, rateLimitError } from './limits.ts';
@@ -394,7 +395,7 @@ async function request(req: Request, id: Id, method: string, params: Json, ip: s
     case 'tools/list':
       return listTools('legacy', id, params);
     case 'tools/call':
-      return callToolRequest('legacy', id, params, ip);
+      return callToolRequest(req, 'legacy', id, params, ip);
     default:
       return methodNotFound('legacy', id);
   }
@@ -493,7 +494,7 @@ function modern(
     case 'tools/list':
       return listTools('modern', id, params);
     case 'tools/call': {
-      if (typeof params.name !== 'string') return callToolRequest('modern', id, params, ip);
+      if (typeof params.name !== 'string') return callToolRequest(req, 'modern', id, params, ip);
       if (decodedName(req.headers.get('mcp-name')) !== params.name) {
         return headerMismatch(
           id,
@@ -501,7 +502,7 @@ function modern(
           'Send the tool name in both, in the transport\'s Base64 form ("=?base64?...?=") if it is not plain ASCII.',
         );
       }
-      return callToolRequest('modern', id, params, ip);
+      return callToolRequest(req, 'modern', id, params, ip);
     }
     default:
       return methodNotFound('modern', id);
@@ -533,7 +534,8 @@ function listTools(era: Era, id: Id, params: Json): Response {
   return answer(era, id, era === 'modern' ? { ...list, ttlMs: TTL_MS, cacheScope: 'public' } : list);
 }
 
-async function callToolRequest(era: Era, id: Id, params: Json, ip: string): Promise<Response> {
+/** A tool call. It's counted by the tool's name (lib/counts.ts), with nothing about who called it or with what. */
+async function callToolRequest(req: Request, era: Era, id: Id, params: Json, ip: string): Promise<Response> {
   const { name } = params;
   if (typeof name !== 'string' || !isTool(name)) {
     return rpcError(200, id, {
@@ -550,6 +552,7 @@ async function callToolRequest(era: Era, id: Id, params: Json, ip: string): Prom
     });
   }
   const result: ToolResult = await callTool(name, (params.arguments as Json | undefined) ?? {}, { ip });
+  count(req, 'mcp_tool_call', { tool: name });
   return answer(era, id, result);
 }
 

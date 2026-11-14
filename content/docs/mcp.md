@@ -101,7 +101,7 @@ When a tool can't do what it was asked, it returns a result with `isError: true`
 ## Security
 
 - Browsers send an `Origin` header, and MCP clients don't. A request from a web page on any other site gets 403, so no page can make its visitors' browsers call the server. The endpoint sends no CORS headers, like the API. Only the two discovery documents below can be read from any page, since they hold public metadata and nothing else.
-- The server keeps nothing about a request: no session, no account, and no log of who called which tool. It reads what a client says about itself only to check its form.
+- The server keeps nothing about a request: no session, no account, and no log of who called which tool. It counts each tool call by the tool's name, with nothing about who made it ([privacy](/privacy#counting-visits)). It reads what a client says about itself only to check its form.
 - Errors never quote the request. An error repeats only the request's id and, when the protocol version isn't one the server speaks, that version, if it looks like one.
 
 ## Finding the server

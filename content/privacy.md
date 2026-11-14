@@ -2,7 +2,7 @@
 
 This page explains what sossscan.ntindle.com does with information about you. It's written from the site's code, which is public at [github.com/ntindle/sossscan](https://github.com/ntindle/sossscan), so you can check each statement against it.
 
-The site has no user accounts and no database. There are no analytics, ads or tracking cookies. The page loads nothing from other sites: its content security policy lets it fetch only from sossscan.ntindle.com. When you follow a link to another site, that site sees sossscan.ntindle.com as the referrer, without the rest of the address.
+The site has no user accounts and no database. There are no ads or tracking cookies, and the site counts visits without knowing who makes them, as [Counting visits](#counting-visits) explains. The page loads nothing from other sites: its content security policy lets it fetch only from sossscan.ntindle.com. When you follow a link to another site, that site sees sossscan.ntindle.com as the referrer, without the rest of the address.
 
 ## Public scans
 
@@ -16,7 +16,22 @@ Whether a repository is in OSS-Fuzz, or in GitHub's Secure Open Source Fund, is 
 
 ## The MCP server
 
-AI agents can call the site's [MCP server](/docs/mcp). A call sends the server a repository's name or a check's id, along with what the client says about itself, such as its name and version. The server uses them to answer and keeps none of it: there's no session and no log of who called which tool. A scan through the MCP server is the same public scan as on the home page, and its result is cached the same way.
+AI agents can call the site's [MCP server](/docs/mcp). A call sends the server a repository's name or a check's id, along with what the client says about itself, such as its name and version. The server uses them to answer and keeps none of it: there's no session and no log of who called which tool. It counts each call by the tool's name, with nothing about who made it or with what (see [Counting visits](#counting-visits)). A scan through the MCP server is the same public scan as on the home page, and its result is cached the same way.
+
+## Counting visits
+
+To see how the site is used, it counts a few things and sends each count to [PostHog](https://posthog.com), an analytics service in the US. Your browser never talks to PostHog: the page reports to this site, and the server passes each count on, along with the ones it makes itself.
+
+The page counts:
+
+- a page opening: the page's address (such as /docs, without anything after a "?" or "#"), the other site you came from, if any, as its domain only, and whether this is your first visit today, this week and this month;
+- a public scan it shows you, a CLI report you open in it, and a prompt for an AI coding agent you copy.
+
+The server counts a scan that a program asks the API for, an MCP tool call with the tool's name, a deep scan, a settings fix with whether GitHub took it, a pull request fix built for you to review and one opened, a sign-in with GitHub, and an installation of the app.
+
+A count is the event's name and those details, nothing more. It carries no IP address, no browser or device details, no cookie, no repository name, no GitHub username, and nothing that links it to another count: each one gets a new random ID, and PostHog keeps no profile of anyone. To tell first visits apart without an ID, the page keeps the day, week and month of your last counted visit in your browser (see [In your browser](#in-your-browser)) and sends only yes or no. Counts reach PostHog from the server's address, never yours. The site asks PostHog not to look up a location, and its PostHog project is set to discard IP addresses.
+
+If your browser sends Do Not Track or Global Privacy Control, nothing is counted, on the page or on the server. Search engines and other crawlers aren't counted, and neither are browsers that programs drive. PostHog keeps the counts under its [privacy policy](https://posthog.com/privacy).
 
 ## Caching
 
@@ -24,7 +39,7 @@ So that a repeat scan doesn't go back to GitHub, the server reuses each public s
 
 ## Rate limits
 
-So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scan requests a minute and 40 an hour, and 90 sign-in and app requests a minute. Requests to the MCP server count too: 120 a minute, and each scan it runs counts as a scan request. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in, app and MCP requests) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
+So that one visitor can't use up the site's GitHub quota, the server counts requests per IP address: 6 scan requests a minute and 40 an hour, and 90 sign-in and app requests a minute. Requests to the MCP server count too: 120 a minute, and each scan it runs counts as a scan request. The page's counts (see [Counting visits](#counting-visits)) are limited to 60 a minute. To count them, it keeps your IP address and the times of your recent requests in memory, and never writes them to disk. Request times older than an hour (a minute for sign-in, app and MCP requests and the page's counts) are dropped when you make your next request. Addresses that have been quiet for an hour are cleared once the server is tracking more than 20,000, and all of it is gone when the server instance stops.
 
 ## Signing in with GitHub
 
@@ -55,7 +70,7 @@ AI fixes are turned off on sossscan.ntindle.com. The code supports them for thre
 
 The page saves a few things in your browser's storage, on your device:
 
-- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done and when, with any pull request the app opened for them. The page counts from that date to say when a check that repeats, such as a yearly drill, is due again;
+- in localStorage: your theme, the last repository you looked at, the latest public scan of each repository, and the checks you marked done and when, with any pull request the app opened for them. The page counts from that date to say when a check that repeats, such as a yearly drill, is due again. It also keeps the day, week and month of your last counted visit, so the next count can say whether it's your first visit of each (see [Counting visits](#counting-visits)), unless your browser sends Do Not Track or Global Privacy Control;
 - in sessionStorage, only while you sign in with GitHub or install the app: what you asked for, meaning the repository to deep scan, or the check whose fix you had open, with its repository and the time. The page deletes it the next time it loads, and after 15 minutes it isn't used.
 
 Reports from deep scans, and reports from the CLI when its token had admin access, aren't saved anywhere. They stay in the open page's memory only, so reloading or closing the page clears them, and you scan again to see them.
@@ -68,10 +83,10 @@ The [sossscan CLI](/docs/cli) runs on your machine and sends nothing to this sit
 
 ## Hosting
 
-The site runs on Vercel. Vercel receives every request, including your IP address, and keeps logs under its own [privacy notice](https://vercel.com/legal/privacy-policy). The site's own code doesn't log who scans what.
+The site runs on Vercel. Vercel receives every request, including your IP address, and keeps logs under its own [privacy notice](https://vercel.com/legal/privacy-policy). The site's own code doesn't log who scans what: its counts name no person and no repository.
 
 ## Questions
 
 Write to [sossscan@ntindle.com](mailto:sossscan@ntindle.com), or see [Contact](/contact) for other ways to reach the maintainer. If this page and the code ever disagree, please [open an issue](https://github.com/ntindle/sossscan/issues/new).
 
-Last updated November 12, 2026.
+Last updated November 13, 2026.
