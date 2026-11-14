@@ -16,8 +16,9 @@
  * Addresses no route or file answers get notFound(), a 404 with a page in the same style, or Markdown for requests that
  * ask for it (app/[...path]/route.ts).
  *
- * The pages run no inline script. /shared/theme.js applies the saved theme, and their JSON-LD is a data block, which a
- * browser never runs, so it needs no hash in the content security policy (next.config.ts).
+ * The pages run no inline script. /shared/theme.js applies the saved theme, /shared/visit.js counts the visit
+ * (lib/counts.ts), and their JSON-LD is a data block, which a browser never runs, so it needs no hash in the content
+ * security policy (next.config.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -210,6 +211,7 @@ ${about ? `${about}\n` : ''}<meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="/pipeline/pipeline.css">
 <link rel="stylesheet" href="/shared/text.css">
 <script src="/shared/theme.js"></script>
+<script type="module" src="/shared/visit.js"></script>
 ${data ? `${data}\n` : ''}</head>
 <body>
 <a class="skip" href="#main">Skip to the content</a>

@@ -15,6 +15,7 @@ const LIMITS = {
   ],
   app: [[60, 90]],
   mcp: [[60, 120]],
+  count: [[60, 60]],
 } as const;
 export type Bucket = keyof typeof LIMITS;
 
@@ -23,6 +24,7 @@ const COUNTED: Record<Bucket, string> = {
   scan: 'scan requests',
   app: 'sign-in and app requests',
   mcp: 'MCP requests',
+  count: 'counts from the page',
 };
 const PER: Record<number, string> = { 60: 'a minute', 3600: 'an hour' };
 

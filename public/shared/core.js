@@ -5,6 +5,12 @@
 
 export const VERSION = '0.1.0';
 
+// Something the page counts. /shared/visit.js hears it and reports it (count.js), so this module imports nothing, and
+// without a page (the server, the tests) nothing happens.
+function counted(event, details = {}) {
+  globalThis.document?.dispatchEvent(new CustomEvent('sg:count', { detail: { event, details } }));
+}
+
 // ------------------------------------------------------------------------------------------- data
 let _guide = null;
 export async function loadGuide() {
@@ -98,6 +104,7 @@ export async function scanPublic(repo, { refresh = false } = {}) {
   if (!res.ok) throw apiError(data, res.status, 'Scan failed');
   const rep = sanitizeReport(data);
   remember(rep);
+  counted('scan', { rescan: refresh });
   return rep;
 }
 
@@ -111,6 +118,7 @@ export async function readReportFile(file) {
   if (!['public', 'private', 'app'].includes(rep.layer)) rep.layer = 'private';
   rep = sanitizeReport(rep);
   remember(rep);
+  counted('report_loaded');
   return rep;
 }
 
@@ -1108,6 +1116,7 @@ export function promptDialog(choices, opts = {}) {
       flash = 'Copied';
       cancel.textContent = 'Close';
       say(`Copied a prompt for ${plural(picked.size, 'check')}.`);
+      counted('prompt_copied');
     } catch {
       // No clipboard (blocked, or not a secure page): show the prompt, selected, to copy by hand.
       flash = 'Select and copy';

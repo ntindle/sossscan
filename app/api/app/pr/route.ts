@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { count } from '@/lib/counts.ts';
 import { apply, FixError, openPull, type Plan } from '@/lib/fixes.ts';
 import { client } from '@/lib/github.ts';
 import { configOr404, installationToken, PLAN_TTL, prReady, sessionOf } from '@/lib/github-app.ts';
@@ -30,7 +31,9 @@ export const POST = route(async (req: NextRequest) => {
   const existing = await openPull(gh, p.repo, p.head);
   if (existing) return privateJson({ ok: true, existing: true, ...existing, branch: p.head });
   try {
-    return privateJson({ ok: true, ...(await apply(gh, p)) });
+    const opened = await apply(gh, p);
+    count(req, 'fix_pr_opened', {});
+    return privateJson({ ok: true, ...opened });
   } catch (e) {
     if (e instanceof FixError) throw new HttpError(e.status, e.code, e.message, e.hint);
     throw e;

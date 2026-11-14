@@ -68,6 +68,7 @@ const ENDPOINTS: [string, 'GET' | 'POST'][] = [
   ['/api/scan/octo/demo', 'GET'],
   ['/api/scan', 'POST'],
   ['/api/health', 'GET'],
+  ['/api/count', 'POST'],
   ['/api/app/status', 'GET'],
   ['/api/app/repo', 'POST'],
   ['/api/app/check', 'POST'],
@@ -407,7 +408,8 @@ describe('/openapi.json', () => {
 
   it("describes each public endpoint the code has, with the methods it takes, and leaves the app's out", async () => {
     const documented = operations.map(({ at, method }) => `${method} ${at}`).sort();
-    const routes = apiRoutes().filter((at) => !at.startsWith('/api/app/') && !at.includes('['));
+    // The app's endpoints, and /api/count where the page reports what it counts, are the page's own.
+    const routes = apiRoutes().filter((at) => !at.startsWith('/api/app/') && at !== '/api/count' && !at.includes('['));
     const taken: string[] = [];
     for (const at of routes) {
       const [example] = ENDPOINTS.find(([to]) => to.replace('/octo/demo', '/{owner}/{name}') === at)!;
@@ -418,6 +420,7 @@ describe('/openapi.json', () => {
     expect(documented).toEqual(taken.sort());
     expect(documented).toEqual(['GET /api/health', 'GET /api/scan/{owner}/{name}', 'POST /api/scan']);
     expect(doc.info.description).toContain("The endpoints under /api/app/ serve the site's GitHub App features");
+    expect(doc.info.description).toContain("/api/count is where the site's page reports what it counts");
   });
 
   it('gives each operation a unique operationId, a summary, a description, a tag and no security', () => {

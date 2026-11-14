@@ -177,3 +177,5 @@ Each IP address can make 6 scan requests a minute and 40 an hour. GET and POST c
 ## The app endpoints
 
 The endpoints under `/api/app/` and `/app/` serve the page's GitHub App features: sign-in, Deep scan and the fixes. They work with the page's sign-in cookie, so they aren't meant for scripts, and openapi.json leaves them out. Their errors under `/api/app/` come in the same form, with codes of their own.
+
+`/api/count` is where the page reports what it counts, as the [privacy page](/privacy#counting-visits) describes. It isn't meant for scripts either, and openapi.json leaves it out too.

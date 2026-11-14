@@ -284,6 +284,8 @@ describe('404s', () => {
       '/shared/core.css',
       '/shared/core.js',
       '/shared/theme.js',
+      '/shared/count.js',
+      '/shared/visit.js',
       '/pipeline/pipeline.js',
       '/pipeline/pipeline.css',
       '/data/guide.json',

@@ -8,7 +8,9 @@ Those were retired and deleted.
 
 Pages are static files under `public/`. You don't need to restart the server for HTML, CSS or JS changes.
 
-The site's text pages (About, Contact, Privacy and the docs) don't use this engine. `lib/pages.ts` renders them from Markdown in `content/`, with `core.css`, `pipeline.css` and `text.css` for the look and `theme.js` for the theme, and no other script.
+The site's text pages (About, Contact, Privacy and the docs) don't use this engine. `lib/pages.ts` renders them from Markdown in `content/`, with `core.css`, `pipeline.css` and `text.css` for the look, `theme.js` for the theme and `visit.js` to count the visit, and no other script.
+
+Every page loads `visit.js`, which counts its visit and reports what the page counts (`count.js`, and the privacy page's "Counting visits"). `core.js` says what to count with `sg:count` events on `document`, so it imports nothing. Counts go only to this site's `/api/count`, never to another site, and nothing is counted when the browser sends Do Not Track or Global Privacy Control.
 
 ## How a view uses it
 - Import the module with `<script type="module">import * as sg from '/shared/core.js'; …</script>`.

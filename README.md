@@ -144,6 +144,7 @@ npm run build          # set SITE_BASE_URL to the public address for a real depl
 - `SOSF_DATA_DIR`: caches only, nothing secret (default: the project root; `/tmp/sosf` on Vercel).
 - `TRUST_PROXY_HEADERS=1`: behind a proxy that sets the visitor's address, so rate limits count each visitor. Without it (and off Vercel), everyone shares one count, because anyone can send a fake `X-Forwarded-For`.
 - `AGENT_*`: AI agent fixes (see `DEPLOY.md`).
+- `POSTHOG_KEY` and `POSTHOG_HOST`: optional, to count visits as the privacy page describes (`lib/counts.ts`, and `DEPLOY.md`). `POSTHOG_KEY` is a PostHog project token (`phc_…`); `POSTHOG_HOST` defaults to `https://us.i.posthog.com`. Without a token nothing is counted. Only the server uses them, so the token never reaches a browser.
 
 ## Layout
 

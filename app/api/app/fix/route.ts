@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { count } from '@/lib/counts.ts';
 import { ghRequest } from '@/lib/github.ts';
 import {
   configOr404,
@@ -60,6 +61,7 @@ export const POST = route(async (req: NextRequest) => {
     }
   }
   repoCache.delete(`${sess.login.toLowerCase()}\n${repo.toLowerCase()}`);
+  count(req, 'settings_fix', { ok });
   return privateJson({ ok, fix_id: fixId, status: r.status, label: fix.label, message });
 });
 

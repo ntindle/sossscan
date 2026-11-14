@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { count } from '@/lib/counts.ts';
 import { siteUrl } from '@/lib/env.ts';
 import { ghRequest } from '@/lib/github.ts';
 import { appConfig, clearStateCookie, popState, SESSION_TTL, setSession, withParam } from '@/lib/github-app.ts';
@@ -48,5 +49,6 @@ export const GET = route(async (req: NextRequest) => {
   if (!token || !user || user.status !== 200 || typeof user.data?.login !== 'string') return back('signin-failed');
   const res = back('signed-in');
   setSession(res, { login: user.data.login, token, app_id: cfg.id, exp: Date.now() / 1000 + SESSION_TTL });
+  count(req, 'signed_in', {});
   return res;
 });

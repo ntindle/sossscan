@@ -276,6 +276,7 @@ function safeJson(s: string): unknown {
 // ---------------------------------------------------------------------------------- calling routes
 const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/api\/health$/, () => import('@/app/api/health/route.ts')],
+  [/^\/api\/count$/, () => import('@/app/api/count/route.ts')],
   [/^\/api\/scan$/, () => import('@/app/api/scan/route.ts')],
   [/^\/api\/scan\/([^/]+)\/([^/]+)$/, () => import('@/app/api/scan/[owner]/[name]/route.ts')],
   [/^\/api\/app\/status$/, () => import('@/app/api/app/status/route.ts')],
@@ -387,7 +388,7 @@ export function setCookie(res: Response, name: string): string | null {
 
 // ------------------------------------------------------------------------------------ test setup
 const ENV_KEYS =
-  /^(SOSF_|GITHUB_APP_|GITHUB_FIX_APP_|AGENT_|VERCEL$|SITE_BASE_URL$|TRUST_PROXY_HEADERS$|GITHUB_TOKEN$|GH_TOKEN$)/;
+  /^(SOSF_|GITHUB_APP_|GITHUB_FIX_APP_|AGENT_|POSTHOG_|VERCEL$|SITE_BASE_URL$|TRUST_PROXY_HEADERS$|GITHUB_TOKEN$|GH_TOKEN$)/;
 
 /** SOSF_SECRET for the tests: long enough (32 characters or more) for lib/sealed.ts to use. */
 export const TEST_SECRET = 'test-secret-0123456789abcdef-0123456789';
