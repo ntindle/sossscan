@@ -586,7 +586,7 @@
   },
   "ai-assisted-security": {
     "short": "Use AI to review code and triage alerts, but keep deterministic scanners as the gate.",
-    "why": "AI-assisted review finds real bugs: aiohttp's audit with GitHub Security Lab's taskflow agent found another vulnerability plus issues across other aio-libs projects, and Patch the Planet (OpenAI with Trail of Bits) led to 8 CVEs that aiohttp fixed within days. It also makes work: Jules filed 120+ near-duplicate PRs on Steve Francia's projects while he was away.",
+    "why": "AI-assisted review finds real bugs: aiohttp's audit with GitHub Security Lab's taskflow agent found another vulnerability plus issues across other aio-libs projects, Patch the Planet (OpenAI with Trail of Bits) led to 8 CVEs that aiohttp fixed within days, and in GitHub and Microsoft's Codename MDASH pilot, where every finding was checked before it was reported, Caddy fixed all 22 of its reports within a week. It also makes work: Jules filed 120+ near-duplicate PRs on Steve Francia's projects while he was away.",
     "steps": [
       "Get a second reader on every PR. If you use Copilot, add a branch ruleset with Automatically request Copilot code review; Two.js has it review every change.",
       "Ask AI to explain alerts and suggest mitigations. Keycloak used Copilot to understand CodeQL reports.",
@@ -609,6 +609,10 @@
       {
         "label": "GitHub Security Lab taskflow agent",
         "url": "https://github.com/GitHubSecurityLab/seclab-taskflow-agent"
+      },
+      {
+        "label": "GitHub and Microsoft's Codename MDASH pilot",
+        "url": "https://github.blog/open-source/maintainers/maintainers-dont-need-more-ai-bug-reports-they-need-fixes/"
       }
     ],
     "check": "In [Settings → Rulesets](https://github.com/{owner}/{repo}/settings/rules), a ruleset for your default branch should have \"Automatically request Copilot code review\" on, or another AI reviewer should comment on your pull requests.",
