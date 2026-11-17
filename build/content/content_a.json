@@ -686,7 +686,7 @@
   "steps": [
    "Decide your stance and put it in CONTRIBUTING.md: allowed with disclosure (Sniffnet), case by case (Cobra: \"Let AI handle the volume. Stay responsible for the judgment.\"), or not accepted (Gleam).",
    "Require contributors to understand every line they submit and to say which AI tools they used. That is the first of Sniffnet's 10 contributing rules.",
-   "Add a section to SECURITY.md. Like actix-web, accept AI-assisted reports but reject fully AI-generated ones that lack project-specific details and a credible reproduction or impact.",
+   "Add a section to SECURITY.md. Like actix-web, accept AI-assisted reports but reject fully AI-generated ones that lack project-specific details and a credible reproduction or impact. GitHub's standard from its Codename MDASH pilot is one to point senders to: check every finding against the project's threat model and security policy, report it privately, and include a suggested fix.",
    "Make it enforceable: a PR template that asks how the change was tested, and a custom private-report form that requires a proof of concept (snippets below).",
    "Publish a trust model or threat model to check reports against. OpenClaw's SECURITY.md gives maintainers \"something concrete to point at when closing bad reports.\"",
    "On PRs, look for evidence: tests, screenshots, agent transcripts and the contributor's own reasoning, the signals OpenClaw now looks for."
@@ -708,6 +708,10 @@
    "A ban you can't verify invites quiet violations. Ask for disclosure and evidence instead."
   ],
   "docs": [
+   {
+    "label": "GitHub: a standard for AI-found vulnerability reports",
+    "url": "https://github.blog/open-source/maintainers/maintainers-dont-need-more-ai-bug-reports-they-need-fixes/"
+   },
    {
     "label": "Custom private vulnerability report forms",
     "url": "https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository"
