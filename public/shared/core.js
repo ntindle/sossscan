@@ -982,7 +982,7 @@ export function renderRemediation(item, opts = {}) {
 // What a check's Fund repo count measures, where that isn't the check itself. The Fund's repos were scanned from outside,
 // where GitHub's own secret scanning doesn't show, so for that check the count is of secret scanners run in CI.
 const PEER_COUNTS = { 'secrets-scanning': 'run a secret scanner (gitleaks or TruffleHog) in CI' };
-// The end of "n% of the 193 Fund projects …": "have this", or what the count measures instead.
+// The end of "n% of the Fund projects …": "have this", or what the count measures instead.
 export const peerHave = (item) => PEER_COUNTS[item.id] || 'have this';
 
 // One honest sentence about how the fund's projects handle this item.
