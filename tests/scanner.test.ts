@@ -3109,6 +3109,20 @@ describe("GitHub's Secure Open Source Fund (people-security-training, people-sha
     expect(fundEntry('nope/nope', 'actix/actix-web')?.repo).toBe('actix/actix-web');
   });
 
+  it("covers GitHub's list of every alumni project, Session 5 included", () => {
+    // GitHub's post of 2026-11-17 lists all 216 alumni projects so far. Session 5 had no recap, so each listed
+    // project that no session recap names is Session 5.
+    expect(guide.teams.length).toBeGreaterThanOrEqual(216);
+    expect(guide.teams.filter((t: { sessions: string[] }) => t.sessions.join() === '5')).toHaveLength(29);
+    const entry = fundEntry('pydantic/pydantic');
+    expect(entry?.sessions).toEqual(['5']);
+    // Session 5 started in September 2026.
+    expect(trainingResult(entry, new Date('2028-08-31T00:00:00Z'))?.summary).toContain('(session 5)');
+    expect(trainingResult(entry, new Date('2028-09-01T00:00:00Z'))).toBeNull();
+    // An earlier guess from a single advisory that GitHub's list doesn't name.
+    expect(fundEntry('markdown-it/markdown-it')).toBeNull();
+  });
+
   it('passes training until two years after the latest session, and sharing for a team with a post', () => {
     const entry = { repo: 'a/b', sessions: ['1-2', '3'], posts: [] };
     expect(trainingResult(entry, new Date('2027-08-31T00:00:00Z'))?.summary).toBe(

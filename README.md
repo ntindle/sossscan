@@ -187,7 +187,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 
 ## Where the guide's data comes from
 
-The guide is built from what the 193 projects in GitHub's Secure Open Source Fund wrote and changed:
+The guide is built from what the 216 projects in GitHub's Secure Open Source Fund wrote and changed:
 - what they wrote: their blog posts and GitHub's write-ups about the program, read for what each team did, planned or recommends;
 - what they changed: a scan of each project's repository (which controls it has, and whether they arrived during the program), and commits where teams fixed CI and supply chain risks.
 
@@ -240,7 +240,7 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
 - `repo-settings-review` passes when an issue labeled `settings-review` was closed in the last 6 months, the longer end of the guide's "every 3 to 6 months", and gives its date. The guide's `.github/workflows/settings-review.yml` opens one in January and July. A scheduled workflow whose steps name the label gives info, saying when GitHub has turned it off or issues are off, and so does an older closed issue. Pull requests with the label don't count, and nor do issues closed as not planned or as duplicates. It reads the 5 newest closed issues with the label, one request. The main app doesn't ask for the Issues permission, so in a Deep scan of a private repository the check says it couldn't read them; the CLI with an admin's token can.
 - The release cache check reads the workflows, the local actions they use, and one hop into package.json scripts or Makefile targets. A release made by a script or a remote reusable workflow shows as info, because the scan can't see inside it.
 - The OSS Scanner check (public repos with over 1,000 stars or 200 dependents) finds a project by matching folder names in anthropics/oss-scanner against the repo's name and owner, then confirms the `repo:` URL in its project.yaml. A project enrolled under an unrelated folder name shows as not enrolled.
-- Peer adoption covers the 193 fund repos only, bucketed by stars.
+- Peer adoption covers the 216 fund repos only, bucketed by stars.
 - Fix commits are keyword-matched commit messages with false-positive filters, so expect some noise.
 - Pull request fixes have been tested against a fake GitHub and, read-only, against real public repos (planning and previews), but not yet by opening a real pull request.
 - AI agent fixes have been tested against a fake AI service, including one that tries to slip in a download; no real model has run them yet. How well they work depends on the model.

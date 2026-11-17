@@ -106,7 +106,7 @@ const IF_ALL_READ: Record<string, Status[]> = {
 const MB = 1024 * 1024;
 /**
  * What the scan reads of the files anyone can commit (one can be 100 MB) on our server, far above real repositories.
- * The largest in the 193 repositories of the Fund's list: a workflow, 480 KB (openclaw's ci.yml); any other file the
+ * The largest in the 216 repositories of the Fund's list: a workflow, 480 KB (openclaw's ci.yml); any other file the
  * scan reads, 156 KB (openclaw's package.json; CLAUDE.md files reach 130 KB, CODEOWNERS 112 KB); workflow files, 127
  * in one repository (openclaw), 3.4 MB in all. Past a limit a file is too large to read, and the checks that need it
  * are unknown. A security policy is downloaded up to 1 MB, of which the reader reads the first 256 KB.

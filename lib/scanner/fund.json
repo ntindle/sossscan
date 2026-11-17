@@ -51,6 +51,13 @@
    "posts": []
   },
   {
+   "repo": "albumentations-team/AlbumentationsX",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "apache/airflow",
    "sessions": [
     "3"
@@ -61,6 +68,27 @@
    "repo": "apache/apisix",
    "sessions": [
     "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/commons-parent",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/groovy",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "apache/shiro",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -89,6 +117,13 @@
    "repo": "ArduPilot/ardupilot",
    "sessions": [
     "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "arkime/arkime",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -222,6 +257,13 @@
    "posts": []
   },
   {
+   "repo": "changesets/changesets",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "jawah/charset_normalizer",
    "sessions": [
     "1-2"
@@ -239,6 +281,13 @@
    "repo": "bee-san/Ciphey",
    "sessions": [
     "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "soheilhy/cmux",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -277,6 +326,13 @@
      "date": "2026-02-17"
     }
    ]
+  },
+  {
+   "repo": "vitali87/code-graph-rag",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
   },
   {
    "repo": "mlco2/codecarbon",
@@ -319,6 +375,13 @@
    ]
   },
   {
+   "repo": "concourse/concourse",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "zloirock/core-js",
    "sessions": [
     "4"
@@ -329,6 +392,13 @@
    "repo": "python/cpython",
    "sessions": [
     "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "cryptomator/cryptomator",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -529,6 +599,13 @@
    ]
   },
   {
+   "repo": "PrefectHQ/fastmcp",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "fluxcd/flux2",
    "sessions": [
     "1-2"
@@ -569,6 +646,13 @@
    ]
   },
   {
+   "repo": "gitpython-developers/GitPython",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "gleam-lang/gleam",
    "sessions": [
     "4"
@@ -605,6 +689,13 @@
    "repo": "haraka/Haraka",
    "sessions": [
     "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "wighawag/hardhat-deploy",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -699,6 +790,13 @@
    "repo": "jreleaser/jreleaser",
    "sessions": [
     "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "nodeca/js-yaml",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -819,13 +917,6 @@
    "posts": []
   },
   {
-   "repo": "markdown-it/markdown-it",
-   "sessions": [
-    "5"
-   ],
-   "posts": []
-  },
-  {
    "repo": "mastodon/mastodon",
    "sessions": [
     "3"
@@ -899,9 +990,23 @@
    ]
   },
   {
+   "repo": "modernc-org/sqlite",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "czlonkowski/n8n-mcp",
    "sessions": [
     "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "napi-rs/napi-rs",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -991,6 +1096,13 @@
    ]
   },
   {
+   "repo": "numpy/numpy",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "nuxt/nuxt",
    "sessions": [
     "1-2"
@@ -1053,6 +1165,13 @@
    "posts": []
   },
   {
+   "repo": "openapistack/openapi-backend",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "openbq-org/OpenBB",
    "sessions": [
     "3"
@@ -1094,6 +1213,13 @@
    "posts": []
   },
   {
+   "repo": "openwisp/openwisp-controller",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
+  },
+  {
    "repo": "processing/p5.js",
    "sessions": [
     "3"
@@ -1125,6 +1251,13 @@
    "repo": "pelias/pelias",
    "sessions": [
     "1-2"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pestphp/pest",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -1173,6 +1306,13 @@
    "repo": "ProyectoRespira/data_retriever",
    "sessions": [
     "4"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "pydantic/pydantic",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -1256,6 +1396,13 @@
    "repo": "isaacs/rimraf",
    "sessions": [
     "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "RocketChat/Rocket.Chat",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -1473,6 +1620,13 @@
    "repo": "thunderbird/thunderbird-android",
    "sessions": [
     "3"
+   ],
+   "posts": []
+  },
+  {
+   "repo": "time-rs/time",
+   "sessions": [
+    "5"
    ],
    "posts": []
   },
@@ -1700,6 +1854,13 @@
      "date": "2025-08-11"
     }
    ]
+  },
+  {
+   "repo": "zizmorcore/zizmor",
+   "sessions": [
+    "5"
+   ],
+   "posts": []
   }
  ]
 }

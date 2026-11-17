@@ -41,7 +41,7 @@ The answer is the same report, sent with `Cache-Control: no-store`, so the CDN d
 
 ## Download the guide's data
 
-`GET /data/guide.json` is the whole guide as one JSON file of about 700 KB. Its `items` are the 81 checks, with their steps, snippets, settings links and what Fund projects did, and each check's `id` is its key in a report's `results`. The file also holds the stages, tiers and scan layers, the 193 Fund projects in `teams`, and the `counts` behind the guide. [public/shared/README.md](https://github.com/ntindle/sossscan/blob/main/public/shared/README.md) describes its fields.
+`GET /data/guide.json` is the whole guide as one JSON file of about 700 KB. Its `items` are the 81 checks, with their steps, snippets, settings links and what Fund projects did, and each check's `id` is its key in a report's `results`. The file also holds the stages, tiers and scan layers, the 216 Fund projects in `teams`, and the `counts` behind the guide. [public/shared/README.md](https://github.com/ntindle/sossscan/blob/main/public/shared/README.md) describes its fields.
 
 ## The report
 

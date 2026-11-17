@@ -870,7 +870,7 @@
   "short": "Free money, audits and AI tools exist for maintainers. Apply to the ones your project fits.",
   "why": "Several programs give open source maintainers security help at no cost: funding with security training, free audits and hardening, and free AI coding tools. This guide itself is built from what the projects in one of them, GitHub's Secure Open Source Fund, changed. Each program picks its own projects, so the site doesn't check whether you're in any of them: this is a list to apply from.",
   "steps": [
-   "GitHub Secure Open Source Fund: $10,000 per project, paid to the maintainers over a year, and a 3-week security program with GitHub Security Lab (about 15 hours), then check-ins at 6 and 12 months. It's for up to 2 maintainers of an open source project with a clear license, clear governance and real adoption. Applications are rolling and count for every session.",
+   "GitHub Secure Open Source Fund: $10,000 per project, paid to the maintainers over a year, and a 3-week security program with GitHub Security Lab (about 15 hours), then check-ins at 6 and 12 months. In November 2026 GitHub gave alumni GitHub Copilot Max and said it will offer every alumni project AI security scans, with findings checked before they're reported privately, and bring both to future sessions. It's for up to 2 maintainers of an open source project with a clear license, clear governance and real adoption. Applications are rolling and count for every session.",
    "Claude for Open Source (Anthropic): 6 months of Claude Ultra for maintainers. Any one route qualifies, such as 500 or more dependent repos, 100 or more dependent packages, 200,000 or more monthly downloads, being a listed maintainer of a recognized foundation or language project, or a repo with an OpenSSF criticality score of 0.4 or more. Anthropic also says to apply anyway if the ecosystem quietly depends on your work. It's separate from Anthropic's OSS Scanner, which scans the project itself (its own check in this guide).",
    "Codex for Open Source (OpenAI): API credits, ChatGPT Pro with Codex and, for some, access to Codex Security, for maintainers of widely used projects. Anyone can nominate a maintainer.",
    "Sovereign Tech Resilience (Germany's Sovereign Tech Agency): free work by partner firms for open source that critical digital infrastructure depends on: security audits, supply chain hardening (reproducible builds, signed releases), memory-safety transitions, post-quantum readiness, Cyber Resilience Act compliance and technical debt. Apply through its portal; applications are reviewed as they come in. Its bug and fix bounties were paused in September 2026 while it works through a backlog.",
@@ -883,6 +883,10 @@
    "These programs change often. Check each program's page for its current criteria and dates; this list was checked in November 2026."
   ],
   "docs": [
+   {
+    "label": "GitHub: AI security scans and Copilot Max for Fund alumni",
+    "url": "https://github.blog/open-source/maintainers/maintainers-dont-need-more-ai-bug-reports-they-need-fixes/"
+   },
    {
     "label": "Claude for Open Source terms",
     "url": "https://www.anthropic.com/claude-for-oss-terms"
