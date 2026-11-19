@@ -292,6 +292,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/about$/, () => import('@/app/about/route.ts')],
   [/^\/contact$/, () => import('@/app/contact/route.ts')],
   [/^\/privacy$/, () => import('@/app/privacy/route.ts')],
+  [/^\/terms$/, () => import('@/app/terms/route.ts')],
   [/^\/docs$/, () => import('@/app/docs/route.ts')],
   [/^\/docs\/api$/, () => import('@/app/docs/api/route.ts')],
   [/^\/docs\/cli$/, () => import('@/app/docs/cli/route.ts')],
@@ -301,6 +302,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/about\.md$/, () => import('@/app/about.md/route.ts')],
   [/^\/contact\.md$/, () => import('@/app/contact.md/route.ts')],
   [/^\/privacy\.md$/, () => import('@/app/privacy.md/route.ts')],
+  [/^\/terms\.md$/, () => import('@/app/terms.md/route.ts')],
   [/^\/docs\.md$/, () => import('@/app/docs.md/route.ts')],
   [/^\/docs\/api\.md$/, () => import('@/app/docs/api.md/route.ts')],
   [/^\/docs\/cli\.md$/, () => import('@/app/docs/cli.md/route.ts')],
@@ -310,6 +312,7 @@ const ROUTES: [RegExp, () => Promise<Record<string, any>>][] = [
   [/^\/mcp$/, () => import('@/app/mcp/route.ts')],
   [/^\/mcp\/server-card$/, () => import('@/app/mcp/server-card/route.ts')],
   [/^\/\.well-known\/ai-catalog\.json$/, () => import('@/app/.well-known/ai-catalog.json/route.ts')],
+  [/^\/\.well-known\/security\.txt$/, () => import('@/app/.well-known/security.txt/route.ts')],
   // After the API's own routes: every other address under /api/, and /api itself.
   [/^\/api(?:\/.*)?$/, () => import('@/app/api/[[...path]]/route.ts')],
   // Last, as in Next.js: every address no file in public/ and no other route answers.

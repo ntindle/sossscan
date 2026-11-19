@@ -1,6 +1,6 @@
 /**
- * The site's text pages: About, Contact, Privacy, the developer docs and the page for AI agents. Each is one Markdown
- * file in content/ at its URL path (/docs/api is content/docs/api.md), written once and served two ways:
+ * The site's text pages: About, Contact, Privacy, Terms, the developer docs and the page for AI agents. Each is one
+ * Markdown file in content/ at its URL path (/docs/api is content/docs/api.md), written once and served two ways:
  * - pageHtml(path): the Markdown rendered by lib/markdown.ts inside the site's header and footer. The route handlers
  *   (app/about/route.ts and the rest) return it.
  * - pageMarkdown(path): the Markdown itself, at the page's Markdown twin (/about.md, from app/about.md/route.ts), and
@@ -68,6 +68,12 @@ export const PAGES: readonly Page[] = [
       'What sossscan.ntindle.com does with information about you, from its code: scans, caches, rate limits, sign-in, browser storage and hosting.',
   },
   {
+    path: '/terms',
+    type: 'WebPage',
+    description:
+      'The terms for using sossscan.ntindle.com, its API, the CLI and the GitHub Apps: fair use, what scan results mean, changes made through the fix app, and no warranty.',
+  },
+  {
     path: '/docs',
     type: 'WebPage',
     description:
@@ -104,6 +110,7 @@ export const FOOTER_LINKS: readonly [label: string, href: string][] = [
   ['About', '/about'],
   ['Contact', '/contact'],
   ['Privacy', '/privacy'],
+  ['Terms', '/terms'],
   ['Docs', '/docs'],
   ['GitHub', REPO_URL],
 ];

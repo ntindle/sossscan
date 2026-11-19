@@ -12,7 +12,7 @@ Open an issue on GitHub at [github.com/ntindle/sossscan/issues/new](https://gith
 
 ## Security problems in sossscan
 
-Please don't report a vulnerability in sossscan in a public issue, discussion or pull request. Report it privately through GitHub instead, at [github.com/ntindle/sossscan/security/advisories/new](https://github.com/ntindle/sossscan/security/advisories/new). Say what you found, how to reproduce it, and what someone could do with it.
+Please don't report a vulnerability in sossscan in a public issue, discussion or pull request. Report it privately through GitHub instead, at [github.com/ntindle/sossscan/security/advisories/new](https://github.com/ntindle/sossscan/security/advisories/new). If you can't use GitHub's form, email [sossscan@ntindle.com](mailto:sossscan@ntindle.com) instead. Say what you found, how to reproduce it, and what someone could do with it.
 
 That covers the scanner and the downloadable CLI, this site and its API, and the GitHub Apps, including how the server uses their permissions. If an app did anything to a repository that nobody asked for, report that too. A problem the scanner finds in someone else's repository belongs to that project, so report it to them. The known limitations listed in the README are out of scope.
 
