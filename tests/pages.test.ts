@@ -100,6 +100,7 @@ describe('the text pages', () => {
       'About sossscan',
       'Contact · sossscan',
       'Privacy · sossscan',
+      'Terms of use · sossscan',
       'sossscan docs',
       'sossscan API',
       'sossscan CLI',
@@ -307,6 +308,7 @@ describe('the footer', () => {
       ['About', '/about'],
       ['Contact', '/contact'],
       ['Privacy', '/privacy'],
+      ['Terms', '/terms'],
       ['Docs', '/docs'],
       ['GitHub', REPO_URL],
     ]);

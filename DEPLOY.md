@@ -29,7 +29,7 @@ Two things are only per instance on Vercel, so treat them as speed bumps, not ha
    - From the command line, the same is `npx vercel@65.9.0 link` from the repo root.
 3. **Public scans need no token of yours.** Once the main GitHub App (below) is installed on its owner's account, public scans use the app's own installation token:
    - It can't change anything. In the owner's private repositories it can only read metadata, such as their names; public repositories it reads like any token.
-   - It allows about 12,500 GitHub requests an hour. A server with no token gets 60.
+   - It allows 5,000 GitHub requests an hour, plus 50 for each repository past 20 that the installation covers, up to 12,500 ([GitHub's limits for app installations](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api#primary-rate-limit-for-github-app-installations)). A new public scan takes about 26 of them, so an installation on a few repositories covers about 190 new scans an hour; repeat scans come from the cache. A server with no token gets 60.
    - It can see that the owner's private repositories exist, so a public scan answers a private repo exactly like a missing one (a 404 that says `repo lookup failed: HTTP 404 (private repo? pass a token)`), and never caches that answer.
    - Until the app is installed, public scans run with no token. The server never uses anyone's `gh` CLI token.
    - A personal token still works if you prefer one: set `GITHUB_TOKEN` to a fine-grained token with repository access "Public repositories (read-only)" (github.com/settings/personal-access-tokens/new). When it's set, it wins over the app's.
@@ -184,6 +184,8 @@ Then:
 4. If `SOSF_SECRET` may be exposed, replace it with a new random value (`openssl rand -hex 32`) and redeploy. That ends every sign-in and every sealed pull request preview, so everyone signs in again. Someone with the old value and a person's sign-in cookie could read the GitHub token inside it.
 5. Delete the downloaded `.pem` files, or keep them somewhere safe.
 
+[INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) puts these steps in order with the rest: what to do first, how to find what the key did, and who to tell.
+
 ## AI fixes (optional)
 They stay off until an OpenAI-compatible service is configured. Add these variables, then redeploy:
 | Name | Example |
@@ -218,13 +220,17 @@ If you change what's counted, change the privacy page with it: `tests/counts.tes
 - **An inline script in `public/index.html`:** its hash in the content security policy is computed when the site builds, so a deploy picks it up. A test (`tests/hardening.test.ts`) checks that every inline script has one.
 
 ## Free plan limits (November 2026)
-- 1,000,000 function calls a month;
-- 4 hours of active CPU;
-- 100 GB of transfer;
+Vercel's free Hobby plan includes, each month:
+- 1,000,000 CDN requests;
+- 100 GB of transfer to visitors, and 10 GB from functions to the CDN;
+- 1,000,000 function calls;
+- 4 hours of active CPU and 360 GB-hours of function memory;
 - functions up to 5 minutes;
 - non-commercial use only.
 
-Page files and cached scans come from the CDN, so most visits never start the function.
+Going over one of them costs nothing, but Vercel stops that resource until 30 days have passed, which takes the site down.
+
+Page files and cached scans come from the CDN, so most requests never start the function. A first visit to the home page makes about 10 requests and transfers about 234 KB, and two of those requests start the function: the app's status and the visit count. So CDN requests run out first, at roughly 90,000 page views a month. If a launch might pass that, upgrade to Pro or move to the container below before it does. New public scans hit GitHub's limit (step 3 of the one-time setup) long before they'd use up the plan.
 
 ## Alternative: one container on any server
 `Dockerfile` (Node base image pinned by digest, dependencies installed exactly as locked) and `fly.toml` also work, for example on Fly.io at about $4 a month, or on your own hardware:

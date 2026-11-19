@@ -2,8 +2,8 @@
  * The token public scans use. The first of these that works:
  * 1. GITHUB_TOKEN or GH_TOKEN, when the operator set one;
  * 2. the site's GitHub App: a token for the installation on the app owner's account, cut down to reading metadata.
- *    That still reads every public repo the scanner looks at, with the installation's rate limit (about 12,500
- *    requests an hour) instead of the 60 an anonymous server gets;
+ *    That still reads every public repo the scanner looks at, with the installation's rate limit (5,000 requests an
+ *    hour, more for an installation on over 20 repositories, up to 12,500) instead of the 60 an anonymous server gets;
  * 3. none: anonymous.
  * The server never borrows a personal token from the gh CLI. An app token can also see the owner's private repos, so
  * lib/public-scan.ts answers a private repo like a missing one.

@@ -29,6 +29,7 @@ Every page on the site also comes as Markdown, at its address with .md added (/i
 - [About sossscan](https://sossscan.ntindle.com/about.md): what it checks, where the guide comes from, and who made it
 - [Contact](https://sossscan.ntindle.com/contact.md): email, GitHub issues and private security reports
 - [Privacy](https://sossscan.ntindle.com/privacy.md): what the site does with information about the people who use it
+- [Terms of use](https://sossscan.ntindle.com/terms.md): fair use, what scan results mean, changes made through the fix app, and no warranty
 
 ## Optional
 

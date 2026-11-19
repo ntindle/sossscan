@@ -5,6 +5,8 @@
 Please don't open a public issue, discussion or pull request for a vulnerability. Report it privately through GitHub instead:
 https://github.com/ntindle/sossscan/security/advisories/new
 
+If you can't use GitHub's form, email sossscan@ntindle.com instead.
+
 Say what you found, how to reproduce it, and what someone could do with it.
 
 ## Scope
@@ -18,6 +20,8 @@ Out of scope: problems the scanner finds in other people's repositories (report 
 ## What to expect
 
 sossscan is a spare-time project with one maintainer, so replies can take a while. The aim is to acknowledge a report within a week, keep you posted while it's being fixed, and credit you in the advisory unless you'd rather not be named. There's no bug bounty.
+
+[INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) says how a report is handled, and what happens when something goes wrong with the site or the apps.
 
 ## Supported versions
 

@@ -148,7 +148,7 @@ npm run build          # set SITE_BASE_URL to the public address for a real depl
 
 ## Layout
 
-The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`. The text pages (About, Contact, Privacy, the docs and the page for AI agents) are route handlers too, rendered from Markdown. Every page also comes as Markdown, for agents: at its address with `.md` added (`/index.md` for the home page), and at its own address for requests that send `Accept: text/markdown`.
+The page is plain files in `public/`; the server is Next.js route handlers in `app/` over the code in `lib/`. The text pages (About, Contact, Privacy, Terms, the docs and the page for AI agents) are route handlers too, rendered from Markdown. Every page also comes as Markdown, for agents: at its address with `.md` added (`/index.md` for the home page), and at its own address for requests that send `Accept: text/markdown`.
 
 | Path | What |
 |---|---|
@@ -157,7 +157,7 @@ The page is plain files in `public/`; the server is Next.js route handlers in `a
 | `app/api/[[...path]]/` | Every address under `/api/` that no route answers: a 404 in the same JSON form, never the site's 404 page. |
 | `app/openapi.json/`, `lib/openapi.ts` | `/openapi.json`, the API's description in OpenAPI 3.1, built when the site builds. It leaves out the GitHub App's endpoints. Its JSON Schemas (the report, the error, the scan request) are plain objects that other code can reuse. |
 | `content/` | The text pages' Markdown, one file per page at its address: `/docs/api` is `content/docs/api.md`. `content/index.md` starts the home page's Markdown. |
-| `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/`, `app/docs/` and `app/agents/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
+| `lib/pages.ts`, `lib/markdown.ts` | Renders those pages in the site's header and footer, for `app/about/`, `app/contact/`, `app/privacy/`, `app/terms/`, `app/docs/` and `app/agents/`, and gives each page's Markdown as written. The renderer covers what the pages use: headings, paragraphs, lists, code blocks, tables, `code` and links. |
 | `proxy.ts`, `lib/negotiate.ts` | Markdown content negotiation (acceptmarkdown.com) for the home page and the text pages: a request whose `Accept` header prefers Markdown is rewritten to the page's Markdown twin (`app/about.md/`, `app/index.md/` and the rest), and one that rules out both HTML and Markdown gets 406. Every answer carries `Vary: Accept`: the page and twin routes set it themselves and render per request, because Vercel replaces a prerendered route's `Vary` with its own, while `next.config.ts` adds it to the home page's HTML file. |
 | `lib/home.ts` | The home page as Markdown: `content/index.md`, then every stage and check, listed from `public/data/guide.json`. |
 | `app/[...path]/` | Every address nothing else answers: a 404, as Markdown for requests that ask for it and as a page in the site's style otherwise. Next.js tries it after every file and route, and after `app/api/[[...path]]/` for addresses under `/api/`. |
@@ -249,7 +249,7 @@ The thresholds live in two places that must match: `TIERS` in `lib/scanner/` and
 
 ## Security
 
-Please report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md), not in public issues.
+Please report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md), not in public issues. [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) says how reports and incidents are handled.
 
 ## License
 

@@ -43,7 +43,17 @@ export const SECURITY_HEADERS = [
 export const RETIRED = ['/ui/:path+', '/variants', '/variants/:path+', '/wizard', '/wizard/:path+', '/pipeline'];
 
 /** The text pages (lib/pages.ts PAGES), whose route handlers read their Markdown from content/. */
-export const TEXT_PAGES = ['/about', '/contact', '/privacy', '/docs', '/docs/api', '/docs/cli', '/docs/mcp', '/agents'];
+export const TEXT_PAGES = [
+  '/about',
+  '/contact',
+  '/privacy',
+  '/terms',
+  '/docs',
+  '/docs/api',
+  '/docs/cli',
+  '/docs/mcp',
+  '/agents',
+];
 
 const SITE = 'https://sossscan.ntindle.com';
 
